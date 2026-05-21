@@ -1,31 +1,31 @@
 # Task Handoff: add-processor-node-search-context
-Updated: 2026-05-21 22:44:46 +08:00
+Updated: 2026-05-21 23:04:50 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
 Base Commit: e124fa1327d84c95bc8e535ef19044e1d8e80de2
-Current Commit: e124fa1327d84c95bc8e535ef19044e1d8e80de2
+Current Commit: 02548b6642e1456d2ddf38da374c872261e515cc
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to imitate `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
-- The project is growing DeepResearch workflow semantics before migrating to Spring AI Alibaba Graph.
+- The project is growing DeepResearch workflow semantics in `SimpleResearchRunner` before migrating to Spring AI Alibaba Graph.
 - Prior stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, changed the default backend port to `8080`, and added Bocha-only real web search through an `information` node.
-- The current mainline is: grow the minimal node semantics in `SimpleResearchRunner`, prove each stage through real provider paths, then migrate to Graph only after the simplified behavior is stable.
+- This stage added the missing `processor` path so the simplified loop now has stable planner, information, research_team, researcher, processor, reporter, and `__END__` semantics.
 - New feature work must not introduce mock agents, mock search, fabricated search results, or local secret leaks.
 
 ## Stage Role in Mainline
 
-- This stage should add a dedicated ProcessorNode for `StepType.PROCESSING`.
-- It exists because the Bocha stage made real search available, but processing steps are still executed by `ResearcherNode`; that caused live workflow output where a PROCESSING step claimed it had no search context even though previous research observations and site information existed in `ResearchState`.
-- The stage should imitate the reference project's PROCESSING/Coder direction, while keeping the local MVP backend small and not importing MCP, parallel executor, reflection, or Graph infrastructure.
+- This stage adds a dedicated `ProcessorNode` for `StepType.PROCESSING`.
+- It repairs the Bocha-stage semantic gap where processing steps were executed by `ResearcherNode` and could claim no search context existed even though prior observations and `siteInformation` were already in `ResearchState`.
+- It imitates the reference project's PROCESSING/Coder split at the semantic level only, without importing MCP, parallel executor, reflection, Redis, RAG, frontend, or Graph infrastructure.
 
 ## Mainline Progression
 
 - `add-research-team` made Plan/Step execution status drive the controlled loop: planner -> research_team -> researcher -> research_team -> reporter.
-- `add-information-node-bocha-search` extended the loop to: planner -> information -> research_team -> researcher -> research_team -> reporter and made `needWebSearch` call real Bocha.
-- This stage should extend the loop to: planner -> information -> research_team -> researcher/processor -> research_team -> reporter.
-- Future stages can add human feedback, `/chat/stop`, `/chat/resume`, richer frontend rendering of `siteInformation`, and eventually Spring AI Alibaba Graph once planner/information/researcher/processor/reporter semantics are stable.
+- `add-information-node-bocha-search` extended the loop to: planner -> information -> research_team -> researcher -> research_team -> reporter with real Bocha web search.
+- This stage extends the loop to: planner -> information -> research_team -> researcher -> research_team -> processor -> research_team -> reporter.
+- Future stages can build on stable node semantics to add human feedback, `/chat/stop`, `/chat/resume`, richer frontend rendering of `siteInformation`, and eventually Spring AI Alibaba Graph.
 
 ## Related Stage Handoffs
 
@@ -34,26 +34,25 @@ Current Commit: e124fa1327d84c95bc8e535ef19044e1d8e80de2
 
 ## Goal
 
-- Add a lightweight real `ProcessorNode` so PROCESSING steps consume prior observations, Bocha `siteInformation`, and step context instead of being handled by the researcher path as if no context exists.
+- Add a lightweight real `ProcessorNode` so PROCESSING steps consume prior observations, Bocha `siteInformation`, and step context instead of being handled by the researcher path.
 
 ## Task Theme / User Intent
 
-- The user asked to start a new session and implement: "imitate `C:/MainData/code/Codex_project/deepresearch-main` and go with adding ProcessorNode so PROCESSING steps consume real search context."
-- The desired direction is not a full Graph migration. It is a small backend stage that repairs the workflow semantics exposed by the live Bocha test.
-- The project is a personal DeepResearch-lite learning implementation, so keep the architecture clear, minimal, and grounded in real production-required data paths.
+- The user asked to resume and implement the stage: imitate `C:/MainData/code/Codex_project/deepresearch-main` by adding `ProcessorNode` so PROCESSING steps consume real search context.
+- The desired direction is not a full Graph migration. It is a small backend stage that repairs workflow semantics while keeping the learning MVP clear and runnable.
+- The project is a personal DeepResearch-lite implementation, so changes should remain minimal, explicit, and grounded in real production-required data paths.
 
 ## Acceptance Criteria
 
-- Add a real, non-mock ProcessorNode or equivalent under `top.lanshan.manmu.node`.
-- Add a real processor agent boundary, likely `ProcessorAgent` and `LlmProcessorAgent`, using the same real `AgentClient` path as other agents.
-- `ResearchTeamNode` and `SimpleResearchRunner` should route `StepType.RESEARCH` to `ResearcherNode` and `StepType.PROCESSING` to `ProcessorNode`; do not keep PROCESSING execution inside `ResearcherNode`.
-- Processor prompt should include the current processing step, `state.observations()`, `state.siteInformation()`, and relevant plan/step context.
-- PROCESSING output should write `executionRes`, mark the step completed/error, and add a processing result to state in a way the reporter can use. It may use `state.addObservation(...)` for the MVP, or a clearly named new list if that is cleaner.
+- Add a real, non-mock `ProcessorNode` under `top.lanshan.manmu.node`.
+- Add `ProcessorAgent` and `LlmProcessorAgent` using the same real `AgentClient` path as other agents.
+- Route `StepType.RESEARCH` to `ResearcherNode` and `StepType.PROCESSING` to `ProcessorNode`.
+- Processor prompt must include the current processing step, `state.observations()`, `state.siteInformation()`, and plan context.
+- PROCESSING output must write `executionRes`, mark the step completed/error, and add a processing result to state for reporter use.
 - Preserve existing `/api/research/stream` and `/chat/stream` compatibility while adding visible `processor` events.
 - Update `/chat/stream` display title mapping for `processor`.
-- Update tests for route decisions and exact event sequences.
-- Add focused tests for `ProcessorNode` consuming prior observations/search context.
-- Run Java 17 verification. Prefer full `mvn test`; if real provider tests fail due external API/network conditions, record the exact failure and run focused non-network tests.
+- Update tests for route decisions, event sequences, plan normalization, and processor context consumption.
+- Run Java 17 verification and a real HTTP chain on a temporary port, then close the backend service.
 - Commit the completed small stage with a Chinese commit message.
 
 ## Scope
@@ -90,63 +89,71 @@ Current Commit: e124fa1327d84c95bc8e535ef19044e1d8e80de2
 ## Current State
 
 - Git branch: `main`.
-- Working tree is clean at the time this handoff is written.
-- Current commit: `e124fa1327d84c95bc8e535ef19044e1d8e80de2`.
+- Current commit: `02548b6642e1456d2ddf38da374c872261e515cc`.
+- Working tree was clean immediately after the implementation commit. This handoff update is an uncommitted documentation continuity update unless committed separately.
 - No upstream is configured for `main`.
-- Backend default port is `8080`.
+- Backend default port remains `8080`.
 - Project instruction says any manually started backend service must be closed after testing.
-- Current runner has named nodes for planner, information, research_team, researcher, and reporter.
-- Current runner loop is planner -> information -> research_team -> researcher -> research_team -> reporter.
-- `ResearchTeamNode.decide(...)` returns `ResearchTeamRoute.RESEARCHER` for both RESEARCH and PROCESSING pending steps, using `nextStepType` to tell `ResearcherNode` what to run.
-- `ResearcherNode` filters by `decision.nextStepType()` and currently executes both RESEARCH and PROCESSING steps.
-- `ResearchState` already carries `observations`, `searchContexts`, and de-duplicated `siteInformation`.
-- Bocha key is configured locally in `.local/model-providers.json`, but `.local` is forbidden to write or print.
+- Current runner has named nodes for planner, information, research_team, researcher, processor, and reporter.
+- Current runner loop executes planner -> information -> research_team -> selected executor -> research_team until reporter route, then reporter and `__END__`.
+- `ResearchTeamNode.decide(...)` now returns `ResearchTeamRoute.RESEARCHER` for pending RESEARCH work and `ResearchTeamRoute.PROCESSOR` for PROCESSING work after research steps are terminal.
+- `PlannerOutputMapper` now normalizes multi-step plans so the final step is PROCESSING and at least one earlier step is RESEARCH; when `maxSteps > 1` but the model returns one step, it adds a deterministic final "Synthesize findings" PROCESSING step.
+- `ResearchState` still uses the existing `observations` list for both research observations and processor results.
 
 ## Completed
 
-- Prior stages:
-  - Git repository initialized.
-  - Runtime mock agent/search path removed.
-  - `/chat/stream` added with DeepResearch-compatible envelope fields.
-  - Plan/Step state model upgraded.
-  - Lightweight `ResearchTeamNode` added and verified.
-  - Bocha-only `InformationNode` added and verified.
-- Live HTTP verification after Bocha key was configured:
-  - Existing port `8080` had another Java process and was not touched.
-  - Current backend was started on temporary port `18081`.
-  - HTTP switched model to `deepseek-chat`.
-  - `POST /api/research/stream` with a fresh OpenAI Codex query produced `information -> research_team -> researcher -> reporter -> __END__`, real Bocha `siteInformation`, and `done=true`.
-  - `POST /chat/stream` also exposed `siteInformation` in the DeepResearch-compatible envelope.
-  - A clean UTF-8 `curl.exe --data-binary` run produced a valid Chinese query in the `information.search_completed` payload and returned 5 Bocha source results.
-  - The temporary backend service on `18081` was closed and the port was confirmed released.
-- Current task handoff summarizes the next stage; no implementation has started for ProcessorNode yet.
+- Added `ProcessorAgent` and `LlmProcessorAgent`.
+- Added `ProcessorNode` with `processor` SSE events: `started`, `step_completed`, `completed`, and error handling.
+- Added `src/main/resources/prompts/processor.md`.
+- Updated `ResearchTeamRoute`, `ResearchTeamNode`, and `SimpleResearchRunner` to route PROCESSING to the processor node.
+- Updated `/chat/stream` title mapping with `processor -> 信息整理`.
+- Updated planner prompt to ask for a final PROCESSING step when more than one step is allowed.
+- Updated `PlannerOutputMapper` to enforce a stable research-before-processing shape for multi-step workflows.
+- Added focused tests for `ProcessorNode`, `LlmProcessorAgent`, planner normalization, and the new runner/team route.
+- Updated real controller workflow tests to expect the processor path while allowing provider-dependent extra information search events.
+- Ran full Java 17 verification and manual HTTP SSE verification.
+- Committed implementation as `02548b6642e1456d2ddf38da374c872261e515cc` with message `新增处理节点消费搜索上下文`.
 
 ## Decisions
 
-- Add ProcessorNode next before human feedback, stop/resume, or Graph migration.
-- Imitate the reference project's PROCESSING/Coder split at the semantic level only.
-- Do not import `CoderNode`, `ParallelExecutorNode`, MCP, reflection, or Graph machinery into this MVP stage.
-- Keep `SimpleResearchRunner` for now.
-- Do not fake processor results; use the real LLM provider path through `AgentClient`.
-- Keep API keys out of source, tests, assertions, logs, commits, and handoff files.
+- Processor output is appended to existing `state.observations()` for the MVP; no separate `processingResults` state list was added.
+- The `/chat/stream` display title for `processor` is `信息整理`.
+- The processor uses the same real `AgentClient` boundary as planner/researcher/reporter.
+- The plan normalization belongs in `PlannerOutputMapper`, not in the runner, because the runner should execute the plan shape it receives.
+- Real provider workflow tests should assert node subsequences rather than exact information event counts because `need_web_search` is model-dependent.
+- Do not fake processor results; all production processor execution goes through the real LLM provider path.
 
 ## Evidence / References
 
 - Reference PROCESSING assignment: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/ParallelExecutorNode.java`
 - Reference coder/processing node: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/CoderNode.java`
-- Reference researcher node: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/ResearcherNode.java`
 - Current runner: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
 - Current team node: `src/main/java/top/lanshan/manmu/node/ResearchTeamNode.java`
-- Current researcher node: `src/main/java/top/lanshan/manmu/node/ResearcherNode.java`
-- Current information node: `src/main/java/top/lanshan/manmu/node/InformationNode.java`
-- Current state/model files: `src/main/java/top/lanshan/manmu/model/ResearchState.java`, `src/main/java/top/lanshan/manmu/model/ResearchStep.java`, `src/main/java/top/lanshan/manmu/model/ResearchTeamDecision.java`, `src/main/java/top/lanshan/manmu/model/ResearchTeamRoute.java`, `src/main/java/top/lanshan/manmu/model/StepSearchContext.java`, `src/main/java/top/lanshan/manmu/model/SiteInformation.java`
-- Current agent path: `src/main/java/top/lanshan/manmu/agent/client/AgentClient.java`, `src/main/java/top/lanshan/manmu/agent/LlmResearcherAgent.java`, `src/main/java/top/lanshan/manmu/agent/LlmReporterAgent.java`
-- Current tests to update: `src/test/java/top/lanshan/manmu/node/ResearchTeamNodeTest.java`, `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`, `src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java`
+- New processor node: `src/main/java/top/lanshan/manmu/node/ProcessorNode.java`
+- New processor agent: `src/main/java/top/lanshan/manmu/agent/ProcessorAgent.java`, `src/main/java/top/lanshan/manmu/agent/LlmProcessorAgent.java`
+- Planner normalization: `src/main/java/top/lanshan/manmu/agent/PlannerOutputMapper.java`
+- Processor prompt: `src/main/resources/prompts/processor.md`
+- Updated tests: `src/test/java/top/lanshan/manmu/node/ProcessorNodeTest.java`, `src/test/java/top/lanshan/manmu/agent/LlmProcessorAgentTest.java`, `src/test/java/top/lanshan/manmu/agent/PlannerOutputMapperTest.java`, `src/test/java/top/lanshan/manmu/node/ResearchTeamNodeTest.java`, `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`, `src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java`
 
 ## Files Touched
 
-- This handoff writes `.codex/tasks/add-processor-node-search-context.md`.
-- No implementation files have been changed for this stage yet.
+- `src/main/java/top/lanshan/manmu/agent/LlmProcessorAgent.java`
+- `src/main/java/top/lanshan/manmu/agent/ProcessorAgent.java`
+- `src/main/java/top/lanshan/manmu/agent/PlannerOutputMapper.java`
+- `src/main/java/top/lanshan/manmu/api/ChatController.java`
+- `src/main/java/top/lanshan/manmu/model/ResearchTeamRoute.java`
+- `src/main/java/top/lanshan/manmu/node/ProcessorNode.java`
+- `src/main/java/top/lanshan/manmu/node/ResearchTeamNode.java`
+- `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `src/main/resources/prompts/planner.md`
+- `src/main/resources/prompts/processor.md`
+- `src/test/java/top/lanshan/manmu/agent/LlmProcessorAgentTest.java`
+- `src/test/java/top/lanshan/manmu/agent/PlannerOutputMapperTest.java`
+- `src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java`
+- `src/test/java/top/lanshan/manmu/node/ProcessorNodeTest.java`
+- `src/test/java/top/lanshan/manmu/node/ResearchTeamNodeTest.java`
+- `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- `.codex/tasks/add-processor-node-search-context.md`
 
 ## Commands Run
 
@@ -156,51 +163,59 @@ Current Commit: e124fa1327d84c95bc8e535ef19044e1d8e80de2
 - `git diff --stat`
 - `git diff --name-only`
 - `git rev-parse HEAD`
-- `git rev-parse --abbrev-ref --symbolic-full-name @{upstream}` failed because no upstream is configured.
-- `git merge-base HEAD @{upstream}` failed because no upstream is configured.
+- `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'` failed because no upstream is configured.
+- `git merge-base HEAD '@{upstream}'` failed because no upstream is configured.
 - Read `AGENTS.md` with UTF-8.
-- Read `.codex/tasks/add-information-node-bocha-search.md`.
-- Read `.codex/tasks/add-research-team.md`.
-- Read current runner, researcher, research team, state, step, researcher agent, reporter agent, route, and decision files.
-- Read reference `ParallelExecutorNode`, `CoderNode`, and `ResearcherNode`.
-- Live HTTP verification commands from the previous user request included temporary backend startup on `18081`, HTTP model switch to `deepseek-chat`, `/api/research/stream`, `/chat/stream`, clean `curl.exe --data-binary` UTF-8 SSE run, and service shutdown. Response artifacts were saved under `target/`, which is ignored and must not be committed.
+- Read current runner, researcher, research team, state, step, agent, controller, prompt, and test files.
+- Read reference `ParallelExecutorNode` and `CoderNode`.
+- `mvn "-Dtest=ResearchTeamNodeTest,SimpleResearchRunnerTest,ProcessorNodeTest,LlmProcessorAgentTest" test` with Java 17: passed 6 tests.
+- `mvn test` with Java 17 initially failed because real-provider workflow expectations were too exact and the planner could return only processing.
+- `mvn "-Dtest=PlannerOutputMapperTest,ResearchControllerLlmWorkflowTest,ResearchTeamNodeTest,SimpleResearchRunnerTest,ProcessorNodeTest,LlmProcessorAgentTest" test` with Java 17: passed 15 tests after planner normalization.
+- `mvn test` with Java 17: passed 24 tests.
+- Started backend with `mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=18082`, switched model to `deepseek-chat`, ran `/api/research/stream`, and stopped the temporary service.
+- `git diff --check`: passed, with only CRLF warnings.
+- `git commit -m "新增处理节点消费搜索上下文"`: created commit `02548b6642e1456d2ddf38da374c872261e515cc`.
 
 ## Verification
 
-- Current working tree is clean.
-- Most recent implementation verification from the Bocha stage:
+- Full test suite:
   - Command: `mvn test` with `JAVA_HOME=C:\WorkResources\JDKs\JDK17`.
-  - Result: `Tests run: 20, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
-- Real HTTP verification after Bocha key setup:
-  - `/api/research/stream`: returned real `information.search_completed` event with 5 Bocha `siteInformation` entries and final `__END__` `done=true`.
-  - `/chat/stream`: returned `siteInformation` in the envelope for information events.
-  - Clean UTF-8 curl request confirmed Chinese query arrived intact.
-- No manual backend service was left running; temporary port `18081` was confirmed closed.
+  - Result: `Tests run: 24, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- Focused/live test slice:
+  - Command: `mvn "-Dtest=PlannerOutputMapperTest,ResearchControllerLlmWorkflowTest,ResearchTeamNodeTest,SimpleResearchRunnerTest,ProcessorNodeTest,LlmProcessorAgentTest" test`.
+  - Result: `Tests run: 15, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- Manual real HTTP verification:
+  - Started backend on temporary port `18082`.
+  - Switched model to `deepseek-chat`.
+  - Sent `POST /api/research/stream` with `maxSteps=2`.
+  - Observed node sequence: planner -> planner -> information -> information -> information -> research_team -> researcher -> researcher -> researcher -> research_team -> processor -> processor -> processor -> research_team -> reporter -> reporter -> `__END__`.
+  - Observed 3 processor events, at least one `information.search_completed`, and final done event.
+  - Stopped the temporary backend and confirmed port `18082` was released.
 
 ## Known Failures / Blockers
 
 - No upstream Git branch configured.
-- Real LLM/provider tests can fail from external API rate limits or network timeouts.
-- The live Bocha HTTP test showed the exact semantic issue this next stage should fix: PROCESSING was still handled by `ResearcherNode`, and one processing observation claimed no search context was available even though previous observations and site information existed in state.
-- Some terminal output may show Chinese text as mojibake in commands; use `Get-Content -Encoding UTF8` when reading Chinese docs.
+- Real LLM/provider tests can still fail from external API rate limits or network timeouts.
+- `target/` contains ignored manual verification logs and SSE artifacts; do not commit them.
+- Some terminal output may show Chinese text as mojibake in non-UTF-8 reads; use `Get-Content -Encoding UTF8` for Chinese docs.
 
 ## Next Actions
 
-- Implement `ProcessorAgent`/`LlmProcessorAgent`, `ProcessorNode`, and `processor.md` prompt so PROCESSING steps consume `state.observations()` and `state.siteInformation()`.
-- Update `ResearchTeamRoute`, `ResearchTeamNode`, and `SimpleResearchRunner` so RESEARCH routes to researcher, PROCESSING routes to processor, and reporter runs only after all steps are terminal.
-- Add/update focused tests, run Java 17 verification, then run a real HTTP chain with Bocha on a temporary port and close the backend service before stopping.
+- Choose the next stage: human feedback, `/chat/stop` and `/chat/resume`, richer frontend rendering of `siteInformation`, or Graph migration preparation.
+- If continuing processor semantics, consider whether a dedicated `processingResults` field would be cleaner than appending processor results to `state.observations()`.
+- If improving API output, decide whether final reporter/done events should carry aggregate `siteInformation` in addition to information events.
 
 ## Open Questions
 
-- Should processing outputs be appended to the existing `state.observations()` list, or should `ResearchState` get a dedicated `processingResults` list for cleaner reporter prompts?
-- Should `/chat/stream` use display title `内容加工`, `信息整理`, or `处理执行` for the processor node?
+- Should future stages add a dedicated `processingResults` list to `ResearchState` for cleaner reporter prompts?
 - Should final reporter/done events also carry aggregate `siteInformation`, or should that remain limited to information events for now?
+- Which next mainline stage should happen first: human feedback, stop/resume, frontend rendering, or Graph migration preparation?
 
 ## Avoid / Do Not Redo
 
 - Do not edit `C:/MainData/code/Codex_project/deepresearch-main`.
 - Do not repeat Bocha implementation work unless a bug is directly encountered.
-- Do not introduce mock processor output or fake search context in production code.
+- Do not introduce mock processor output, mock search, or fake search context in production code.
 - Do not add providers other than Bocha for search.
 - Do not migrate to Spring AI Alibaba Graph yet.
 - Do not commit `.local`, `target`, `.idea`, API keys, generated SSE/curl output, or logs.
