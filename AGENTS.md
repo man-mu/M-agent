@@ -25,3 +25,4 @@
 - 开发新功能时禁止使用 mock，必须接入真实生产环境需要的数据。
 - 与 DeepResearch 主项目对齐时，优先做精简版可运行能力，不要一次性搬入 RAG、MCP、Redis、前端等完整复杂模块。
 - 保持真实 API 调用路径可测；涉及 DashScope / DeepSeek 的测试依赖本地 `.local/model-providers.json` 中已有 key。
+- 每次启动后端服务进行测试后，测试完毕必须关闭该服务。
