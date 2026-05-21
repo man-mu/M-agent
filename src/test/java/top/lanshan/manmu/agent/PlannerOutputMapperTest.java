@@ -64,4 +64,15 @@ class PlannerOutputMapperTest {
 		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.PROCESSING);
 	}
 
+	@Test
+	void usesQueryAsFallbackTitleWhenModelOmitsPlanTitle() {
+		PlannerResponse response = new PlannerResponse(null, true, "",
+				List.of(new PlannerResponse.Step("Step one", "Research one.", false, StepType.RESEARCH, null)));
+
+		var plan = mapper.toResearchPlan(response, "Explain agent workflow roles.", 1);
+
+		assertThat(plan.title()).isEqualTo("Research plan for: Explain agent workflow roles.");
+		assertThat(plan.steps()).hasSize(1);
+	}
+
 }

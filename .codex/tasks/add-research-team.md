@@ -1,26 +1,31 @@
 # Task Handoff: add-research-team
-Updated: 2026-05-21
+Updated: 2026-05-21 after implementing lightweight ResearchTeam
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 9f8a76c440a917ebee40f66d0750be9905605449
-Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
+Base Commit: 30a7449d798269b020761a206a0b112a96e2c5449
+Current Commit: 30a7449d798269b020761a206a0b112a96e2c5449
 
 ## Project Mainline
 
 - This project is a Java 17 / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to imitate the reference project at `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced form.
 - The current strategy is to grow the business workflow semantics first while keeping `SimpleResearchRunner`, then migrate to Spring AI Alibaba Graph later when interrupt/resume/conditional edges/parallelism are needed.
+- This stage has now added a lightweight `research_team` control node that makes Plan/Step execution status drive routing before the project adopts a real graph engine.
 - The project must use real model/API paths. New feature work must not introduce mock implementations or mock data.
 
 ## Stage Role in Mainline
 
-- The next stage should add a lightweight `ResearchTeam` layer before migrating to Spring AI Alibaba Graph.
-- This stage should make the current Plan/Step status model useful for workflow control: decide whether steps remain, route execution to researcher-like handling, and decide when the workflow may proceed to reporter.
+- This stage adds a lightweight `ResearchTeamNode` layer before migrating to Spring AI Alibaba Graph.
+- It makes the current Plan/Step status model useful for workflow control: decide whether steps remain, route execution to researcher-like handling, and decide when the workflow may proceed to reporter.
 
 ## Mainline Progression
 
 - Earlier stages initialized the Git repo, removed mock runtime paths, added `/chat/stream` DeepResearch-compatible SSE envelopes, and upgraded the Plan/Step state model.
-- The next stage should turn the upgraded Step state fields into actual orchestration behavior.
+- This stage turned the upgraded Step state fields into actual orchestration behavior.
+- `ResearchTeamNode` now emits `research_team` decision events and records a `ResearchTeamDecision` on `ResearchState`.
+- `SimpleResearchRunner` now loops through `research_team -> researcher` until the team routes to reporter.
+- `ResearcherNode` now executes only the pending step type selected by the team, so RESEARCH steps complete before PROCESSING steps.
+- `PlannerOutputMapper` now tolerates real model planner output that omits a top-level title by deriving a conservative title from the user query while still requiring real steps.
 - Future stages can add `InformationNode`, real search, human feedback, `/chat/stop`, `/chat/resume`, and eventually Spring AI Alibaba Graph.
 
 ## Related Stage Handoffs
@@ -30,6 +35,7 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 ## Goal
 
 - Add a lightweight `ResearchTeamNode` to the current backend so the workflow more closely resembles the reference DeepResearch control flow while still using `SimpleResearchRunner`.
+- Status: implemented and verified.
 
 ## Task Theme / User Intent
 
@@ -39,13 +45,13 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 
 ## Acceptance Criteria
 
-- Add a real, non-mock `ResearchTeamNode` or equivalent orchestration layer.
-- Keep the app runnable on the real LLM/provider path.
-- Use existing `ResearchPlan` and `ResearchStep` fields: `executionStatus`, `executionRes`, `stepType`, `needWebSearch`.
-- Preserve existing `/api/research/stream` and `/chat/stream` behavior unless intentionally extending their events.
-- Add or update tests for the new orchestration behavior.
-- Run `mvn test` with Java 17.
-- Commit each completed small stage with a Chinese commit message.
+- Done: added a real, non-mock `ResearchTeamNode` orchestration layer.
+- Done: kept the app runnable on the real LLM/provider path.
+- Done: used existing `ResearchPlan` and `ResearchStep` fields: `executionStatus`, `executionRes`, `stepType`, `needWebSearch`.
+- Done: intentionally extended `/api/research/stream` and `/chat/stream` with visible `research_team` decision events.
+- Done: added tests for the new orchestration behavior.
+- Done: ran `mvn test` with Java 17 successfully.
+- Pending at handoff update time: commit the completed small stage with a Chinese commit message.
 
 ## Scope
 
@@ -79,10 +85,10 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 ## Current State
 
 - Git branch: `main`.
-- Working tree was clean when this handoff was written.
-- Current commit: `9f8a76c440a917ebee40f66d0750be9905605449`.
+- Working tree contains the completed ResearchTeam implementation and this handoff update.
+- Current commit before committing this stage: `30a7449d798269b020761a206a0b112a96e2c5449`.
 - No upstream is configured for `main`.
-- Current runner is still linear: planner -> researcher -> reporter.
+- Current runner is a minimal controlled loop: planner -> research_team -> researcher -> research_team -> reporter.
 - `/chat/stream` exists and wraps internal `ResearchEvent` values into a DeepResearch-like SSE envelope.
 - `ResearchPlan` now has `hasEnoughContext`, `thought`, and `steps`.
 - `ResearchStep` now has `needWebSearch`, `stepType`, `executionRes`, and `executionStatus`.
@@ -95,6 +101,15 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 - `/chat/stream` responses include `nodeName`, `graphId`, `displayTitle`, `content`, and `siteInformation`.
 - Plan/Step state model upgraded.
 - `ResearcherNode` writes `processing`, `completed`, or `error` into each step.
+- Added `ResearchTeamRoute` and `ResearchTeamDecision`.
+- Added `ResearchTeamNode` with terminal-step detection and routing to either `RESEARCHER` or `REPORTER`.
+- Updated `ResearchState` to carry the latest `ResearchTeamDecision`.
+- Updated `SimpleResearchRunner` to require named nodes and execute the `research_team -> researcher` loop until reporter route.
+- Updated `ResearcherNode` to require a team decision and execute only pending steps of the selected `StepType`.
+- Updated `/chat/stream` display title mapping for `research_team`.
+- Updated the researcher prompt so the same real LLM agent can handle both RESEARCH and PROCESSING steps in this MVP.
+- Updated real LLM workflow tests for the new `research_team` event sequence and reduced repeated DashScope pressure by using DeepSeek in the envelope test.
+- Added planner title fallback for real model output that omits the top-level plan title.
 - Project-level `AGENTS.md` updated with:
   - commit after each small phase
   - Chinese commit messages
@@ -107,6 +122,8 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 - Keep `SimpleResearchRunner` for now.
 - Do not introduce mock data or mock services for new features.
 - Real search is not yet implemented; `needWebSearch` exists but should not be faked.
+- In this MVP, PROCESSING steps are handled by the existing real researcher LLM path rather than a new mock coder/processor agent.
+- Missing top-level planner titles are recoverable from the user query; missing or empty real steps still fail.
 
 ## Evidence / References
 
@@ -116,11 +133,29 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 - Current runner: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
 - Current nodes: `src/main/java/top/lanshan/manmu/node`
 - Current Plan/Step models: `src/main/java/top/lanshan/manmu/model/ResearchPlan.java`, `src/main/java/top/lanshan/manmu/model/ResearchStep.java`
+- Current ResearchTeam implementation: `src/main/java/top/lanshan/manmu/node/ResearchTeamNode.java`
+- Current routing models: `src/main/java/top/lanshan/manmu/model/ResearchTeamDecision.java`, `src/main/java/top/lanshan/manmu/model/ResearchTeamRoute.java`
+- Current team tests: `src/test/java/top/lanshan/manmu/node/ResearchTeamNodeTest.java`
 - Project instructions: `AGENTS.md`
 
 ## Files Touched
 
 - This handoff writes `.codex/tasks/add-research-team.md`.
+- This stage touched:
+  - `src/main/java/top/lanshan/manmu/agent/LlmPlannerAgent.java`
+  - `src/main/java/top/lanshan/manmu/agent/PlannerOutputMapper.java`
+  - `src/main/java/top/lanshan/manmu/api/ChatController.java`
+  - `src/main/java/top/lanshan/manmu/model/ResearchState.java`
+  - `src/main/java/top/lanshan/manmu/model/ResearchTeamDecision.java`
+  - `src/main/java/top/lanshan/manmu/model/ResearchTeamRoute.java`
+  - `src/main/java/top/lanshan/manmu/node/ReporterNode.java`
+  - `src/main/java/top/lanshan/manmu/node/ResearcherNode.java`
+  - `src/main/java/top/lanshan/manmu/node/ResearchTeamNode.java`
+  - `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+  - `src/main/resources/prompts/researcher.md`
+  - `src/test/java/top/lanshan/manmu/agent/PlannerOutputMapperTest.java`
+  - `src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java`
+  - `src/test/java/top/lanshan/manmu/node/ResearchTeamNodeTest.java`
 - Prior completed stages touched:
   - `AGENTS.md`
   - `src/main/java/top/lanshan/manmu/api/ChatController.java`
@@ -144,13 +179,19 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 - `git rev-parse --abbrev-ref --symbolic-full-name @{upstream}` failed because no upstream is configured.
 - `git merge-base HEAD @{upstream}` failed because no upstream is configured.
 - Earlier verified command in this session: `mvn test` with `JAVA_HOME=C:\WorkResources\JDKs\JDK17`.
+- `mvn test -Dtest=ResearchTeamNodeTest`
+- `mvn test -Dtest=PlannerOutputMapperTest`
+- `mvn test`
 
 ## Verification
 
-- Last known full verification before this handoff:
-  - `mvn test`
-  - Result: `Tests run: 10, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
-- No code changes beyond this handoff were made after that verification.
+- Latest full verification:
+  - Command: `mvn test` with `JAVA_HOME=C:\WorkResources\JDKs\JDK17`.
+  - Result: `Tests run: 14, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- Additional focused verification:
+  - `mvn test -Dtest=ResearchTeamNodeTest`: `Tests run: 3, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+  - `mvn test -Dtest=PlannerOutputMapperTest`: `Tests run: 5, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- During verification, one earlier full run failed because DashScope returned 429 during reporter generation, and another failed because a real DashScope planner response omitted the top-level title. The title issue was fixed; the later full run passed.
 
 ## Known Failures / Blockers
 
@@ -158,18 +199,19 @@ Current Commit: 9f8a76c440a917ebee40f66d0750be9905605449
 - Some terminal output may show Chinese text as mojibake, but reading `AGENTS.md` with UTF-8 works.
 - Real API tests depend on `.local/model-providers.json` containing valid DashScope and DeepSeek keys.
 - `needWebSearch` is present but real search is not implemented yet. Do not fake search data.
+- Real provider tests can still be temporarily rate-limited by external model APIs.
 
 ## Next Actions
 
-- Add `ResearchTeamNode` to inspect `ResearchPlan.steps()` and decide whether all steps are completed or whether research execution should continue.
-- Integrate `ResearchTeamNode` into `SimpleResearchRunner` between planner/information-style handling and researcher/reporter; keep behavior linear and minimal for now.
-- Add tests for `ResearchTeamNode` using real domain objects only, then run `mvn test` and commit with a Chinese commit message.
+- Commit the completed ResearchTeam stage with a Chinese commit message if it has not already been committed.
+- Next feature stage: add a lightweight `InformationNode` or real search integration without faking `needWebSearch` results.
+- Later stage: split PROCESSING steps into a dedicated real processor/coder node before migrating to Spring AI Alibaba Graph.
 
 ## Open Questions
 
-- Whether to add a separate `InformationNode` in the same stage or leave it for the next stage.
-- Whether `ResearchTeamNode` should emit visible SSE events immediately or remain an internal control node first.
-- How to handle `StepType.PROCESSING` before a real coder/processor node exists.
+- Whether to add a separate `InformationNode` next or prioritize real search first.
+- Whether future `ResearchTeamNode` events need richer frontend payloads beyond the current decision record.
+- Whether `StepType.PROCESSING` should become a dedicated real processor/coder node in the next backend stage.
 
 ## Avoid / Do Not Redo
 

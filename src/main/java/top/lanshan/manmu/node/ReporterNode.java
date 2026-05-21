@@ -17,7 +17,7 @@ public class ReporterNode implements ResearchNode {
 
 	@Override
 	public int order() {
-		return 30;
+		return 40;
 	}
 
 	@Override

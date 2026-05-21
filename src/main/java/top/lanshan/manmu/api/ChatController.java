@@ -73,6 +73,7 @@ public class ChatController {
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
 			case "planner" -> "研究计划";
+			case "research_team" -> "研究团队";
 			case "researcher" -> "研究执行";
 			case "reporter" -> "报告生成";
 			case "__END__" -> "结束";

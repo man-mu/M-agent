@@ -11,11 +11,12 @@ import java.util.List;
 public class PlannerOutputMapper {
 
 	public ResearchPlan toResearchPlan(PlannerResponse response, int maxSteps) {
+		return toResearchPlan(response, null, maxSteps);
+	}
+
+	public ResearchPlan toResearchPlan(PlannerResponse response, String query, int maxSteps) {
 		if (response == null) {
 			throw new IllegalArgumentException("Planner response is empty");
-		}
-		if (response.title() == null || response.title().isBlank()) {
-			throw new IllegalArgumentException("Planner response title is empty");
 		}
 		if (response.steps() == null || response.steps().isEmpty()) {
 			throw new IllegalArgumentException("Planner response steps are empty");
@@ -30,7 +31,18 @@ public class PlannerOutputMapper {
 
 		boolean hasEnoughContext = response.hasEnoughContext() == null || response.hasEnoughContext();
 		String thought = response.thought() == null ? "" : response.thought();
-		return new ResearchPlan(response.title(), hasEnoughContext, thought, steps);
+		String title = normalizeTitle(response.title(), query);
+		return new ResearchPlan(title, hasEnoughContext, thought, steps);
+	}
+
+	private String normalizeTitle(String title, String query) {
+		if (title != null && !title.isBlank()) {
+			return title;
+		}
+		if (query != null && !query.isBlank()) {
+			return "Research plan for: " + query.strip();
+		}
+		return "Research plan";
 	}
 
 	private ResearchStep toResearchStep(PlannerResponse.Step step) {

@@ -37,7 +37,7 @@ public class LlmPlannerAgent implements PlannerAgent {
 				userPrompt);
 		PlannerResponse response = outputConverter.convert(modelOutput);
 
-		return outputMapper.toResearchPlan(response, maxSteps);
+		return outputMapper.toResearchPlan(response, query, maxSteps);
 	}
 
 }

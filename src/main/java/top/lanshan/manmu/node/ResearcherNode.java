@@ -4,6 +4,7 @@ import top.lanshan.manmu.agent.ResearcherAgent;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
+import top.lanshan.manmu.model.ResearchTeamDecision;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -22,7 +23,7 @@ public class ResearcherNode implements ResearchNode {
 
 	@Override
 	public int order() {
-		return 20;
+		return 30;
 	}
 
 	@Override
@@ -36,11 +37,27 @@ public class ResearcherNode implements ResearchNode {
 			if (state.plan() == null) {
 				return Flux.error(new IllegalStateException("Research plan is missing"));
 			}
+			ResearchTeamDecision decision = state.researchTeamDecision();
+			if (decision == null || decision.nextStepType() == null) {
+				return Flux.error(new IllegalStateException("Research team decision is missing"));
+			}
 
 			List<ResearchEvent> events = new ArrayList<>();
-			events.add(ResearchEvent.message(state.threadId(), name(), "started", "Executing research steps", null));
+			List<ResearchStep> steps = state.plan()
+				.steps()
+				.stream()
+				.filter(step -> decision.nextStepType().equals(step.stepType()))
+				.filter(step -> !isTerminal(step))
+				.toList();
+			if (steps.isEmpty()) {
+				return Flux.error(new IllegalStateException(
+						"No pending " + decision.nextStepType().name().toLowerCase() + " steps are available"));
+			}
 
-			for (ResearchStep step : state.plan().steps()) {
+			events.add(ResearchEvent.message(state.threadId(), name(), "started",
+					"Executing " + decision.nextStepType().name().toLowerCase() + " steps", decision));
+
+			for (ResearchStep step : steps) {
 				step.executionStatus(ResearchStep.STATUS_PROCESSING);
 				try {
 					String observation = researcherAgent.research(state.query(), step);
@@ -63,6 +80,15 @@ public class ResearcherNode implements ResearchNode {
 					state.observations()));
 			return Flux.fromIterable(events);
 		});
+	}
+
+	private boolean isTerminal(ResearchStep step) {
+		return hasStatusPrefix(step, ResearchStep.STATUS_COMPLETED)
+				|| hasStatusPrefix(step, ResearchStep.STATUS_ERROR);
+	}
+
+	private boolean hasStatusPrefix(ResearchStep step, String statusPrefix) {
+		return step.executionStatus() != null && step.executionStatus().startsWith(statusPrefix);
 	}
 
 }

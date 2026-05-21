@@ -41,11 +41,11 @@ class ResearchControllerLlmWorkflowTest {
 	@Test
 	void chatStreamUsesDeepResearchCompatibleEnvelope() throws IOException {
 		JsonNode keys = objectMapper.readTree(Path.of(".local", "model-providers.json").toFile());
-		String apiKey = keys.path("dashscope").asText();
-		assertThat(apiKey).as("API key for dashscope must exist in .local/model-providers.json").isNotBlank();
+		String apiKey = keys.path("deepseek").asText();
+		assertThat(apiKey).as("API key for deepseek must exist in .local/model-providers.json").isNotBlank();
 
 		webTestClient.post()
-			.uri("/api/model/providers/dashscope/key")
+			.uri("/api/model/providers/deepseek/key")
 			.contentType(MediaType.APPLICATION_JSON)
 			.bodyValue(Map.of("apiKey", apiKey))
 			.exchange()
@@ -55,7 +55,7 @@ class ResearchControllerLlmWorkflowTest {
 		webTestClient.post()
 			.uri("/api/model/switch")
 			.contentType(MediaType.APPLICATION_JSON)
-			.bodyValue(Map.of("providerId", "dashscope", "modelName", "qwen-turbo-2025-04-28"))
+			.bodyValue(Map.of("providerId", "deepseek", "modelName", "deepseek-chat"))
 			.exchange()
 			.expectStatus()
 			.isOk();
@@ -78,8 +78,8 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ChatStreamResponse::nodeName)
-			.containsExactly("planner", "planner", "researcher", "researcher", "researcher", "reporter", "reporter",
-					"__END__");
+			.containsExactly("planner", "planner", "research_team", "researcher", "researcher", "researcher",
+					"research_team", "reporter", "reporter", "__END__");
 		assertThat(events.get(0).graphId().sessionId()).isEqualTo("test-session");
 		assertThat(events.get(0).graphId().threadId()).isEqualTo("test-session-1");
 		assertThat(events).anySatisfy(event -> {
@@ -136,8 +136,8 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("planner", "planner", "researcher", "researcher", "researcher", "reporter", "reporter",
-					"__END__");
+			.containsExactly("planner", "planner", "research_team", "researcher", "researcher", "researcher",
+					"research_team", "reporter", "reporter", "__END__");
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.node()).isEqualTo("reporter");
 			assertThat(event.phase()).isEqualTo("completed");
