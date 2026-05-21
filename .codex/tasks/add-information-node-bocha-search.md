@@ -1,29 +1,31 @@
 # Task Handoff: add-information-node-bocha-search
-Updated: 2026-05-21
+Updated: 2026-05-21 22:17:25 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
-Current Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
+Base Commit: 6132ed1c18819f8fc6797afb3015119eb8ce6e33
+Current Commit: 6d9e812b818067b860ae43a4d74b297c23e1e219
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to imitate `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
 - The project is growing DeepResearch workflow semantics before migrating to Spring AI Alibaba Graph.
-- Prior stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, changed the default backend port to `8080`, and updated project instructions to close backend services after manual startup tests.
-- The project must use real model/API paths. New feature work must not introduce mock agents, mock search, fabricated search results, or local secret leaks.
+- Prior stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, changed the default backend port to `8080`, and required closing manually started backend services after tests.
+- This stage completed the missing planner-to-information bridge with a Bocha-only web search path, while preserving the real-provider-only constraint.
+- New feature work must not introduce mock agents, mock search, fabricated search results, or local secret leaks.
 
 ## Stage Role in Mainline
 
-- This stage should add the missing information/search capability between planning and research execution.
-- It should imitate the reference project's `InformationNode` direction without importing the full Graph, RAG, MCP, Redis, frontend, or parallel executor stack.
-- It should turn `ResearchStep.needWebSearch` from a dormant field into real workflow behavior using only Bocha AI Search API for web search.
+- This stage added the missing information/search capability between planning and research execution.
+- It imitates the reference project's `InformationNode` direction without importing the full Graph, RAG, MCP, Redis, frontend, or parallel executor stack.
+- It turns `ResearchStep.needWebSearch` from dormant planner metadata into real workflow behavior using only Bocha AI Web Search API.
 
 ## Mainline Progression
 
-- `add-research-team` made Plan/Step execution status drive the current controlled loop: planner -> research_team -> researcher -> research_team -> reporter.
-- This stage should extend that loop to: planner -> information -> research_team -> researcher -> research_team -> reporter.
-- Future stages can add human feedback, `/chat/stop`, `/chat/resume`, a dedicated PROCESSING/coder node, richer frontend site information, and eventually Spring AI Alibaba Graph once the simplified workflow semantics are stable.
+- `add-research-team` made Plan/Step execution status drive the controlled loop: planner -> research_team -> researcher -> research_team -> reporter.
+- This stage extended the loop to: planner -> information -> research_team -> researcher -> research_team -> reporter.
+- `InformationNode` now searches only steps with `needWebSearch=true`, stores step-level `StepSearchContext`, accumulates workflow-level `siteInformation`, and emits visible `information` events.
+- Future stages can add human feedback, `/chat/stop`, `/chat/resume`, a dedicated PROCESSING/coder node, richer frontend rendering of `siteInformation`, and eventually Spring AI Alibaba Graph once the simplified workflow semantics are stable.
 
 ## Related Stage Handoffs
 
@@ -32,33 +34,34 @@ Current Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
 ## Goal
 
 - Add a lightweight `InformationNode` plus real Bocha-only web search integration so the backend can run DeepResearch-style information gathering with live search results before reporter generation.
+- Status: implemented, tested, and committed.
 
 ## Task Theme / User Intent
 
-- The user wants the next implementation stage to follow `C:/MainData/code/Codex_project/deepresearch-main` toward "InformationNode + real search integration".
-- The user explicitly constrained the search provider: use only Bocha AI Search API for联网搜索.
-- The project is a personal DeepResearch-lite learning implementation, so keep the architecture clear, minimal, and grounded in real production-required data paths.
+- The user wanted the next implementation stage to follow `C:/MainData/code/Codex_project/deepresearch-main` toward "InformationNode + real search integration".
+- The user explicitly constrained the search provider: use only Bocha AI Search API for web search.
+- The project is a personal DeepResearch-lite learning implementation, so the architecture should stay clear, minimal, and grounded in real production-required data paths.
 
 ## Acceptance Criteria
 
-- Add a real, non-mock `InformationNode` or equivalent node in `top.lanshan.manmu.node`.
-- Integrate `InformationNode` into `SimpleResearchRunner` after planner and before `research_team`.
-- Add a Bocha-only search client/service; do not add Tavily, Jina, SerpAPI, Baidu, Zhipu, Kimi, Alibaba web search, or other search providers in this stage.
-- Use the official Bocha Web Search API endpoint verified from Bocha docs: `POST https://api.bochaai.com/v1/web-search`, with `Authorization: Bearer <key>` and JSON fields such as `query`, `freshness`, `summary`, and `count`.
-- Store or read the Bocha API key through a local secret mechanism that does not commit secrets. Prefer an environment variable such as `BOCHA_API_KEY` or an ignored `.local` file; do not hardcode the key.
-- Update planner prompt so `need_web_search` may become true now that a real search provider exists.
-- Add state/model support for site/search results so `ResearcherNode` can use real search context and `/chat/stream` can eventually expose `siteInformation`.
-- Preserve existing `/api/research/stream` and `/chat/stream` compatibility while adding visible `information` events when useful.
-- Add focused tests for `InformationNode`, Bocha request/response mapping, and runner routing without using fake search results in production code.
-- Run Java 17 verification. Prefer `mvn test`; if real provider tests fail due external API/network conditions, record the exact failure and run focused non-network tests.
-- Commit completed small stages with Chinese commit messages.
+- Done: added real, non-mock `InformationNode` in `top.lanshan.manmu.node`.
+- Done: integrated `InformationNode` into `SimpleResearchRunner` after planner and before `research_team`.
+- Done: added a Bocha-only search client boundary under `top.lanshan.manmu.search`.
+- Done: configured the official Bocha Web Search endpoint `POST https://api.bochaai.com/v1/web-search` with bearer auth and JSON fields `query`, `freshness`, `summary`, and `count`.
+- Done: reads the Bocha API key from `mvp.search.bocha.api-key` / `BOCHA_API_KEY`, then from ignored `.local/model-providers.json` provider id `bocha`; no key was committed.
+- Done: planner prompt now allows `need_web_search=true` when fresh/external web information is needed.
+- Done: added `SiteInformation`, `StepSearchContext`, and `InformationPayload` so `ResearcherNode` can use search context and `/chat/stream` can expose `siteInformation`.
+- Done: preserved `/api/research/stream` and `/chat/stream` compatibility while adding `information` events.
+- Done: added focused tests for Bocha request/response mapping, `InformationNode`, and runner routing.
+- Done: ran Java 17 `mvn test` successfully.
+- Done: committed implementation with Chinese commit message `添加Bocha信息检索节点`.
 
 ## Scope
 
 - Work only in `C:/MainData/code/Codex_project/M-agent`.
 - Inspect `C:/MainData/code/Codex_project/deepresearch-main` as read-only guidance.
 - Keep this stage backend-focused and minimal.
-- Do not import the reference project's Vue frontend, Redis, RAG modules, MCP modules, full Spring AI Alibaba Graph, or multi-provider search abstraction beyond what is needed to keep a clean Bocha-only client boundary.
+- Do not import the reference project's Vue frontend, Redis, RAG modules, MCP modules, full Spring AI Alibaba Graph, or multi-provider search abstraction.
 
 ## Scope Safety
 
@@ -87,40 +90,45 @@ Current Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
 ## Current State
 
 - Git branch: `main`.
-- Working tree was clean when this handoff was written.
-- Current commit: `784033e49fc3125d51e54dcded13c17ae8a49410`.
+- Implementation commit: `6d9e812b818067b860ae43a4d74b297c23e1e219`.
+- Working tree was clean immediately after the implementation commit.
 - No upstream is configured for `main`.
-- Backend default port is now `8080`.
+- Backend default port is `8080`.
 - Project instruction says any manually started backend service must be closed after testing.
-- Current runner has named nodes for planner, research_team, researcher, and reporter.
-- Current runner loop is planner -> research_team -> researcher -> research_team -> reporter.
-- `ResearchPlan` has `hasEnoughContext`, `thought`, and `steps`.
-- `ResearchStep` has `needWebSearch`, `stepType`, `executionRes`, and `executionStatus`.
-- Planner prompt currently forces `need_web_search: false`; this must change in this stage.
-- `needWebSearch` is present but real search is not implemented yet.
+- Current runner has named nodes for planner, information, research_team, researcher, and reporter.
+- Current runner loop is planner -> information -> research_team -> researcher -> research_team -> reporter.
+- `ResearchStep.needWebSearch` now triggers Bocha search during `InformationNode`.
+- If a planned step requires web search but no Bocha key is configured, the workflow fails clearly instead of using mock results.
 
 ## Completed
 
-- Git repository initialized in earlier stages.
-- Runtime mock agent/search path removed in earlier stages.
-- `/chat/stream` added with DeepResearch-compatible envelope fields.
-- Plan/Step state model upgraded.
-- Lightweight `ResearchTeamNode` added and verified.
-- Current code uses real DashScope and DeepSeek paths for LLM tests.
-- Real HTTP curl tests were run against both DashScope and DeepSeek after the ResearchTeam stage:
-  - DeepSeek completed the full chain.
-  - DashScope first hit `429 Throttling.RateQuota`, then completed after retry.
-- Default backend port changed from `18080` to `8080`.
-- Project `AGENTS.md` now says backend services started for testing must be closed after testing.
+- Added `SiteInformation`, `StepSearchContext`, and `InformationPayload`.
+- Added `WebSearchClient`, `BochaSearchProperties`, `BochaSearchConfiguration`, and `BochaSearchClient`.
+- Added Bocha config under `mvp.search.bocha` in `application.yml`.
+- Added `InformationNode` and inserted it into `SimpleResearchRunner`.
+- Reordered node orders so `information` sits between `planner` and `research_team`.
+- Updated `ResearchState` to carry search contexts and de-duplicated site information.
+- Updated `ResearchStep` to carry per-step `StepSearchContext`.
+- Updated `ResearcherAgent` and `LlmResearcherAgent` so researcher observations can use search context.
+- Updated `LlmReporterAgent` to include collected web search sources in the reporter prompt.
+- Updated `/chat/stream` to expose site information for information events.
+- Updated planner/researcher prompts for real web search context.
+- Relaxed `PlannerResponse.title` from required because real model output may omit it and `PlannerOutputMapper` already has a query-title fallback.
+- Added tests:
+  - `BochaSearchClientTest`
+  - `InformationNodeTest`
+  - `SimpleResearchRunnerTest`
+  - Updated `ResearchControllerLlmWorkflowTest` expected node sequence.
 
 ## Decisions
 
-- Use Bocha AI Search API only for this search stage.
+- Use Bocha AI Web Search API only for this search stage.
 - Do not use Kimi, Zhipu, Baidu, Tencent, Alibaba web search, Tavily, SerpAPI, or Jina as search providers in this stage.
 - Do not migrate to Spring AI Alibaba Graph yet.
 - Keep `SimpleResearchRunner` and add a minimal node boundary first.
-- Do not fake search results; tests may use local unit-test stubs/mocks around interfaces, but production code must call real Bocha when search is enabled and configured.
+- Do not fake search results; tests use local in-memory test stubs only around the search interface.
 - Keep API keys out of source, tests, assertions, logs, commits, and handoff files.
+- Support both `BOCHA_API_KEY` and the existing ignored key-store pattern with provider id `bocha`.
 
 ## Evidence / References
 
@@ -129,17 +137,43 @@ Current Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
 - Reference `InformationDispatcher`: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/dispatcher/InformationDispatcher.java`
 - Reference search service: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/SearchInfoService.java`
 - Current runner: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
-- Current nodes: `src/main/java/top/lanshan/manmu/node`
-- Current state/model files: `src/main/java/top/lanshan/manmu/model/ResearchState.java`, `src/main/java/top/lanshan/manmu/model/ResearchPlan.java`, `src/main/java/top/lanshan/manmu/model/ResearchStep.java`
+- Current information node: `src/main/java/top/lanshan/manmu/node/InformationNode.java`
+- Current Bocha client: `src/main/java/top/lanshan/manmu/search/BochaSearchClient.java`
+- Current state/model files: `src/main/java/top/lanshan/manmu/model/ResearchState.java`, `src/main/java/top/lanshan/manmu/model/ResearchStep.java`, `src/main/java/top/lanshan/manmu/model/SiteInformation.java`, `src/main/java/top/lanshan/manmu/model/StepSearchContext.java`
 - Current planner prompt: `src/main/resources/prompts/planner.md`
+- Current researcher prompt: `src/main/resources/prompts/researcher.md`
 - Current app config: `src/main/resources/application.yml`
 - Bocha official docs: `https://open.bochaai.com/`
-- Bocha official docs show the direct API example: `POST https://api.bochaai.com/v1/web-search` with bearer auth and JSON body containing `query`, `freshness`, `summary`, and `count`.
 
 ## Files Touched
 
-- This handoff writes `.codex/tasks/add-information-node-bocha-search.md`.
-- No implementation files have been changed for this stage yet.
+- `.codex/tasks/add-information-node-bocha-search.md`
+- `src/main/java/top/lanshan/manmu/agent/LlmReporterAgent.java`
+- `src/main/java/top/lanshan/manmu/agent/LlmResearcherAgent.java`
+- `src/main/java/top/lanshan/manmu/agent/PlannerResponse.java`
+- `src/main/java/top/lanshan/manmu/agent/ResearcherAgent.java`
+- `src/main/java/top/lanshan/manmu/api/ChatController.java`
+- `src/main/java/top/lanshan/manmu/model/InformationPayload.java`
+- `src/main/java/top/lanshan/manmu/model/ResearchState.java`
+- `src/main/java/top/lanshan/manmu/model/ResearchStep.java`
+- `src/main/java/top/lanshan/manmu/model/SiteInformation.java`
+- `src/main/java/top/lanshan/manmu/model/StepSearchContext.java`
+- `src/main/java/top/lanshan/manmu/node/InformationNode.java`
+- `src/main/java/top/lanshan/manmu/node/ReporterNode.java`
+- `src/main/java/top/lanshan/manmu/node/ResearchTeamNode.java`
+- `src/main/java/top/lanshan/manmu/node/ResearcherNode.java`
+- `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `src/main/java/top/lanshan/manmu/search/BochaSearchClient.java`
+- `src/main/java/top/lanshan/manmu/search/BochaSearchConfiguration.java`
+- `src/main/java/top/lanshan/manmu/search/BochaSearchProperties.java`
+- `src/main/java/top/lanshan/manmu/search/WebSearchClient.java`
+- `src/main/resources/application.yml`
+- `src/main/resources/prompts/planner.md`
+- `src/main/resources/prompts/researcher.md`
+- `src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java`
+- `src/test/java/top/lanshan/manmu/node/InformationNodeTest.java`
+- `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- `src/test/java/top/lanshan/manmu/search/BochaSearchClientTest.java`
 
 ## Commands Run
 
@@ -151,46 +185,53 @@ Current Commit: 784033e49fc3125d51e54dcded13c17ae8a49410
 - `git rev-parse HEAD`
 - `git rev-parse --abbrev-ref --symbolic-full-name @{upstream}` failed because no upstream is configured.
 - `git merge-base HEAD @{upstream}` failed because no upstream is configured.
-- Read `AGENTS.md`.
+- Read `AGENTS.md` with UTF-8.
+- Read `.codex/tasks/add-information-node-bocha-search.md`.
 - Read `.codex/tasks/add-research-team.md`.
 - Read reference `InformationNode`, `InformationDispatcher`, and `SearchInfoService`.
-- Read current `SimpleResearchRunner`, `ResearchState`, `ResearchTeamNode`, `planner.md`, and `application.yml`.
-- Searched web for current Bocha API details and verified the official Bocha open platform page mentions `https://api.bochaai.com/v1/web-search`.
+- Searched official/current web docs for Bocha API details after Context7 was unavailable due quota.
+- `mvn test '-Dtest=BochaSearchClientTest,InformationNodeTest,SimpleResearchRunnerTest,PlannerOutputMapperTest,ResearchTeamNodeTest'` with Java 17: passed.
+- `mvn test` with Java 17: first failed because real planner output omitted title; fixed `PlannerResponse.title`.
+- `mvn test '-Dtest=PlannerOutputMapperTest,ResearchControllerLlmWorkflowTest,BochaSearchClientTest,InformationNodeTest,SimpleResearchRunnerTest,ResearchTeamNodeTest'` with Java 17: passed.
+- `mvn test` with Java 17: passed.
+- `git commit -m "添加Bocha信息检索节点"` created commit `6d9e812b818067b860ae43a4d74b297c23e1e219`.
 
 ## Verification
 
-- No code implementation was started for this stage.
-- Latest completed commit before this handoff: `784033e49fc3125d51e54dcded13c17ae8a49410`.
-- Most recent focused non-network verification after the port/config update passed:
-  - `mvn test -Dtest=PlannerOutputMapperTest,ModelProviderControllerTest,ModelProviderKeyStoreTest,ModelProviderRegistryTest,ResearchTeamNodeTest`
-  - Result: `Tests run: 12, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
-- A full `mvn test` run after the port/config update failed because the real DashScope integration test could not connect to `dashscope.aliyuncs.com:443`; treat that as an external network/provider failure, not an InformationNode implementation result.
+- Latest full verification:
+  - Command: `mvn test` with `JAVA_HOME=C:\WorkResources\JDKs\JDK17`.
+  - Result: `Tests run: 20, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- Focused verification before the final full run:
+  - Command: `mvn test '-Dtest=PlannerOutputMapperTest,ResearchControllerLlmWorkflowTest,BochaSearchClientTest,InformationNodeTest,SimpleResearchRunnerTest,ResearchTeamNodeTest'`.
+  - Result: `Tests run: 15, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
+- No manual backend server was left running; tests used Spring Boot random ports and exited.
+- No live Bocha API call was run in this session because local Bocha API key availability is unknown.
 
 ## Known Failures / Blockers
 
 - No upstream Git branch configured.
 - Real LLM/provider tests can fail from external API rate limits or network timeouts.
-- Bocha API key availability is unknown. Next session must check the agreed local secret path or ask the user to provide/configure it without exposing the key.
-- Exact Bocha response mapping should be verified from official docs or a live API response before hardcoding field paths.
-- Current terminal may show Chinese output as mojibake in some commands; use `Get-Content -Encoding UTF8` when reading Chinese docs.
+- Bocha API key availability is unknown. Configure `BOCHA_API_KEY` or `.local/model-providers.json` provider id `bocha` before live search tests.
+- Bocha response mapping is based on official docs and representative response shape under `data.webPages.value[]`; verify with a live Bocha call once a key is available.
+- Terminal may show Chinese output as mojibake in some commands; use `Get-Content -Encoding UTF8` when reading Chinese docs.
 
 ## Next Actions
 
-- Inspect current model/state and design the minimal Bocha-only search data model and key-loading path, then add `WebSearchClient`/`BochaSearchClient` plus tests for request/response mapping.
-- Add `InformationNode`, wire it into `SimpleResearchRunner` after planner, update planner/researcher prompts and `ResearchState` so `needWebSearch` triggers real Bocha search context.
-- Run focused tests and then a real HTTP/curl chain with the backend on port `8080`; close any backend service started for testing before stopping.
+- Configure a local Bocha API key without committing it, then run a real `/api/research/stream` or `/chat/stream` request whose planner step sets `need_web_search=true`.
+- Improve frontend/client use of `siteInformation` from `information` events if needed, or add a lightweight endpoint/controller helper for configuring the Bocha key.
+- Next feature stage can add human feedback or a dedicated PROCESSING/coder node before any Spring AI Alibaba Graph migration.
 
 ## Open Questions
 
-- Where should the Bocha API key live locally: environment variable `BOCHA_API_KEY`, an ignored `.local` JSON file, or both?
-- Should `/chat/stream` expose Bocha search results immediately via `siteInformation`, or should this stage only feed them to `ResearcherNode` first?
-- What default Bocha parameters should be used: `freshness`, `summary`, and `count` values for normal DeepResearch-lite runs?
+- Should the app expose a controller for saving Bocha keys into the existing `.local/model-providers.json`, or is environment-variable configuration enough for now?
+- Should `/chat/stream` also attach final aggregate `siteInformation` to reporter or done events, not only information events?
+- What default Bocha parameters should be used after live testing: keep `freshness=noLimit`, `summary=true`, `count=5`, or tune per query type?
 
 ## Avoid / Do Not Redo
 
 - Do not edit `C:/MainData/code/Codex_project/deepresearch-main`.
 - Do not introduce mock search fallback in production code.
-- Do not add search providers other than Bocha AI Search API in this stage.
+- Do not add search providers other than Bocha AI Web Search API for this stage.
 - Do not migrate to Spring AI Alibaba Graph yet.
 - Do not commit `.local`, `target`, `.idea`, API keys, or generated curl output.
 - Do not leave manually started backend services running after tests.
