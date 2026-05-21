@@ -26,6 +26,8 @@ public class ResearchStep {
 
 	private String executionStatus;
 
+	private StepSearchContext searchContext;
+
 	public ResearchStep(String title, String description, StepType stepType) {
 		this(title, description, false, stepType, null, STATUS_PENDING);
 	}
@@ -90,6 +92,14 @@ public class ResearchStep {
 
 	public void executionStatus(String executionStatus) {
 		this.executionStatus = executionStatus;
+	}
+
+	public StepSearchContext searchContext() {
+		return searchContext;
+	}
+
+	public void searchContext(StepSearchContext searchContext) {
+		this.searchContext = searchContext;
 	}
 
 }

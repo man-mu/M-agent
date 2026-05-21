@@ -5,6 +5,7 @@ import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchTeamDecision;
+import top.lanshan.manmu.model.StepSearchContext;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -23,7 +24,7 @@ public class ResearcherNode implements ResearchNode {
 
 	@Override
 	public int order() {
-		return 30;
+		return 40;
 	}
 
 	@Override
@@ -60,7 +61,8 @@ public class ResearcherNode implements ResearchNode {
 			for (ResearchStep step : steps) {
 				step.executionStatus(ResearchStep.STATUS_PROCESSING);
 				try {
-					String observation = researcherAgent.research(state.query(), step);
+					StepSearchContext searchContext = state.searchContextFor(step).orElse(step.searchContext());
+					String observation = researcherAgent.research(state.query(), step, searchContext);
 					step.executionRes(observation);
 					step.executionStatus(ResearchStep.STATUS_COMPLETED);
 					state.addObservation(observation);

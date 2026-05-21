@@ -35,6 +35,10 @@ public class LlmReporterAgent implements ReporterAgent {
 			.stream()
 			.map(item -> "## Observation\n\n" + item)
 			.collect(Collectors.joining("\n\n"));
+		String searchSources = state.siteInformation()
+			.stream()
+			.map(site -> "- %s\n  URL: %s\n  Summary: %s".formatted(site.title(), site.url(), site.summary()))
+			.collect(Collectors.joining("\n"));
 
 		String userPrompt = """
 				Query:
@@ -52,11 +56,15 @@ public class LlmReporterAgent implements ReporterAgent {
 				Research observations:
 				%s
 
+				Web search sources:
+				%s
+
 				Write the final answer as concise Markdown. Include:
 				1. a short conclusion,
 				2. key findings grounded in the observations,
 				3. next implementation steps.
-				""".formatted(state.query(), state.plan().title(), state.plan().thought(), steps, observations);
+				""".formatted(state.query(), state.plan().title(), state.plan().thought(), steps, observations,
+				searchSources.isBlank() ? "No web search sources were collected." : searchSources);
 		return agentClient.call(promptService.load("reporter"), userPrompt);
 	}
 

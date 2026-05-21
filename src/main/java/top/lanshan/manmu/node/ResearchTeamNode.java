@@ -17,7 +17,7 @@ public class ResearchTeamNode implements ResearchNode {
 
 	@Override
 	public int order() {
-		return 20;
+		return 30;
 	}
 
 	@Override

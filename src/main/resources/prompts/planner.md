@@ -9,7 +9,7 @@ Return only a structured plan. Each step must have:
 - `thought`: one short sentence explaining the planning strategy.
 - `title`: a short action-oriented title.
 - `description`: one concrete sentence explaining what to investigate or produce.
-- `need_web_search`: false for now because this MVP does not have a real search provider yet.
+- `need_web_search`: true only when the step needs fresh or external web information; otherwise false.
 - `step_type`: use `RESEARCH` for information gathering or `PROCESSING` for summarizing/processing.
 
 Prefer 2 to 3 steps unless the user asks for a very broad investigation.

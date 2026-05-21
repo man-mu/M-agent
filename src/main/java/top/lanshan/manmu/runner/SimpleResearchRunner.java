@@ -19,6 +19,8 @@ public class SimpleResearchRunner {
 
 	private final ResearchNode plannerNode;
 
+	private final ResearchNode informationNode;
+
 	private final ResearchNode researchTeamNode;
 
 	private final ResearchNode researcherNode;
@@ -28,6 +30,7 @@ public class SimpleResearchRunner {
 	public SimpleResearchRunner(List<ResearchNode> nodes) {
 		this.nodes = nodes.stream().sorted(Comparator.comparingInt(ResearchNode::order)).toList();
 		this.plannerNode = requiredNode("planner");
+		this.informationNode = requiredNode("information");
 		this.researchTeamNode = requiredNode("research_team");
 		this.researcherNode = requiredNode("researcher");
 		this.reporterNode = requiredNode("reporter");
@@ -36,8 +39,8 @@ public class SimpleResearchRunner {
 	public Flux<ResearchEvent> run(ResearchRequest request) {
 		ResearchState state = ResearchState.from(request);
 
-		return Flux.concat(plannerNode.run(state), Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)),
-				reporterNode.run(state))
+		return Flux.concat(plannerNode.run(state), informationNode.run(state),
+				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
 			.subscribeOn(Schedulers.boundedElastic())
 			.concatWith(Flux.defer(
 					() -> Flux.just(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))))

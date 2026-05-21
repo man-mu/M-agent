@@ -13,6 +13,7 @@ import reactor.core.publisher.Flux;
 import top.lanshan.manmu.model.ChatRequest;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.GraphId;
+import top.lanshan.manmu.model.InformationPayload;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.runner.SimpleResearchRunner;
@@ -57,7 +58,7 @@ public class ChatController {
 	private ChatStreamResponse toResponse(GraphId graphId, ResearchEvent event) {
 		String nodeName = event.node();
 		Object content = content(event);
-		return new ChatStreamResponse(nodeName, graphId, displayTitle(nodeName), content, List.of());
+		return new ChatStreamResponse(nodeName, graphId, displayTitle(nodeName), content, siteInformation(event));
 	}
 
 	private Object content(ResearchEvent event) {
@@ -70,9 +71,20 @@ public class ChatController {
 		return event.payload() == null ? event.content() : event.payload();
 	}
 
+	private Object siteInformation(ResearchEvent event) {
+		if ("information".equals(event.node()) && event.payload() instanceof InformationPayload payload) {
+			return payload.siteInformation();
+		}
+		if ("information".equals(event.node()) && event.payload() instanceof List<?> payload) {
+			return payload;
+		}
+		return List.of();
+	}
+
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
 			case "planner" -> "研究计划";
+			case "information" -> "信息检索";
 			case "research_team" -> "研究团队";
 			case "researcher" -> "研究执行";
 			case "reporter" -> "报告生成";

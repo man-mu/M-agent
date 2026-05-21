@@ -78,8 +78,8 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ChatStreamResponse::nodeName)
-			.containsExactly("planner", "planner", "research_team", "researcher", "researcher", "researcher",
-					"research_team", "reporter", "reporter", "__END__");
+			.containsExactly("planner", "planner", "information", "information", "research_team", "researcher",
+					"researcher", "researcher", "research_team", "reporter", "reporter", "__END__");
 		assertThat(events.get(0).graphId().sessionId()).isEqualTo("test-session");
 		assertThat(events.get(0).graphId().threadId()).isEqualTo("test-session-1");
 		assertThat(events).anySatisfy(event -> {
@@ -136,8 +136,8 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("planner", "planner", "research_team", "researcher", "researcher", "researcher",
-					"research_team", "reporter", "reporter", "__END__");
+			.containsExactly("planner", "planner", "information", "information", "research_team", "researcher",
+					"researcher", "researcher", "research_team", "reporter", "reporter", "__END__");
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.node()).isEqualTo("reporter");
 			assertThat(event.phase()).isEqualTo("completed");

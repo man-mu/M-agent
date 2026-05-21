@@ -15,6 +15,14 @@ logging:
     top.lanshan.manmu: info
 
 mvp:
+  search:
+    bocha:
+      endpoint: https://api.bochaai.com/v1/web-search
+      api-key: ${BOCHA_API_KEY:}
+      freshness: noLimit
+      summary: true
+      count: 5
+      timeout-seconds: 30
   model:
     current:
       provider-id: dashscope

@@ -5,7 +5,7 @@ import top.lanshan.manmu.model.StepType;
 
 import java.util.List;
 
-public record PlannerResponse(@JsonProperty(required = true) String title,
+public record PlannerResponse(String title,
 		@JsonProperty("has_enough_context") Boolean hasEnoughContext,
 		String thought,
 		@JsonProperty(required = true) List<Step> steps) {

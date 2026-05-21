@@ -2,6 +2,7 @@ package top.lanshan.manmu.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class ResearchState {
 
@@ -16,6 +17,10 @@ public class ResearchState {
 	private ResearchTeamDecision researchTeamDecision;
 
 	private final List<String> observations = new ArrayList<>();
+
+	private final List<StepSearchContext> searchContexts = new ArrayList<>();
+
+	private final List<SiteInformation> siteInformation = new ArrayList<>();
 
 	private String report;
 
@@ -63,6 +68,36 @@ public class ResearchState {
 
 	public void addObservation(String observation) {
 		this.observations.add(observation);
+	}
+
+	public List<StepSearchContext> searchContexts() {
+		return searchContexts;
+	}
+
+	public void addSearchContext(StepSearchContext searchContext) {
+		this.searchContexts.add(searchContext);
+		for (SiteInformation site : searchContext.results()) {
+			if (this.siteInformation.stream().noneMatch(existing -> sameSite(existing, site))) {
+				this.siteInformation.add(site);
+			}
+		}
+	}
+
+	private boolean sameSite(SiteInformation first, SiteInformation second) {
+		if (first.url() == null || first.url().isBlank() || second.url() == null || second.url().isBlank()) {
+			return first.equals(second);
+		}
+		return first.url().equals(second.url());
+	}
+
+	public Optional<StepSearchContext> searchContextFor(ResearchStep step) {
+		return searchContexts.stream()
+			.filter(context -> step.title().equals(context.stepTitle()))
+			.findFirst();
+	}
+
+	public List<SiteInformation> siteInformation() {
+		return siteInformation;
 	}
 
 	public String report() {
