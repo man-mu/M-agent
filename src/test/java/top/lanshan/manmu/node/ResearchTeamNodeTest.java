@@ -38,7 +38,7 @@ class ResearchTeamNodeTest {
 	}
 
 	@Test
-	void routesToProcessingAfterResearchStepsAreTerminal() {
+	void routesToProcessorAfterResearchStepsAreTerminal() {
 		ResearchState state = stateWithPlan(List.of(
 				new ResearchStep("Inspect workflow", "Read the current workflow.", false, StepType.RESEARCH,
 						"Observation", ResearchStep.STATUS_COMPLETED),
@@ -47,7 +47,7 @@ class ResearchTeamNodeTest {
 
 		StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
 
-		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.RESEARCHER);
+		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.PROCESSOR);
 		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.PROCESSING);
 		assertThat(state.researchTeamDecision().completedSteps()).isEqualTo(1);
 		assertThat(state.researchTeamDecision().remainingSteps()).isEqualTo(1);

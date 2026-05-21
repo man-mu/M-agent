@@ -5,6 +5,7 @@ import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.StepType;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
@@ -23,16 +24,34 @@ public class PlannerOutputMapper {
 		}
 
 		int limit = Math.max(1, Math.min(maxSteps, response.steps().size()));
-		List<ResearchStep> steps = response.steps()
+		List<ResearchStep> steps = new ArrayList<>(response.steps()
 			.stream()
 			.limit(limit)
 			.map(this::toResearchStep)
-			.toList();
+			.toList());
+		normalizeStepTypes(steps, maxSteps);
 
 		boolean hasEnoughContext = response.hasEnoughContext() == null || response.hasEnoughContext();
 		String thought = response.thought() == null ? "" : response.thought();
 		String title = normalizeTitle(response.title(), query);
 		return new ResearchPlan(title, hasEnoughContext, thought, steps);
+	}
+
+	private void normalizeStepTypes(List<ResearchStep> steps, int maxSteps) {
+		if (maxSteps > 1 && steps.size() == 1) {
+			ResearchStep sourceStep = steps.get(0);
+			sourceStep.stepType(StepType.RESEARCH);
+			steps.add(new ResearchStep("Synthesize findings",
+					"Organize the collected context into a concise result for the final report.", false,
+					StepType.PROCESSING, null, ResearchStep.STATUS_PENDING));
+		}
+		if (steps.size() < 2) {
+			return;
+		}
+		steps.get(steps.size() - 1).stepType(StepType.PROCESSING);
+		if (steps.stream().limit(steps.size() - 1).noneMatch(step -> StepType.RESEARCH.equals(step.stepType()))) {
+			steps.get(0).stepType(StepType.RESEARCH);
+		}
 	}
 
 	private String normalizeTitle(String title, String query) {

@@ -4,6 +4,8 @@ public enum ResearchTeamRoute {
 
 	RESEARCHER,
 
+	PROCESSOR,
+
 	REPORTER
 
 }

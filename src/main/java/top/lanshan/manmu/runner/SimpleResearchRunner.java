@@ -25,6 +25,8 @@ public class SimpleResearchRunner {
 
 	private final ResearchNode researcherNode;
 
+	private final ResearchNode processorNode;
+
 	private final ResearchNode reporterNode;
 
 	public SimpleResearchRunner(List<ResearchNode> nodes) {
@@ -33,6 +35,7 @@ public class SimpleResearchRunner {
 		this.informationNode = requiredNode("information");
 		this.researchTeamNode = requiredNode("research_team");
 		this.researcherNode = requiredNode("researcher");
+		this.processorNode = requiredNode("processor");
 		this.reporterNode = requiredNode("reporter");
 	}
 
@@ -55,7 +58,12 @@ public class SimpleResearchRunner {
 			if (state.researchTeamDecision().nextRoute() == ResearchTeamRoute.REPORTER) {
 				return Flux.empty();
 			}
-			return researcherNode.run(state).concatWith(researchLoop(state, remainingCycles - 1));
+			ResearchNode executorNode = switch (state.researchTeamDecision().nextRoute()) {
+				case RESEARCHER -> researcherNode;
+				case PROCESSOR -> processorNode;
+				case REPORTER -> reporterNode;
+			};
+			return executorNode.run(state).concatWith(researchLoop(state, remainingCycles - 1));
 		}));
 	}
 

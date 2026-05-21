@@ -65,6 +65,32 @@ class PlannerOutputMapperTest {
 	}
 
 	@Test
+	void normalizesMultiStepPlansToResearchBeforeFinalProcessing() {
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "",
+				List.of(new PlannerResponse.Step("Organize", "Prepare the answer.", false, StepType.PROCESSING, null),
+						new PlannerResponse.Step("Draft", "Write the answer.", false, StepType.RESEARCH, null)));
+
+		var plan = mapper.toResearchPlan(response, 2);
+
+		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.RESEARCH);
+		assertThat(plan.steps().get(1).stepType()).isEqualTo(StepType.PROCESSING);
+	}
+
+	@Test
+	void expandsSingleStepPlanWhenMultipleStepsAreAllowed() {
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "",
+				List.of(new PlannerResponse.Step("Summarize", "Produce a concise answer.", false,
+						StepType.PROCESSING, null)));
+
+		var plan = mapper.toResearchPlan(response, 2);
+
+		assertThat(plan.steps()).hasSize(2);
+		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.RESEARCH);
+		assertThat(plan.steps().get(1).title()).isEqualTo("Synthesize findings");
+		assertThat(plan.steps().get(1).stepType()).isEqualTo(StepType.PROCESSING);
+	}
+
+	@Test
 	void usesQueryAsFallbackTitleWhenModelOmitsPlanTitle() {
 		PlannerResponse response = new PlannerResponse(null, true, "",
 				List.of(new PlannerResponse.Step("Step one", "Research one.", false, StepType.RESEARCH, null)));

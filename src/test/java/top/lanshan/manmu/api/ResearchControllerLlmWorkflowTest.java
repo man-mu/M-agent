@@ -66,7 +66,7 @@ class ResearchControllerLlmWorkflowTest {
 			.post()
 			.uri("/chat/stream")
 			.contentType(MediaType.APPLICATION_JSON)
-			.bodyValue(new ChatRequest("test-session", "", 1, true, true,
+			.bodyValue(new ChatRequest("test-session", "", 2, true, true,
 					"Use one sentence to explain the value of a DeepResearch workflow."))
 			.exchange()
 			.expectStatus()
@@ -78,14 +78,19 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ChatStreamResponse::nodeName)
-			.containsExactly("planner", "planner", "information", "information", "research_team", "researcher",
-					"researcher", "researcher", "research_team", "reporter", "reporter", "__END__");
+			.containsSubsequence("planner", "planner", "information", "research_team", "researcher",
+					"researcher", "researcher", "research_team", "processor", "processor", "processor",
+					"research_team", "reporter", "reporter", "__END__");
 		assertThat(events.get(0).graphId().sessionId()).isEqualTo("test-session");
 		assertThat(events.get(0).graphId().threadId()).isEqualTo("test-session-1");
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.nodeName()).isEqualTo("planner");
 			assertThat(event.displayTitle()).isEqualTo("研究计划");
 			assertThat(event.content()).isNotNull();
+		});
+		assertThat(events).anySatisfy(event -> {
+			assertThat(event.nodeName()).isEqualTo("processor");
+			assertThat(event.displayTitle()).isEqualTo("信息整理");
 		});
 		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("结束");
 		assertThat(String.valueOf(events.get(events.size() - 1).content())).contains("done=true");
@@ -125,7 +130,7 @@ class ResearchControllerLlmWorkflowTest {
 			.contentType(MediaType.APPLICATION_JSON)
 			.bodyValue(new ResearchRequest(
 					"Use three sentences to explain why an agent workflow should separate Planner, Researcher, and Reporter.",
-					providerId + "-workflow-test", 1))
+					providerId + "-workflow-test", 2))
 			.exchange()
 			.expectStatus()
 			.isOk()
@@ -136,8 +141,9 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("planner", "planner", "information", "information", "research_team", "researcher",
-					"researcher", "researcher", "research_team", "reporter", "reporter", "__END__");
+			.containsSubsequence("planner", "planner", "information", "research_team", "researcher",
+					"researcher", "researcher", "research_team", "processor", "processor", "processor",
+					"research_team", "reporter", "reporter", "__END__");
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.node()).isEqualTo("reporter");
 			assertThat(event.phase()).isEqualTo("completed");

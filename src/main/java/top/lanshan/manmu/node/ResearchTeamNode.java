@@ -60,7 +60,9 @@ public class ResearchTeamNode implements ResearchNode {
 			.filter(StepType.RESEARCH::equals)
 			.findFirst()
 			.orElse(StepType.PROCESSING);
-		return new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, nextStepType, steps.size(), completedSteps,
+		ResearchTeamRoute nextRoute = StepType.PROCESSING.equals(nextStepType) ? ResearchTeamRoute.PROCESSOR
+				: ResearchTeamRoute.RESEARCHER;
+		return new ResearchTeamDecision(nextRoute, nextStepType, steps.size(), completedSteps,
 				errorSteps, remainingSteps);
 	}
 

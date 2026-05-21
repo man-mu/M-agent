@@ -13,3 +13,4 @@ Return only a structured plan. Each step must have:
 - `step_type`: use `RESEARCH` for information gathering or `PROCESSING` for summarizing/processing.
 
 Prefer 2 to 3 steps unless the user asks for a very broad investigation.
+When more than one step is allowed, make the final step a `PROCESSING` step that synthesizes or organizes the earlier research.

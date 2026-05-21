@@ -19,16 +19,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SimpleResearchRunnerTest {
 
 	@Test
-	void routesThroughInformationBeforeResearchTeam() {
+	void routesThroughInformationResearcherProcessorAndReporter() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-1", 1)).collectList().block();
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("planner", "information", "research_team", "researcher", "research_team", "reporter",
-					"__END__");
+			.containsExactly("planner", "information", "research_team", "researcher", "research_team", "processor",
+					"research_team", "reporter", "__END__");
 	}
 
 	private static class PlanningNode implements ResearchNode {
@@ -46,7 +46,9 @@ class SimpleResearchRunnerTest {
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
 			state.plan(new ResearchPlan("Plan", true, "Think", List.of(new ResearchStep("Step", "Do work", false,
-					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING))));
+					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING),
+					new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
+							ResearchStep.STATUS_PENDING))));
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "planned", state.plan()));
 		}
 
@@ -85,10 +87,21 @@ class SimpleResearchRunnerTest {
 
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
-			boolean completed = ResearchStep.STATUS_COMPLETED.equals(state.plan().steps().get(0).executionStatus());
-			state.researchTeamDecision(completed
-					? new ResearchTeamDecision(ResearchTeamRoute.REPORTER, null, 1, 1, 0, 0)
-					: new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 1, 0, 0, 1));
+			boolean researchCompleted = ResearchStep.STATUS_COMPLETED
+				.equals(state.plan().steps().get(0).executionStatus());
+			boolean processingCompleted = ResearchStep.STATUS_COMPLETED
+				.equals(state.plan().steps().get(1).executionStatus());
+			if (!researchCompleted) {
+				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 2,
+						0, 0, 2));
+			}
+			else if (!processingCompleted) {
+				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING,
+						2, 1, 0, 1));
+			}
+			else {
+				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.REPORTER, null, 2, 2, 0, 0));
+			}
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "routed",
 					state.researchTeamDecision()));
 		}
@@ -111,6 +124,26 @@ class SimpleResearchRunnerTest {
 		public Flux<ResearchEvent> run(ResearchState state) {
 			state.plan().steps().get(0).executionStatus(ResearchStep.STATUS_COMPLETED);
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "researched", "ok"));
+		}
+
+	}
+
+	private static class ProcessorNodeStub implements ResearchNode {
+
+		@Override
+		public int order() {
+			return 45;
+		}
+
+		@Override
+		public String name() {
+			return "processor";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			state.plan().steps().get(1).executionStatus(ResearchStep.STATUS_COMPLETED);
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "processed", "ok"));
 		}
 
 	}

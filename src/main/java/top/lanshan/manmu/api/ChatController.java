@@ -87,6 +87,7 @@ public class ChatController {
 			case "information" -> "信息检索";
 			case "research_team" -> "研究团队";
 			case "researcher" -> "研究执行";
+			case "processor" -> "信息整理";
 			case "reporter" -> "报告生成";
 			case "__END__" -> "结束";
 			case "runner" -> "运行异常";
