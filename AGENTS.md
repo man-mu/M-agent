@@ -21,5 +21,7 @@
 ## 开发约束
 
 - 新增或修改说明文件时使用中文。
+- 每完成一个小的阶段任务就提交一次，commit 说明使用中文。
+- 开发新功能时禁止使用 mock，必须接入真实生产环境需要的数据。
 - 与 DeepResearch 主项目对齐时，优先做精简版可运行能力，不要一次性搬入 RAG、MCP、Redis、前端等完整复杂模块。
 - 保持真实 API 调用路径可测；涉及 DashScope / DeepSeek 的测试依赖本地 `.local/model-providers.json` 中已有 key。
