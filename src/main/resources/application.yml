@@ -1,0 +1,55 @@
+server:
+  port: 18080
+
+spring:
+  application:
+    name: deepresearch-mvp
+  ai:
+    dashscope:
+      enabled: false
+      chat:
+        enabled: false
+
+logging:
+  level:
+    top.lanshan.manmu: info
+
+mvp:
+  model:
+    current:
+      provider-id: dashscope
+      model-name: qwen-turbo-2025-04-28
+    providers:
+      - provider-id: dashscope
+        display-name: Alibaba DashScope
+        models:
+          - qwen-turbo-2025-04-28
+          - qwen-plus
+      - provider-id: deepseek
+        display-name: DeepSeek
+        base-url: https://api.deepseek.com
+        models:
+          - deepseek-chat
+          - deepseek-reasoner
+      - provider-id: minimax
+        display-name: MiniMax
+        base-url: https://api.minimax.io/v1
+        models:
+          - MiniMax-Text-01
+      - provider-id: moonshot
+        display-name: Moonshot AI
+        base-url: https://api.moonshot.cn/v1
+        models:
+          - moonshot-v1-8k
+          - moonshot-v1-32k
+      - provider-id: zhipu
+        display-name: Zhipu AI
+        base-url: https://open.bigmodel.cn/api/paas/v4
+        models:
+          - glm-4
+          - glm-4-flash
+      - provider-id: yi
+        display-name: 01.AI
+        base-url: https://api.lingyiwanwu.com/v1
+        models:
+          - yi-lightning

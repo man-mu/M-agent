@@ -1,0 +1,8 @@
+spring:
+  ai:
+    model:
+      chat: none
+    dashscope:
+      enabled: false
+      chat:
+        enabled: false
