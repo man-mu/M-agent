@@ -3,7 +3,7 @@ Updated: 2026-05-21 after implementing lightweight ResearchTeam
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
 Base Commit: 30a7449d798269b020761a206a0b112a96e2c5449
-Current Commit: 30a7449d798269b020761a206a0b112a96e2c5449
+Current Commit: aecb7fa30b959d8bc462da5c04cb95f33c968ff0
 
 ## Project Mainline
 
@@ -51,7 +51,7 @@ Current Commit: 30a7449d798269b020761a206a0b112a96e2c5449
 - Done: intentionally extended `/api/research/stream` and `/chat/stream` with visible `research_team` decision events.
 - Done: added tests for the new orchestration behavior.
 - Done: ran `mvn test` with Java 17 successfully.
-- Pending at handoff update time: commit the completed small stage with a Chinese commit message.
+- Done: committed the completed small stage with Chinese commit message `添加ResearchTeam轻量编排`.
 
 ## Scope
 
@@ -85,8 +85,8 @@ Current Commit: 30a7449d798269b020761a206a0b112a96e2c5449
 ## Current State
 
 - Git branch: `main`.
-- Working tree contains the completed ResearchTeam implementation and this handoff update.
-- Current commit before committing this stage: `30a7449d798269b020761a206a0b112a96e2c5449`.
+- Working tree was clean after implementation commit `aecb7fa30b959d8bc462da5c04cb95f33c968ff0`.
+- A later metadata commit updates this handoff status only.
 - No upstream is configured for `main`.
 - Current runner is a minimal controlled loop: planner -> research_team -> researcher -> research_team -> reporter.
 - `/chat/stream` exists and wraps internal `ResearchEvent` values into a DeepResearch-like SSE envelope.
@@ -203,7 +203,6 @@ Current Commit: 30a7449d798269b020761a206a0b112a96e2c5449
 
 ## Next Actions
 
-- Commit the completed ResearchTeam stage with a Chinese commit message if it has not already been committed.
 - Next feature stage: add a lightweight `InformationNode` or real search integration without faking `needWebSearch` results.
 - Later stage: split PROCESSING steps into a dedicated real processor/coder node before migrating to Spring AI Alibaba Graph.
 
