@@ -28,7 +28,9 @@ public class PlannerOutputMapper {
 			.map(this::toResearchStep)
 			.toList();
 
-		return new ResearchPlan(response.title(), steps);
+		boolean hasEnoughContext = response.hasEnoughContext() == null || response.hasEnoughContext();
+		String thought = response.thought() == null ? "" : response.thought();
+		return new ResearchPlan(response.title(), hasEnoughContext, thought, steps);
 	}
 
 	private ResearchStep toResearchStep(PlannerResponse.Step step) {
@@ -38,8 +40,13 @@ public class PlannerOutputMapper {
 		if (step.description() == null || step.description().isBlank()) {
 			throw new IllegalArgumentException("Planner step description is empty");
 		}
-		StepType type = step.type() == null ? StepType.RESEARCH : step.type();
-		return new ResearchStep(step.title(), step.description(), type);
+		StepType type = step.stepType() != null ? step.stepType() : step.type();
+		if (type != null && "SYNTHESIS".equals(type.name())) {
+			type = StepType.PROCESSING;
+		}
+		boolean needWebSearch = step.needWebSearch() != null && step.needWebSearch();
+		return new ResearchStep(step.title(), step.description(), needWebSearch, type, null,
+				ResearchStep.STATUS_PENDING);
 	}
 
 }

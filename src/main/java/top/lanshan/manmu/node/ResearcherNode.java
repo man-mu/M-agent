@@ -41,11 +41,22 @@ public class ResearcherNode implements ResearchNode {
 			events.add(ResearchEvent.message(state.threadId(), name(), "started", "Executing research steps", null));
 
 			for (ResearchStep step : state.plan().steps()) {
-				String observation = researcherAgent.research(state.query(), step);
-				state.addObservation(observation);
+				step.executionStatus(ResearchStep.STATUS_PROCESSING);
+				try {
+					String observation = researcherAgent.research(state.query(), step);
+					step.executionRes(observation);
+					step.executionStatus(ResearchStep.STATUS_COMPLETED);
+					state.addObservation(observation);
 
-				events.add(ResearchEvent.message(state.threadId(), name(), "step_completed",
-						"Completed: " + step.title(), Map.of("step", step, "observation", observation)));
+					events.add(ResearchEvent.message(state.threadId(), name(), "step_completed",
+							"Completed: " + step.title(), Map.of("step", step, "observation", observation)));
+				}
+				catch (RuntimeException ex) {
+					step.executionStatus(ResearchStep.STATUS_ERROR + ": " + ex.getMessage());
+					events.add(ResearchEvent.message(state.threadId(), name(), "step_error",
+							"Failed: " + step.title(), Map.of("step", step, "error", ex.getMessage())));
+					throw ex;
+				}
 			}
 
 			events.add(ResearchEvent.message(state.threadId(), name(), "completed", "Research steps completed",

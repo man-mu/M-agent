@@ -24,7 +24,12 @@ public class LlmReporterAgent implements ReporterAgent {
 		String steps = state.plan()
 			.steps()
 			.stream()
-			.map(step -> "- [%s] %s: %s".formatted(step.type(), step.title(), step.description()))
+			.map(step -> """
+					- [%s] %s: %s
+					  Status: %s
+					  Result: %s
+					""".formatted(step.stepType(), step.title(), step.description(), step.executionStatus(),
+					step.executionRes() == null ? "" : step.executionRes()).strip())
 			.collect(Collectors.joining("\n"));
 		String observations = state.observations()
 			.stream()
@@ -38,6 +43,9 @@ public class LlmReporterAgent implements ReporterAgent {
 				Plan title:
 				%s
 
+				Plan thought:
+				%s
+
 				Plan steps:
 				%s
 
@@ -48,7 +56,7 @@ public class LlmReporterAgent implements ReporterAgent {
 				1. a short conclusion,
 				2. key findings grounded in the observations,
 				3. next implementation steps.
-				""".formatted(state.query(), state.plan().title(), steps, observations);
+				""".formatted(state.query(), state.plan().title(), state.plan().thought(), steps, observations);
 		return agentClient.call(promptService.load("reporter"), userPrompt);
 	}
 

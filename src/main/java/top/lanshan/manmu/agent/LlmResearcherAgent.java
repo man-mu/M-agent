@@ -26,11 +26,12 @@ public class LlmResearcherAgent implements ResearcherAgent {
 				Current research step:
 				- Title: %s
 				- Type: %s
+				- Need web search: %s
 				- Description: %s
 
 				Write a compact Markdown observation for this single step. Use only the provided query and step context,
 				avoid inventing precise external facts, and include concrete takeaways for the final report.
-				""".formatted(query, step.title(), step.type(), step.description());
+				""".formatted(query, step.title(), step.stepType(), step.needWebSearch(), step.description());
 		return agentClient.call(promptService.load("researcher"), userPrompt);
 	}
 

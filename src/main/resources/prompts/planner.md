@@ -5,8 +5,11 @@ Keep the plan focused, practical, and suitable for a Java backend learner who is
 
 Return only a structured plan. Each step must have:
 
+- `has_enough_context`: true when the question can be planned with the current context.
+- `thought`: one short sentence explaining the planning strategy.
 - `title`: a short action-oriented title.
 - `description`: one concrete sentence explaining what to investigate or produce.
-- `type`: use `RESEARCH` for information gathering or `SYNTHESIS` for summarizing/processing.
+- `need_web_search`: false for now because this MVP does not have a real search provider yet.
+- `step_type`: use `RESEARCH` for information gathering or `PROCESSING` for summarizing/processing.
 
 Prefer 2 to 3 steps unless the user asks for a very broad investigation.

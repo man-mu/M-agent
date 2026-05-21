@@ -14,26 +14,30 @@ class PlannerOutputMapperTest {
 
 	@Test
 	void mapsStructuredPlannerResponseToResearchPlan() {
-		PlannerResponse response = new PlannerResponse("Agent learning plan",
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "Split the work into research and processing.",
 				List.of(new PlannerResponse.Step("Understand the workflow",
-						"Identify the request, state, node, and event boundaries.", StepType.RESEARCH),
+						"Identify the request, state, node, and event boundaries.", true, StepType.RESEARCH, null),
 						new PlannerResponse.Step("Summarize implementation path",
-								"Turn the findings into a concrete coding sequence.", StepType.SYNTHESIS)));
+								"Turn the findings into a concrete coding sequence.", false, StepType.PROCESSING, null)));
 
 		var plan = mapper.toResearchPlan(response, 3);
 
 		assertThat(plan.title()).isEqualTo("Agent learning plan");
+		assertThat(plan.hasEnoughContext()).isTrue();
+		assertThat(plan.thought()).isEqualTo("Split the work into research and processing.");
 		assertThat(plan.steps()).hasSize(2);
-		assertThat(plan.steps().get(0).type()).isEqualTo(StepType.RESEARCH);
-		assertThat(plan.steps().get(1).type()).isEqualTo(StepType.SYNTHESIS);
+		assertThat(plan.steps().get(0).needWebSearch()).isTrue();
+		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.RESEARCH);
+		assertThat(plan.steps().get(0).executionStatus()).isEqualTo("pending");
+		assertThat(plan.steps().get(1).stepType()).isEqualTo(StepType.PROCESSING);
 	}
 
 	@Test
 	void limitsStepsByMaxSteps() {
-		PlannerResponse response = new PlannerResponse("Agent learning plan",
-				List.of(new PlannerResponse.Step("Step one", "Research one.", StepType.RESEARCH),
-						new PlannerResponse.Step("Step two", "Research two.", StepType.RESEARCH),
-						new PlannerResponse.Step("Step three", "Research three.", StepType.RESEARCH)));
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "",
+				List.of(new PlannerResponse.Step("Step one", "Research one.", false, StepType.RESEARCH, null),
+						new PlannerResponse.Step("Step two", "Research two.", false, StepType.RESEARCH, null),
+						new PlannerResponse.Step("Step three", "Research three.", false, StepType.RESEARCH, null)));
 
 		var plan = mapper.toResearchPlan(response, 2);
 
@@ -42,11 +46,22 @@ class PlannerOutputMapperTest {
 
 	@Test
 	void rejectsEmptyPlannerResponse() {
-		PlannerResponse response = new PlannerResponse("Agent learning plan", List.of());
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "", List.of());
 
 		assertThatThrownBy(() -> mapper.toResearchPlan(response, 3))
 			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessageContaining("steps");
+	}
+
+	@Test
+	void mapsLegacySynthesisTypeToProcessingStepType() {
+		PlannerResponse response = new PlannerResponse("Agent learning plan", true, "",
+				List.of(new PlannerResponse.Step("Synthesize", "Summarize the research.", false, null,
+						StepType.valueOf("SYNTHESIS"))));
+
+		var plan = mapper.toResearchPlan(response, 1);
+
+		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.PROCESSING);
 	}
 
 }
