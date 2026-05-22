@@ -16,12 +16,16 @@ import top.lanshan.manmu.model.StepType;
 import top.lanshan.manmu.node.ResearchNode;
 import top.lanshan.manmu.report.ReportService;
 import top.lanshan.manmu.report.ResearchReport;
+import top.lanshan.manmu.sessioncontext.SessionContextReport;
+import top.lanshan.manmu.sessioncontext.SessionContextService;
 import top.lanshan.manmu.sessionhistory.ResearchSessionHistory;
 import top.lanshan.manmu.sessionhistory.SessionHistoryService;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,7 +35,7 @@ class SimpleResearchRunnerTest {
 	void routesThroughInformationResearcherProcessorAndReporter() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
 				sessionHistoryService);
 
@@ -60,7 +64,7 @@ class SimpleResearchRunnerTest {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(),
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
 
@@ -82,7 +86,7 @@ class SimpleResearchRunnerTest {
 	void runChatCleansUpAfterNormalCompletion() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
 				sessionHistoryService);
 
@@ -105,7 +109,7 @@ class SimpleResearchRunnerTest {
 	@Test
 	void pausesAfterPlannerWhenPlanGateIsRequested() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
@@ -125,7 +129,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(planningNode, new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
 				sessionHistoryService);
 
@@ -152,7 +156,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode,
+		SimpleResearchRunner runner = newRunner(List.of(planningNode,
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
 
@@ -178,7 +182,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(planningNode, new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
 				sessionHistoryService);
 
@@ -198,7 +202,7 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), new RecordingSessionHistoryService());
 
@@ -215,7 +219,7 @@ class SimpleResearchRunnerTest {
 	@Test
 	void stopRemovesPausedState() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
@@ -237,7 +241,7 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void stopMissingThreadReturnsFalse() {
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), new RecordingSessionHistoryService());
 
@@ -247,7 +251,7 @@ class SimpleResearchRunnerTest {
 	@Test
 	void failedWorkflowMarksSessionHistoryFailed() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new FailingPlanningNode(), new InformationNode(),
+		SimpleResearchRunner runner = newRunner(List.of(new FailingPlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
@@ -266,11 +270,35 @@ class SimpleResearchRunnerTest {
 		});
 	}
 
+	@Test
+	void loadsBackgroundContextBeforePlanning() {
+		PlanningNode planningNode = new PlanningNode();
+		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
+		sessionContextService.context("session-context", "Prior report context");
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService(), new RecordingSessionHistoryService(), sessionContextService);
+
+		runner.runChat(new ResearchRequest("Continue the investigation.", "thread-context", 1), "session-context")
+			.collectList()
+			.block();
+
+		assertThat(sessionContextService.lookups()).containsExactly("session-context/thread-context");
+		assertThat(planningNode.lastBackgroundContext()).isEqualTo("Prior report context");
+	}
+
+	private static SimpleResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
+			SessionHistoryService sessionHistoryService) {
+		return new SimpleResearchRunner(nodes, reportService, sessionHistoryService, new RecordingSessionContextService());
+	}
+
 	private static class PlanningNode implements ResearchNode {
 
 		private int runCount;
 
 		private String lastFeedback;
+
+		private String lastBackgroundContext;
 
 		@Override
 		public int order() {
@@ -286,6 +314,7 @@ class SimpleResearchRunnerTest {
 		public Flux<ResearchEvent> run(ResearchState state) {
 			runCount++;
 			lastFeedback = state.planFeedback();
+			lastBackgroundContext = state.backgroundContext();
 			state.plan(new ResearchPlan("Plan", true, "Think", List.of(new ResearchStep("Step", "Do work", false,
 					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING),
 					new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
@@ -299,6 +328,10 @@ class SimpleResearchRunnerTest {
 
 		String lastFeedback() {
 			return lastFeedback;
+		}
+
+		String lastBackgroundContext() {
+			return lastBackgroundContext;
 		}
 
 	}
@@ -573,6 +606,33 @@ class SimpleResearchRunnerTest {
 				.findFirst()
 				.map(ResearchSessionHistory::query)
 				.orElse("");
+		}
+
+	}
+
+	private static class RecordingSessionContextService implements SessionContextService {
+
+		private final Map<String, String> contexts = new HashMap<>();
+
+		private final List<String> lookups = new ArrayList<>();
+
+		void context(String sessionId, String context) {
+			contexts.put(sessionId, context);
+		}
+
+		@Override
+		public Flux<SessionContextReport> findRecentCompletedReports(String sessionId, String currentThreadId) {
+			return Flux.empty();
+		}
+
+		@Override
+		public Mono<String> formatRecentCompletedReports(String sessionId, String currentThreadId) {
+			lookups.add(sessionId + "/" + currentThreadId);
+			return Mono.just(contexts.getOrDefault(sessionId, ""));
+		}
+
+		List<String> lookups() {
+			return lookups;
 		}
 
 	}

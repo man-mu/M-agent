@@ -31,19 +31,37 @@ public class LlmPlannerAgent implements PlannerAgent {
 
 	@Override
 	public ResearchPlan plan(String query, int maxSteps, String feedbackContent) {
+		return plan(query, maxSteps, feedbackContent, null);
+	}
+
+	@Override
+	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext) {
 		String userPrompt = """
 				User question:
 				%s
 
 				Maximum number of steps: %d
 				%s
-				""".formatted(query, maxSteps, feedbackPrompt(feedbackContent));
+				%s
+				""".formatted(query, maxSteps, backgroundContextPrompt(backgroundContext), feedbackPrompt(feedbackContent));
 
 		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
 		PlannerResponse response = outputConverter.convert(modelOutput);
 
 		return outputMapper.toResearchPlan(response, query, maxSteps);
+	}
+
+	private String backgroundContextPrompt(String backgroundContext) {
+		if (backgroundContext == null || backgroundContext.isBlank()) {
+			return "";
+		}
+		return """
+
+				Recent completed reports from the same session:
+				%s
+				Use this prior session context to avoid repeating work and to plan the next research run with continuity.
+				""".formatted(backgroundContext.strip());
 	}
 
 	private String feedbackPrompt(String feedbackContent) {

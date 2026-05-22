@@ -18,6 +18,8 @@ public class ResearchState {
 
 	private String planFeedback;
 
+	private String backgroundContext;
+
 	private ResearchTeamDecision researchTeamDecision;
 
 	private final List<String> observations = new ArrayList<>();
@@ -76,6 +78,14 @@ public class ResearchState {
 
 	public void planFeedback(String planFeedback) {
 		this.planFeedback = planFeedback;
+	}
+
+	public String backgroundContext() {
+		return backgroundContext;
+	}
+
+	public void backgroundContext(String backgroundContext) {
+		this.backgroundContext = backgroundContext;
 	}
 
 	public ResearchTeamDecision researchTeamDecision() {
