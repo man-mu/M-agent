@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
+import top.lanshan.manmu.report.ReportService;
 
 import java.util.Comparator;
 import java.util.List;
@@ -33,11 +34,13 @@ public class SimpleResearchRunner {
 
 	private final ResearchNode reporterNode;
 
+	private final ReportService reportService;
+
 	private final Map<String, ResearchState> pausedStates = new ConcurrentHashMap<>();
 
 	private final Map<String, RunningResearch> runningResearch = new ConcurrentHashMap<>();
 
-	public SimpleResearchRunner(List<ResearchNode> nodes) {
+	public SimpleResearchRunner(List<ResearchNode> nodes, ReportService reportService) {
 		this.nodes = nodes.stream().sorted(Comparator.comparingInt(ResearchNode::order)).toList();
 		this.plannerNode = requiredNode("planner");
 		this.informationNode = requiredNode("information");
@@ -45,6 +48,7 @@ public class SimpleResearchRunner {
 		this.researcherNode = requiredNode("researcher");
 		this.processorNode = requiredNode("processor");
 		this.reporterNode = requiredNode("reporter");
+		this.reportService = reportService;
 	}
 
 	public Flux<ResearchEvent> run(ResearchRequest request) {
@@ -52,13 +56,13 @@ public class SimpleResearchRunner {
 		return runToCompletion(state);
 	}
 
-	public Flux<ResearchEvent> runChat(ResearchRequest request) {
-		ResearchState state = ResearchState.from(request);
+	public Flux<ResearchEvent> runChat(ResearchRequest request, String sessionId) {
+		ResearchState state = ResearchState.from(request, sessionId);
 		return withRunningStop(state.threadId(), runToCompletion(state));
 	}
 
-	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request) {
-		ResearchState state = ResearchState.from(request);
+	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
+		ResearchState state = ResearchState.from(request, sessionId);
 
 		return withRunningStop(state.threadId(), plannerNode.run(state)
 			.concatWith(Flux.defer(() -> {
@@ -105,19 +109,23 @@ public class SimpleResearchRunner {
 
 	private Flux<ResearchEvent> runToCompletion(ResearchState state) {
 		return Flux.concat(plannerNode.run(state), informationNode.run(state),
-				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
+			Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
 			.subscribeOn(Schedulers.boundedElastic())
-			.concatWith(Flux.defer(
-					() -> Flux.just(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))))
+			.concatWith(Flux.defer(() -> saveCompletedReport(state)))
 			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
 	}
 
 	private Flux<ResearchEvent> resumeExecution(ResearchState state) {
 		return Flux.concat(informationNode.run(state),
 				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
-			.concatWith(Flux.defer(
-					() -> Flux.just(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))))
+			.concatWith(Flux.defer(() -> saveCompletedReport(state)))
 			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	private Flux<ResearchEvent> saveCompletedReport(ResearchState state) {
+		return reportService.saveCompletedReport(state.threadId(), state.sessionId(), state.query(), state.report())
+			.thenReturn(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))
+			.flux();
 	}
 
 	private Flux<ResearchEvent> withRunningStop(String threadId, Flux<ResearchEvent> events) {

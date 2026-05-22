@@ -8,6 +8,8 @@ public class ResearchState {
 
 	private final String threadId;
 
+	private final String sessionId;
+
 	private final String query;
 
 	private final int maxSteps;
@@ -26,18 +28,30 @@ public class ResearchState {
 
 	private String report;
 
-	private ResearchState(String threadId, String query, int maxSteps) {
+	private ResearchState(String threadId, String sessionId, String query, int maxSteps) {
 		this.threadId = threadId;
+		this.sessionId = sessionId;
 		this.query = query;
 		this.maxSteps = maxSteps;
 	}
 
 	public static ResearchState from(ResearchRequest request) {
-		return new ResearchState(request.threadId(), request.query(), request.maxSteps());
+		return from(request, request.threadId());
+	}
+
+	public static ResearchState from(ResearchRequest request, String sessionId) {
+		if (sessionId == null || sessionId.isBlank()) {
+			sessionId = request.threadId();
+		}
+		return new ResearchState(request.threadId(), sessionId, request.query(), request.maxSteps());
 	}
 
 	public String threadId() {
 		return threadId;
+	}
+
+	public String sessionId() {
+		return sessionId;
 	}
 
 	public String query() {

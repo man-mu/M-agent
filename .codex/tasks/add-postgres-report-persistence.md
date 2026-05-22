@@ -1,86 +1,70 @@
-﻿# Task Handoff: add-postgres-report-persistence
-Updated: 2026-05-22 12:48:54 +08:00
+# Task Handoff: add-postgres-report-persistence
+Updated: 2026-05-22 13:18:49 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 8a90607dffe04e2613e3983bf560420bc43591cc
-Current Commit: 8a90607dffe04e2613e3983bf560420bc43591cc
+Base Commit: 3f86f80555c2d28726ccc10fd868283ff841b441
+Current Commit: 3f86f80555c2d28726ccc10fd868283ff841b441
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to align with `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
-- The project is growing DeepResearch workflow semantics in `SimpleResearchRunner` before any full Spring AI Alibaba Graph migration.
-- Completed stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, added Bocha-only real web search through an `information` node, added a real `processor` node for PROCESSING steps, added a human feedback plan gate for `/chat`, added paused-state `/chat/stop` cleanup, and added running chat stop/cancellation.
-- The current stable auto-accepted backend loop is: planner -> information -> research_team -> researcher -> research_team -> processor -> research_team -> reporter -> `__END__`.
-- The current interactive loop is: `/chat/stream` with `auto_accepted_plan=false` runs planner -> `human_feedback` waiting; `/chat/resume` with `feedback=true` continues execution; `/chat/resume` with `feedback=false` replans with `feedback_content` and waits again; `/chat/stop` can remove a paused `human_feedback` state or stop a currently subscribed chat stream.
-- The next mainline step is to persist final research reports to a real database so completed workflows leave queryable artifacts, moving toward `deepresearch-main` report/history APIs without introducing the full Graph, RAG, MCP, Redis, frontend, or export stack yet.
-- New feature work must not introduce mock agents, mock search, fabricated search results, local secret leaks, Redis, RAG, MCP, frontend code, or full Graph migration unless a later task explicitly asks for those layers.
+- The stable backend loop before this stage was planner -> information -> research_team -> researcher -> research_team -> processor -> research_team -> reporter -> `__END__`, with `/chat` supporting plan pause, resume, replan, and stop/cancel.
+- This stage advanced the mainline by making final reports durable PostgreSQL-backed artifacts that can be queried after SSE completion.
+- Future stages can build report history, export/download, frontend report views, and eventual Graph migration on top of this persistence base without adding Redis, RAG, MCP, frontend, or full Graph infrastructure yet.
 
 ## Stage Role in Mainline
 
-- This stage should add database-backed report persistence after the workflow lifecycle boundary became controllable with pause, resume, and stop.
-- It exists because M-agent can now complete, pause, resume, and stop research streams, but completed reports are only emitted over SSE and are not queryable afterward.
-- It should align with `deepresearch-main` report concepts at the behavior/API level: report save/get/exists/delete and optional session-scoped report history.
-- The user explicitly rejected an in-memory-only report store; use a real database from the start.
-- Keep the MVP backend-only and minimal: PostgreSQL in Docker Desktop, a small schema, Spring persistence integration, and focused report APIs/tests.
+- This stage added the first real database-backed persistence layer after the workflow lifecycle became controllable.
+- It specifically avoided the reference project's in-memory or Redis report store and implemented a PostgreSQL-backed MVP.
+- It aligned with `deepresearch-main` report API behavior for get, exists, and delete, while keeping export/download/interactive HTML out of scope.
 
 ## Mainline Progression
 
-- `add-research-team` introduced a controlled loop around step execution.
-- `add-information-node-bocha-search` added real Bocha `information` search before execution.
-- `add-processor-node-search-context` split PROCESSING into a dedicated `processor` path that consumes prior observations and site information.
-- `add-human-feedback-plan-gate` evolved the workflow from automatic run-to-completion to interactive controllable research with planner pause, accept resume, and rejected replan.
-- `add-chat-stop-session-lifecycle` added `/chat/stop`, reference-style `ApiResponse`, paused-state cleanup, resume-after-stop error behavior, and real curl verification.
-- `add-running-chat-stop-cancellation` completed the in-memory lifecycle boundary by making stop work during active `/chat` execution and verified it with unit tests plus real curl.
-- `add-postgres-report-persistence` should turn completed reports into durable backend artifacts, creating the base for future report history, export/download, frontend report views, and eventual Graph migration.
+- Earlier stages added the research team loop, Bocha information search, processor node, human feedback gate, paused stop cleanup, and running cancellation.
+- `add-postgres-report-persistence` now persists completed reports at the runner completion boundary before emitting the final `done` event.
+- `/api/research/stream` persists with `session_id = threadId` because it has no session input; `/chat/*` persists with the real `session_id`.
+- Stopped workflows do not create a completed report row. Failed workflow persistence remains a follow-up.
 
 ## Related Stage Handoffs
 
-- `add-research-team`: completed lightweight `ResearchTeamNode` and runner loop.
-- `add-information-node-bocha-search`: completed Bocha-only `InformationNode` and real HTTP verification.
-- `add-processor-node-search-context`: completed processor agent/node/routing and real HTTP verification.
-- `add-human-feedback-plan-gate`: completed `/chat` human feedback plan gate, in-memory paused state, `/chat/resume`, and focused tests.
-- `add-chat-stop-session-lifecycle`: completed `/chat/stop` for paused-state cleanup.
-- `add-running-chat-stop-cancellation`: completed running `/chat/stop` cancellation and updated the stopped SSE contract.
+- `add-research-team`
+- `add-information-node-bocha-search`
+- `add-processor-node-search-context`
+- `add-human-feedback-plan-gate`
+- `add-chat-stop-session-lifecycle`
+- `add-running-chat-stop-cancellation`
 
 ## Goal
 
-- Add PostgreSQL-backed persistence for generated research reports so completed workflows can be queried after SSE completion, while staying aligned with `deepresearch-main` report APIs and keeping the local MVP small.
+- Add PostgreSQL-backed persistence for generated research reports so completed workflows can be queried after SSE completion, while keeping the backend MVP small and aligned with `deepresearch-main` report APIs.
 
 ## Task Theme / User Intent
 
-- The user wants the next session to implement `add-postgres-report-persistence` and continue aligning M-agent with `C:/MainData/code/Codex_project/deepresearch-main`.
-- The user does not want an in-memory-only report store; report data should be persisted to a database from the start.
-- Database and middleware should run in Docker Desktop on the Windows host, not as direct host installs.
-- Docker and database MCP tools are available and useful; prefer using them when inspecting or managing local containers.
-- The user asked to keep `.claude/` ignored and not spend effort on it.
-- The user asked that thinking/internal reasoning use English and final user-facing responses use Chinese; this preference was added to user-level and project-level `AGENTS.md`.
+- Use a real database from the start, not an in-memory-only report store.
+- Prefer Docker Desktop for local PostgreSQL on Windows.
+- Keep the work backend-only and avoid broad DeepResearch features such as RAG, MCP, Redis, frontend, export/download, and full Graph migration.
+- Preserve real model and Bocha search paths; do not introduce mock production behavior.
 
 ## Acceptance Criteria
 
-- Add a Docker Desktop based PostgreSQL setup for local development, preferably via a minimal `docker-compose.yml` in M-agent.
-- Use stable, compatible Maven dependencies for Spring Boot 3.4.x and Java 17; avoid unnecessarily new or risky dependency versions.
-- Prefer WebFlux-compatible persistence. Recommended default: Spring Data R2DBC with PostgreSQL, plus Flyway using JDBC for schema migrations if needed.
-- Add a durable `research_reports` table or equivalent schema with at least `thread_id`, `session_id`, `query`, `report`, `status`, `created_at`, and `updated_at`; optionally include `error_message` or metadata if useful.
-- Save a `COMPLETED` report when `ReporterNode`/`SimpleResearchRunner` reaches the final report for `/chat/stream` and accepted `/chat/resume`; decide whether `/api/research/stream` should also persist reports and document the decision.
-- Do not save fake or mock report content in production code.
-- Stopped workflows should not persist a completed report. Either persist `STOPPED` with empty report or do not create a row; choose the smallest behavior and test it.
-- Failed workflows may persist `FAILED` with an error reason if this can be done cleanly, otherwise leave it for a follow-up and document the choice.
-- Add report APIs aligned with `deepresearch-main` behavior at minimum: `GET /api/reports/{threadId}`, `GET /api/reports/{threadId}/exists`, and `DELETE /api/reports/{threadId}`.
-- Consider adding `GET /api/reports/session/{sessionId}` or a recent report list only if it stays small and naturally follows the schema.
-- Add focused tests for repository/service/controller behavior and report persistence after workflow completion.
-- Run Java 17 `mvn test`.
-- Run Docker/PostgreSQL backed verification when practical: start the DB container, run migrations, start or test the app, verify report save/get/delete, then stop any manually started backend service. Keep containers/volumes only as intended for local development.
+- Add local Docker Desktop PostgreSQL setup.
+- Add stable Spring Boot 3.4.x compatible R2DBC/PostgreSQL/Flyway dependencies.
+- Add schema for `research_reports` with `thread_id`, `session_id`, `query`, `report`, `status`, `error_message`, `created_at`, and `updated_at`.
+- Persist `COMPLETED` reports for completed `/api/research/stream`, auto-accepted `/chat/stream`, and accepted `/chat/resume`.
+- Do not persist completed reports for stopped workflows.
+- Add report APIs: `GET /api/reports/{threadId}`, `GET /api/reports/{threadId}/exists`, `DELETE /api/reports/{threadId}`.
+- Add a small session report list API if it stays simple.
+- Add focused service/controller/runner tests and run `mvn test`.
+- Run Docker/PostgreSQL backed verification when practical and stop any manually started backend service.
 - Commit the completed stage with a Chinese commit message.
 
 ## Scope
 
 - Work only in `C:/MainData/code/Codex_project/M-agent`.
 - Inspect `C:/MainData/code/Codex_project/deepresearch-main` as read-only guidance.
-- Backend-only scope: persistence, schema, report API, runner integration, tests, local Docker database setup.
+- Backend-only scope: persistence, schema, report API, runner integration, tests, and local Docker database setup.
 - Do not edit the read-only reference project.
-- Do not add frontend, RAG, MCP integration features, Redis, Elasticsearch, export/download/PDF, or a full Graph migration in this stage unless absolutely required for the minimal report persistence path.
-- Preserve real provider paths and do not introduce mock production behavior.
 
 ## Scope Safety
 
@@ -92,7 +76,6 @@ Current Commit: 8a90607dffe04e2613e3983bf560420bc43591cc
 - `C:/MainData/code/Codex_project/M-agent/src/main/resources`
 - `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu`
 - `C:/MainData/code/Codex_project/M-agent/src/test/resources`
-- `C:/MainData/code/Codex_project/M-agent/AGENTS.md`
 - `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-postgres-report-persistence.md`
 
 ### Read-only Reference Roots
@@ -113,109 +96,129 @@ Current Commit: 8a90607dffe04e2613e3983bf560420bc43591cc
 
 ## Current State
 
-- Git branch: `main`.
-- Current commit before creating this handoff: `8a90607dffe04e2613e3983bf560420bc43591cc`.
-- No upstream is configured for `main`; upstream and merge-base commands fail with "no upstream configured".
-- Working tree had only unrelated untracked `.claude/`; do not edit, delete, inspect deeply, or commit it unless the user explicitly asks.
-- M-agent currently has no database dependencies, no Docker Compose file, and no report persistence layer.
-- Existing resource files are `application.yml`, `application-llm.yml`, `application-real-model.yml`, and prompt markdown files.
-- Current `SimpleResearchRunner` emits `ResearchEvent.done(threadId, ..., state.report())` after reporter completion, but the report is not persisted.
-- `/api/research/stream` still uses `runner.run(...)`; `/chat/stream` uses `runner.runChat(...)`; accepted `/chat/resume` is cancellable.
-- Manual real curl verification after running cancellation succeeded: DeepSeek key save, model switch, model test, running `/chat/stop` returning success with `event:stopped`, paused stop success, missing stop failure, and port 8080 released.
+- Implementation is complete and verified.
+- Working tree before commit contains intended changes plus unrelated untracked `.claude/settings.local.json`; do not stage `.claude`.
+- Docker Desktop is running.
+- `manmu-postgres` is running from `postgres:17-alpine`, healthy, and mapped on host port `5432`.
+- A manually started backend service was stopped after verification; port `8080` was confirmed released.
 
 ## Completed
 
-- Created this resume-ready handoff for the next stage.
-- Updated user-level `C:/Users/20232/.codex/AGENTS.md` with language preference: internal thinking in English, final replies in Chinese.
-- Updated project-level `AGENTS.md` with the same language preference and a note to ignore `.claude/` unless explicitly requested.
-- Reviewed the current M-agent module layout and confirmed no existing DB persistence stack.
-- Reviewed `deepresearch-main` report-related references:
-  - `ReportController`
-  - `ReportService`
-  - `ReportMemoryService`
-  - `ReportRedisService`
-  - `SessionHistory`
-  - `SessionContextService`
-  - `InMemorySessionContextService`
-  - report examples in `DeepResearch.http`
+- Added `docker-compose.yml` with a `manmu-postgres` PostgreSQL service and named volume.
+- Added Spring Data R2DBC, PostgreSQL R2DBC/JDBC, Flyway, JDBC starter, H2 test dependencies, and a test profile activated by Surefire.
+- Added Flyway migration `V1__create_research_reports.sql`.
+- Added report domain/service/repository/controller classes under `top.lanshan.manmu.report` and `/api/reports`.
+- Extended `ResearchState` with `sessionId`.
+- Integrated `SimpleResearchRunner` with `ReportService` so final report persistence happens before the `done` event.
+- Updated `ChatController` to pass chat `session_id` into the runner.
+- Added controller, service, and runner tests covering persistence behavior and stopped-flow non-persistence.
+- Switched Docker Compose from `postgres:16-alpine` to locally cached `postgres:17-alpine` after Docker Hub token fetch failed for the first pull attempt.
 
 ## Decisions
 
-- Next implementation should use a real database, not an in-memory report store.
-- Recommended default is PostgreSQL in Docker Desktop, R2DBC for application persistence, and Flyway/JDBC migrations for schema setup.
-- Keep report persistence minimal and durable before adding export/download, frontend, RAG, Redis, Elasticsearch, or Graph migration.
-- Prefer database state values that make lifecycle behavior explicit: `COMPLETED`, optionally `STOPPED`, optionally `FAILED`.
-- Do not treat `.claude/` as part of this task.
+- Use PostgreSQL 17 Alpine for local Docker because the image is already cached locally and avoids Docker Hub pull flakiness.
+- Use R2DBC for app persistence and Flyway through JDBC for schema migration.
+- Use H2 in PostgreSQL compatibility mode for automated tests so `mvn test` does not require Docker Desktop.
+- Persist completed `/api/research/stream` reports too, with `session_id` equal to `threadId`.
+- Do not create `STOPPED` rows in this MVP; stopped workflows leave no completed report row.
+- Do not implement `FAILED` rows in this stage.
+- Keep `GET /api/reports/session/{sessionId}` because it naturally follows the schema and stays small.
 
 ## Evidence / References
 
-- Local runner completion points: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`, lines around `ResearchEvent.done(...)`.
-- Local report state source: `src/main/java/top/lanshan/manmu/model/ResearchState.java`, `report()` and `report(String)`.
-- Local reporter: `src/main/java/top/lanshan/manmu/node/ReporterNode.java`, where `state.report(report)` is set.
-- Local chat controller: `src/main/java/top/lanshan/manmu/api/ChatController.java`.
-- Local research controller: `src/main/java/top/lanshan/manmu/api/ResearchController.java`.
-- Reference report controller: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/controller/ReportController.java`.
-- Reference report service interface and implementations: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/ReportService.java`, `ReportMemoryService.java`, `ReportRedisService.java`.
-- Reference session history/context: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/model/SessionHistory.java`, `service/SessionContextService.java`, `service/InMemorySessionContextService.java`.
-- Reference HTTP examples: `C:/MainData/code/Codex_project/deepresearch-main/DeepResearch.http`, lines for `/api/reports/{threadId}`, `/exists`, `DELETE`, `/export`, `/download`, and `/build-html`.
-- User constraint: database and middleware run in Docker Desktop on Windows; Docker/database MCP tools are available and should remain usable.
+- Local completion boundary: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`.
+- Local report API: `src/main/java/top/lanshan/manmu/api/ReportController.java`.
+- Local report service: `src/main/java/top/lanshan/manmu/report/PostgresReportService.java`.
+- Local schema: `src/main/resources/db/migration/V1__create_research_reports.sql`.
+- Reference report controller/service: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/controller/ReportController.java` and `service/ReportService.java`.
+- Reference HTTP examples: `C:/MainData/code/Codex_project/deepresearch-main/DeepResearch.http`.
 
 ## Files Touched
 
-- `C:/Users/20232/.codex/AGENTS.md` (outside repo, user-level instruction update)
-- `C:/MainData/code/Codex_project/M-agent/AGENTS.md`
-- `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-postgres-report-persistence.md`
+- `pom.xml`
+- `docker-compose.yml`
+- `src/main/java/top/lanshan/manmu/api/ChatController.java`
+- `src/main/java/top/lanshan/manmu/api/ReportController.java`
+- `src/main/java/top/lanshan/manmu/model/ResearchState.java`
+- `src/main/java/top/lanshan/manmu/report/PostgresReportService.java`
+- `src/main/java/top/lanshan/manmu/report/ReportResponse.java`
+- `src/main/java/top/lanshan/manmu/report/ReportService.java`
+- `src/main/java/top/lanshan/manmu/report/ReportStatus.java`
+- `src/main/java/top/lanshan/manmu/report/ResearchReport.java`
+- `src/main/java/top/lanshan/manmu/report/ResearchReportEntity.java`
+- `src/main/java/top/lanshan/manmu/report/ResearchReportRepository.java`
+- `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `src/main/resources/application.yml`
+- `src/main/resources/db/migration/V1__create_research_reports.sql`
+- `src/test/java/top/lanshan/manmu/api/ChatControllerTest.java`
+- `src/test/java/top/lanshan/manmu/api/ReportControllerTest.java`
+- `src/test/java/top/lanshan/manmu/report/PostgresReportServiceTest.java`
+- `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- `src/test/resources/application-test.yml`
+- `.codex/tasks/add-postgres-report-persistence.md`
 
 ## Commands Run
 
-- `Get-Content -LiteralPath C:\Users\20232\.codex\skills\task-handoff\SKILL.md`
+- `git status --short --branch`
 - `git rev-parse --show-toplevel`
-- `git status --short`
-- `git log --oneline --decorate -6`
-- `Get-Content -Encoding UTF8 -LiteralPath C:\Users\20232\.codex\AGENTS.md`
-- `Get-Content -Encoding UTF8 -LiteralPath AGENTS.md`
-- `git branch --show-current`
 - `git diff --stat`
 - `git diff --name-only`
 - `git rev-parse HEAD`
 - `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'` failed because no upstream is configured.
 - `git merge-base HEAD '@{upstream}'` failed because no upstream is configured.
-- `Get-Content -Encoding UTF8 -LiteralPath .codex\tasks\add-running-chat-stop-cancellation.md`
-- `Get-ChildItem -LiteralPath .codex\tasks -File | Select-Object Name,LastWriteTime,Length`
-- `Select-String -LiteralPath C:\MainData\code\Codex_project\deepresearch-main\DeepResearch.http -Pattern '/api/reports|/chat/stream|/chat/resume|/chat/stop' -Context 2,2`
-- `Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"`
+- `docker ps`
+- `docker version`
+- `Start-Service -Name com.docker.service`
+- `Start-Process "C:/Program Files/Docker/Docker/Docker Desktop.exe"`
+- `docker compose up -d postgres`
+- `mvn test`
+- `mvn -Dtest=PostgresReportServiceTest test`
+- Manual HTTP verification against local app and Docker PostgreSQL:
+  - `GET /api/model/current`
+  - `POST /chat/stream`
+  - `GET /api/reports/{threadId}`
+  - `GET /api/reports/{threadId}/exists`
+  - `GET /api/reports/session/{sessionId}`
+  - `DELETE /api/reports/{threadId}`
+  - `GET /api/reports/{threadId}/exists` after delete
+- Backend shutdown by stopping the listening process on port `8080`.
 
 ## Verification
 
-- No implementation verification has run for `add-postgres-report-persistence` because implementation has not started.
-- Previous stage verification after running cancellation:
-  - `mvn test` passed 38 tests.
-  - Manual real curl verification passed DeepSeek model setup/test, running chat stop with `event:stopped`, paused stop, missing stop, and backend shutdown with port 8080 released.
+- `mvn test` passed: 46 tests, 0 failures, 0 errors.
+- `mvn -Dtest=PostgresReportServiceTest test` passed: 3 tests, 0 failures, 0 errors.
+- Docker/PostgreSQL verification passed with `manmu-postgres` healthy.
+- Manual HTTP verification passed:
+  - `/chat/stream` emitted `event:done`.
+  - `GET /api/reports/verify-report-postgres` returned `status=success` and a non-empty report.
+  - `exists` returned `true` before delete.
+  - session report list returned one report.
+  - `DELETE` returned `status=success`.
+  - `exists` returned `false` after delete.
+- Port `8080` was released after manual verification.
 
 ## Known Failures / Blockers
 
 - No upstream Git branch is configured.
-- Unrelated untracked `.claude/` exists in the working tree; ignore it.
-- M-agent currently has no database container, schema migration, R2DBC/JDBC config, repository, or report API.
-- Introducing database-backed tests may require a Dockerized PostgreSQL strategy or a local dev DB; prefer Docker Desktop and available Docker/database MCP tooling.
-- Real LLM/provider tests can fail from external API rate limits or network timeouts; report persistence tests should isolate DB behavior when possible and only use real providers for manual end-to-end checks.
+- Initial `docker compose up -d postgres` failed when using `postgres:16-alpine` because Docker Hub token fetch returned EOF. The compose image was changed to locally cached `postgres:17-alpine`, and verification then passed.
+- Unrelated untracked `.claude/settings.local.json` exists and must remain uncommitted.
+- Failed workflow report rows are not implemented yet.
 
 ## Next Actions
 
-- Inspect current Spring Boot config and choose the minimal PostgreSQL + R2DBC + migration setup, using Docker Desktop for the local database and keeping secrets out of source.
-- Implement report persistence schema, repository/service, runner save integration, and `/api/reports` get/exists/delete APIs aligned with `deepresearch-main`.
-- Run Java 17 `mvn test` and Docker-backed/manual verification; stop any manually started backend service afterward and commit with a Chinese message.
+- Commit the completed stage with a Chinese commit message.
+- In a future stage, decide whether to persist `FAILED` and `STOPPED` lifecycle rows for history views.
+- In a future stage, build on this persistence layer for report export/download or frontend report history.
 
 ## Open Questions
 
-- Should stopped workflows create a `STOPPED` row, or should they leave no report row? The user has not decided; choose the smaller behavior and document it.
-- Should failed workflows create a `FAILED` row with `error_message` in this stage, or should that wait for a follow-up status/history task?
-- Should `/api/research/stream` persist reports too, or should persistence initially apply only to `/chat/*` to mirror the user-facing DeepResearch flow?
-- Should report history by session be included now, or should this stage stop at get/exists/delete by `threadId`?
+- Should failed workflows create `FAILED` rows with `error_message` in the next persistence stage?
+- Should stopped workflows eventually create `STOPPED` rows for user-visible history, or remain absent?
+- Should report history include pagination/search once frontend history exists?
 
 ## Avoid / Do Not Redo
 
-- Do not implement an in-memory-only report store; the user explicitly wants database persistence.
+- Do not implement an in-memory-only report store.
 - Do not edit `C:/MainData/code/Codex_project/deepresearch-main`.
 - Do not migrate to Spring AI Alibaba Graph yet.
 - Do not add Redis, Elasticsearch, RAG, MCP feature integration, frontend changes, export/download/PDF, or Graph saver/checkpoint infrastructure in this stage.

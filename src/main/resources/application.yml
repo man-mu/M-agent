@@ -4,6 +4,20 @@ server:
 spring:
   application:
     name: deepresearch-mvp
+  datasource:
+    url: ${MVP_POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/manmu}
+    username: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+    driver-class-name: org.postgresql.Driver
+  r2dbc:
+    url: ${MVP_POSTGRES_R2DBC_URL:r2dbc:postgresql://localhost:5432/manmu}
+    username: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+  flyway:
+    url: ${MVP_POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/manmu}
+    user: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+    locations: classpath:db/migration
   ai:
     dashscope:
       enabled: false

@@ -2,6 +2,7 @@ package top.lanshan.manmu.runner;
 
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 import top.lanshan.manmu.model.ResearchEvent;
@@ -13,7 +14,11 @@ import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.StepType;
 import top.lanshan.manmu.node.ResearchNode;
+import top.lanshan.manmu.report.ReportService;
+import top.lanshan.manmu.report.ResearchReport;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,8 +27,9 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void routesThroughInformationResearcherProcessorAndReporter() {
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-1", 1)).collectList().block();
 
@@ -31,31 +37,43 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node)
 			.containsExactly("planner", "information", "research_team", "researcher", "research_team", "processor",
 					"research_team", "reporter", "__END__");
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-1");
+			assertThat(report.sessionId()).isEqualTo("thread-1");
+			assertThat(report.query()).isEqualTo("Explain workflow.");
+			assertThat(report.report()).isEqualTo("done");
+		});
 	}
 
 	@Test
 	void runChatCanBeStoppedWhileRunning() {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(),
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()));
+				new ProcessorNodeStub(), new ReporterNode()), reportService);
 
-		StepVerifier.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1)))
+		StepVerifier
+			.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1),
+					"session-running-stop"))
 			.expectNextMatches(event -> "planner".equals(event.node()))
 			.then(() -> assertThat(runner.stop("thread-running-stop")).isTrue())
 			.expectNextMatches(event -> event.done() && "__END__".equals(event.node()) && "stopped".equals(event.phase()))
 			.verifyComplete();
 
 		assertThat(runner.stop("thread-running-stop")).isFalse();
+		assertThat(reportService.savedReports()).isEmpty();
 		releaseInformation.tryEmitEmpty();
 	}
 
 	@Test
 	void runChatCleansUpAfterNormalCompletion() {
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
 
-		var events = runner.runChat(new ResearchRequest("Explain workflow.", "thread-normal-cleanup", 1))
+		var events = runner.runChat(new ResearchRequest("Explain workflow.", "thread-normal-cleanup", 1),
+				"session-normal-cleanup")
 			.collectList()
 			.block();
 
@@ -63,14 +81,19 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node).last().isEqualTo("__END__");
 		assertThat(events).extracting(ResearchEvent::phase).last().isEqualTo("completed");
 		assertThat(runner.stop("thread-normal-cleanup")).isFalse();
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-normal-cleanup");
+			assertThat(report.sessionId()).isEqualTo("session-normal-cleanup");
+		});
 	}
 
 	@Test
 	void pausesAfterPlannerWhenPlanGateIsRequested() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService());
 
-		var events = runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-2", 1))
+		var events = runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-2", 1), "session-2")
 			.collectList()
 			.block();
 
@@ -83,10 +106,13 @@ class SimpleResearchRunnerTest {
 	@Test
 	void acceptedResumeContinuesFromInformationWithoutReplanning() {
 		PlanningNode planningNode = new PlanningNode();
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
 
-		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-3", 1)).collectList().block();
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-3", 1), "session-3")
+			.collectList()
+			.block();
 		var events = runner.resume("thread-3", new ResumeDecision(true, null)).collectList().block();
 
 		assertThat(events).isNotNull();
@@ -94,17 +120,25 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node)
 			.containsExactly("information", "research_team", "researcher", "research_team", "processor",
 					"research_team", "reporter", "__END__");
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-3");
+			assertThat(report.sessionId()).isEqualTo("session-3");
+		});
 	}
 
 	@Test
 	void acceptedResumeCanBeStoppedWhileRunning() {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		PlanningNode planningNode = new PlanningNode();
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode,
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()));
+				new ProcessorNodeStub(), new ReporterNode()), reportService);
 
-		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume-stop", 1)).collectList().block();
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume-stop", 1),
+				"session-resume-stop")
+			.collectList()
+			.block();
 
 		StepVerifier.create(runner.resume("thread-resume-stop", new ResumeDecision(true, null)))
 			.then(() -> assertThat(runner.stop("thread-resume-stop")).isTrue())
@@ -113,16 +147,20 @@ class SimpleResearchRunnerTest {
 
 		assertThat(planningNode.runCount()).isEqualTo(1);
 		assertThat(runner.stop("thread-resume-stop")).isFalse();
+		assertThat(reportService.savedReports()).isEmpty();
 		releaseInformation.tryEmitEmpty();
 	}
 
 	@Test
 	void rejectedResumeReplansWithFeedbackAndWaitsAgain() {
 		PlanningNode planningNode = new PlanningNode();
+		RecordingReportService reportService = new RecordingReportService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
 
-		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-4", 1)).collectList().block();
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-4", 1), "session-4")
+			.collectList()
+			.block();
 		var events = runner.resume("thread-4", new ResumeDecision(false, "Focus on risks.")).collectList().block();
 
 		assertThat(events).isNotNull();
@@ -130,12 +168,14 @@ class SimpleResearchRunnerTest {
 		assertThat(planningNode.lastFeedback()).isEqualTo("Focus on risks.");
 		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
 		assertThat(events.get(1).phase()).isEqualTo("waiting");
+		assertThat(reportService.savedReports()).isEmpty();
 	}
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService());
 
 		var events = runner.resume("missing-thread", new ResumeDecision(true, null)).collectList().block();
 
@@ -150,9 +190,12 @@ class SimpleResearchRunnerTest {
 	@Test
 	void stopRemovesPausedState() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService());
 
-		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop", 1)).collectList().block();
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop", 1), "session-stop")
+			.collectList()
+			.block();
 
 		assertThat(runner.stop("thread-stop")).isTrue();
 		var events = runner.resume("thread-stop", new ResumeDecision(true, null)).collectList().block();
@@ -168,7 +211,8 @@ class SimpleResearchRunnerTest {
 	@Test
 	void stopMissingThreadReturnsFalse() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService());
 
 		assertThat(runner.stop("missing-thread")).isFalse();
 	}
@@ -347,6 +391,44 @@ class SimpleResearchRunnerTest {
 		public Flux<ResearchEvent> run(ResearchState state) {
 			state.report("done");
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "reported", "done"));
+		}
+
+	}
+
+	private static class RecordingReportService implements ReportService {
+
+		private final List<ResearchReport> savedReports = new ArrayList<>();
+
+		@Override
+		public Mono<ResearchReport> saveCompletedReport(String threadId, String sessionId, String query, String report) {
+			ResearchReport saved = new ResearchReport(threadId, sessionId, query, report, "COMPLETED", null,
+					Instant.now(), Instant.now());
+			savedReports.add(saved);
+			return Mono.just(saved);
+		}
+
+		@Override
+		public Mono<String> getReport(String threadId) {
+			return Mono.empty();
+		}
+
+		@Override
+		public Mono<Boolean> existsReport(String threadId) {
+			return Mono.just(false);
+		}
+
+		@Override
+		public Mono<Void> deleteReport(String threadId) {
+			return Mono.empty();
+		}
+
+		@Override
+		public Flux<ResearchReport> findBySessionId(String sessionId) {
+			return Flux.empty();
+		}
+
+		List<ResearchReport> savedReports() {
+			return savedReports;
 		}
 
 	}

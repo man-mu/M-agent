@@ -43,8 +43,8 @@ public class ChatController {
 		GraphId graphId = graphId(request);
 		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum());
 
-		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest)
-				: runner.runUntilPlanGate(researchRequest);
+		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest, graphId.sessionId())
+				: runner.runUntilPlanGate(researchRequest, graphId.sessionId());
 		return events.map(event -> ServerSentEvent.<ChatStreamResponse>builder()
 			.id(graphId.threadId())
 			.event(eventName(event))

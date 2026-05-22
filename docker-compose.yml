@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: manmu-postgres
+    environment:
+      POSTGRES_DB: manmu
+      POSTGRES_USER: manmu
+      POSTGRES_PASSWORD: manmu
+    ports:
+      - "5432:5432"
+    volumes:
+      - manmu-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U manmu -d manmu"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  manmu-postgres-data:

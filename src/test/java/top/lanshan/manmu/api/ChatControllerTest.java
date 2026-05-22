@@ -28,7 +28,7 @@ class ChatControllerTest {
 	@Test
 	void streamUsesPlanGateWhenAutoAcceptedPlanIsFalse() {
 		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
-		when(runner.runUntilPlanGate(any())).thenReturn(Flux.just(ResearchEvent.message("thread-1",
+		when(runner.runUntilPlanGate(any(), eq("session-a"))).thenReturn(Flux.just(ResearchEvent.message("thread-1",
 				"human_feedback", "waiting", "Waiting for feedback", null)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
@@ -53,8 +53,8 @@ class ChatControllerTest {
 		});
 
 		ArgumentCaptor<ResearchRequest> requestCaptor = ArgumentCaptor.forClass(ResearchRequest.class);
-		verify(runner).runUntilPlanGate(requestCaptor.capture());
-		verify(runner, never()).runChat(any());
+		verify(runner).runUntilPlanGate(requestCaptor.capture(), eq("session-a"));
+		verify(runner, never()).runChat(any(), any());
 		assertThat(requestCaptor.getValue().threadId()).isEqualTo("thread-1");
 		assertThat(requestCaptor.getValue().maxSteps()).isEqualTo(2);
 	}
@@ -62,7 +62,8 @@ class ChatControllerTest {
 	@Test
 	void streamUsesCancellableChatRunWhenAutoAcceptedPlanIsTrue() {
 		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
-		when(runner.runChat(any())).thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user")));
+		when(runner.runChat(any(), eq("session-auto")))
+			.thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user")));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var events = client.post()
@@ -85,9 +86,9 @@ class ChatControllerTest {
 			assertThat(event.content()).isEqualTo(Map.of("reason", "Stopped by user", "done", true));
 		});
 
-		verify(runner).runChat(any());
+		verify(runner).runChat(any(), eq("session-auto"));
 		verify(runner, never()).run(any());
-		verify(runner, never()).runUntilPlanGate(any());
+		verify(runner, never()).runUntilPlanGate(any(), any());
 	}
 
 	@Test
