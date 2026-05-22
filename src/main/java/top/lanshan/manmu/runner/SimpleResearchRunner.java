@@ -25,6 +25,8 @@ public class SimpleResearchRunner {
 
 	private final List<ResearchNode> nodes;
 
+	private final ResearchNode coordinatorNode;
+
 	private final ResearchNode plannerNode;
 
 	private final ResearchNode queryRewriteNode;
@@ -54,6 +56,7 @@ public class SimpleResearchRunner {
 	public SimpleResearchRunner(List<ResearchNode> nodes, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
 		this.nodes = nodes.stream().sorted(Comparator.comparingInt(ResearchNode::order)).toList();
+		this.coordinatorNode = requiredNode("coordinator");
 		this.queryRewriteNode = requiredNode("rewrite_multi_query");
 		this.backgroundInvestigatorNode = requiredNode("background_investigator");
 		this.plannerNode = requiredNode("planner");
@@ -80,13 +83,12 @@ public class SimpleResearchRunner {
 	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
 
-		return withRunningStop(state.threadId(), startHistoryThenRun(state, runPlanner(state)
+		return withRunningStop(state.threadId(), startHistoryThenRun(state, runCoordinator(state)
 			.concatWith(Flux.defer(() -> {
-				pausedStates.put(state.threadId(), state);
-				return sessionHistoryService.markPaused(state.threadId())
-					.thenReturn(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
-							"Waiting for human plan feedback", state.plan()))
-					.flux();
+				if (state.directAnswerRoute()) {
+					return saveCompletedReport(state);
+				}
+				return runPlanner(state).concatWith(pauseForHumanFeedback(state));
 			}))
 			.subscribeOn(Schedulers.boundedElastic())));
 	}
@@ -135,10 +137,19 @@ public class SimpleResearchRunner {
 	}
 
 	private Flux<ResearchEvent> runToCompletion(ResearchState state) {
-		return Flux.concat(runPlanner(state), informationNode.run(state),
-			Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
+		return Flux.concat(runCoordinator(state), Flux.defer(() -> {
+			if (state.directAnswerRoute()) {
+				return Flux.empty();
+			}
+			return Flux.concat(runPlanner(state), informationNode.run(state),
+					Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state));
+		}))
 			.subscribeOn(Schedulers.boundedElastic())
 			.concatWith(Flux.defer(() -> saveCompletedReport(state)));
+	}
+
+	private Flux<ResearchEvent> runCoordinator(ResearchState state) {
+		return coordinatorNode.run(state);
 	}
 
 	private Flux<ResearchEvent> runPlanner(ResearchState state) {
@@ -148,6 +159,16 @@ public class SimpleResearchRunner {
 		return rewriteEvents.concatWith(backgroundInvestigationEvents)
 			.concatWith(loadBackgroundContext(state)
 				.thenMany(Flux.defer(() -> plannerNode.run(state)).subscribeOn(Schedulers.boundedElastic())));
+	}
+
+	private Flux<ResearchEvent> pauseForHumanFeedback(ResearchState state) {
+		return Flux.defer(() -> {
+			pausedStates.put(state.threadId(), state);
+			return sessionHistoryService.markPaused(state.threadId())
+				.thenReturn(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
+						"Waiting for human plan feedback", state.plan()))
+				.flux();
+		});
 	}
 
 	private Mono<Void> loadBackgroundContext(ResearchState state) {

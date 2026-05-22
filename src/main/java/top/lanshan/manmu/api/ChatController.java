@@ -44,7 +44,7 @@ public class ChatController {
 	public Flux<ServerSentEvent<ChatStreamResponse>> stream(@Valid @RequestBody ChatRequest request) {
 		GraphId graphId = graphId(request);
 		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum(),
-				request.optimizeQueryNum());
+				request.optimizeQueryNum(), request.enableDeepResearch());
 
 		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest, graphId.sessionId())
 				: runner.runUntilPlanGate(researchRequest, graphId.sessionId());
@@ -117,6 +117,7 @@ public class ChatController {
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
 			case "rewrite_multi_query" -> "Query Rewrite";
+			case "coordinator" -> "Coordinator";
 			case "background_investigator" -> "Background Investigation";
 			case "human_feedback" -> "人工反馈";
 			case "planner" -> "研究计划";

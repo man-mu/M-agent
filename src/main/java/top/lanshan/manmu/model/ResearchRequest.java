@@ -6,10 +6,16 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.UUID;
 
 public record ResearchRequest(@NotBlank String query, String threadId, Integer maxSteps,
-		@JsonProperty("optimize_query_num") Integer optimizeQueryNum) {
+		@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
+		@JsonProperty("enable_deepresearch") Boolean enableDeepResearch) {
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps) {
 		this(query, threadId, maxSteps, null);
+	}
+
+	public ResearchRequest(String query, String threadId, Integer maxSteps,
+			@JsonProperty("optimize_query_num") Integer optimizeQueryNum) {
+		this(query, threadId, maxSteps, optimizeQueryNum, null);
 	}
 
 	public ResearchRequest {
@@ -30,6 +36,9 @@ public record ResearchRequest(@NotBlank String query, String threadId, Integer m
 		}
 		if (optimizeQueryNum > 5) {
 			optimizeQueryNum = 5;
+		}
+		if (enableDeepResearch == null) {
+			enableDeepResearch = true;
 		}
 	}
 

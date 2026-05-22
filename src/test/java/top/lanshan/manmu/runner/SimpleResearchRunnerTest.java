@@ -13,6 +13,8 @@ import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.StepType;
+import top.lanshan.manmu.model.CoordinatorDecision;
+import top.lanshan.manmu.model.CoordinatorRoute;
 import top.lanshan.manmu.node.ResearchNode;
 import top.lanshan.manmu.report.ReportService;
 import top.lanshan.manmu.report.ResearchReport;
@@ -43,9 +45,9 @@ class SimpleResearchRunnerTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("rewrite_multi_query", "background_investigator", "planner", "information",
-					"research_team", "researcher", "research_team", "processor", "research_team", "reporter",
-					"__END__");
+			.containsExactly("coordinator", "rewrite_multi_query", "background_investigator", "planner",
+					"information", "research_team", "researcher", "research_team", "processor", "research_team",
+					"reporter", "__END__");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-1");
 			assertThat(report.sessionId()).isEqualTo("thread-1");
@@ -73,6 +75,7 @@ class SimpleResearchRunnerTest {
 		StepVerifier
 			.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1),
 					"session-running-stop"))
+			.expectNextMatches(event -> "coordinator".equals(event.node()))
 			.expectNextMatches(event -> "rewrite_multi_query".equals(event.node()))
 			.expectNextMatches(event -> "background_investigator".equals(event.node()))
 			.expectNextMatches(event -> "planner".equals(event.node()))
@@ -122,10 +125,10 @@ class SimpleResearchRunnerTest {
 			.block();
 
 		assertThat(events).isNotNull();
-		assertThat(events).extracting(ResearchEvent::node).containsExactly("rewrite_multi_query",
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "rewrite_multi_query",
 				"background_investigator", "planner", "human_feedback");
-		assertThat(events.get(3).phase()).isEqualTo("waiting");
-		assertThat(events.get(3).payload()).isInstanceOf(ResearchPlan.class);
+		assertThat(events.get(4).phase()).isEqualTo("waiting");
+		assertThat(events.get(4).payload()).isInstanceOf(ResearchPlan.class);
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
 	}
 
@@ -266,8 +269,8 @@ class SimpleResearchRunnerTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("rewrite_multi_query", "background_investigator", "runner");
-		assertThat(events.get(2)).satisfies(event -> {
+			.containsExactly("coordinator", "rewrite_multi_query", "background_investigator", "runner");
+		assertThat(events.get(3)).satisfies(event -> {
 			assertThat(event.node()).isEqualTo("runner");
 			assertThat(event.phase()).isEqualTo("error");
 			assertThat(event.content()).contains("planner failed");
@@ -284,7 +287,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
 		sessionContextService.context("session-context", "Prior report context");
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new QueryRewriteNodeStub(),
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new InformationNode(), new TeamNode(),
 				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
 				new RecordingSessionHistoryService(), sessionContextService);
@@ -302,7 +305,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		QueryRewriteNodeStub queryRewriteNode = new QueryRewriteNodeStub();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(queryRewriteNode,
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(), queryRewriteNode,
 				new BackgroundInvestigatorNodeStub(), planningNode, new InformationNode(), new TeamNode(),
 				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
 				new RecordingSessionHistoryService(), sessionContextService);
@@ -311,7 +314,7 @@ class SimpleResearchRunnerTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.startsWith("rewrite_multi_query", "background_investigator", "planner");
+			.startsWith("coordinator", "rewrite_multi_query", "background_investigator", "planner");
 		assertThat(queryRewriteNode.lastOptimizeQueryNum()).isEqualTo(3);
 		assertThat(planningNode.lastOptimizedQueries()).containsExactly("Explain workflow.",
 				"Explain workflow. architecture");
@@ -320,7 +323,78 @@ class SimpleResearchRunnerTest {
 
 	private static SimpleResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
 			SessionHistoryService sessionHistoryService) {
-		return new SimpleResearchRunner(nodes, reportService, sessionHistoryService, new RecordingSessionContextService());
+		List<ResearchNode> nodesWithCoordinator = new ArrayList<>();
+		nodesWithCoordinator.add(new CoordinatorNodeStub());
+		nodesWithCoordinator.addAll(nodes);
+		return new SimpleResearchRunner(nodesWithCoordinator, reportService, sessionHistoryService,
+				new RecordingSessionContextService());
+	}
+
+	@Test
+	void directAnswerRouteSkipsResearchNodesAndSavesReport() {
+		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
+				new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), reportService, sessionHistoryService, new RecordingSessionContextService());
+
+		var events = runner.run(new ResearchRequest("Say hello.", "thread-direct", 2, null, false))
+			.collectList()
+			.block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "__END__");
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-direct");
+			assertThat(report.report()).isEqualTo("Direct answer");
+		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
+	}
+
+	private static class CoordinatorNodeStub implements ResearchNode {
+
+		@Override
+		public int order() {
+			return 1;
+		}
+
+		@Override
+		public String name() {
+			return "coordinator";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			state.coordinatorDecision(new CoordinatorDecision(CoordinatorRoute.DEEP_RESEARCH, true, null,
+					"Needs research."));
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "routed",
+					state.coordinatorDecision()));
+		}
+
+	}
+
+	private static class DirectAnswerCoordinatorNodeStub implements ResearchNode {
+
+		@Override
+		public int order() {
+			return 1;
+		}
+
+		@Override
+		public String name() {
+			return "coordinator";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			state.coordinatorDecision(new CoordinatorDecision(CoordinatorRoute.DIRECT_ANSWER, false, "Direct answer",
+					"Simple."));
+			state.report("Direct answer");
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "routed",
+					state.coordinatorDecision()));
+		}
+
 	}
 
 	private static class PlanningNode implements ResearchNode {

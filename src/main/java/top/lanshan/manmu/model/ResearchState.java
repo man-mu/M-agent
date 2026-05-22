@@ -16,6 +16,10 @@ public class ResearchState {
 
 	private final int optimizeQueryNum;
 
+	private final boolean deepResearchEnabled;
+
+	private CoordinatorDecision coordinatorDecision;
+
 	private ResearchPlan plan;
 
 	private String planFeedback;
@@ -42,12 +46,14 @@ public class ResearchState {
 
 	private String report;
 
-	private ResearchState(String threadId, String sessionId, String query, int maxSteps, int optimizeQueryNum) {
+	private ResearchState(String threadId, String sessionId, String query, int maxSteps, int optimizeQueryNum,
+			boolean deepResearchEnabled) {
 		this.threadId = threadId;
 		this.sessionId = sessionId;
 		this.query = query;
 		this.maxSteps = maxSteps;
 		this.optimizeQueryNum = optimizeQueryNum;
+		this.deepResearchEnabled = deepResearchEnabled;
 	}
 
 	public static ResearchState from(ResearchRequest request) {
@@ -59,7 +65,7 @@ public class ResearchState {
 			sessionId = request.threadId();
 		}
 		return new ResearchState(request.threadId(), sessionId, request.query(), request.maxSteps(),
-				request.optimizeQueryNum());
+				request.optimizeQueryNum(), request.enableDeepResearch());
 	}
 
 	public String threadId() {
@@ -80,6 +86,22 @@ public class ResearchState {
 
 	public int optimizeQueryNum() {
 		return optimizeQueryNum;
+	}
+
+	public boolean deepResearchEnabled() {
+		return deepResearchEnabled;
+	}
+
+	public CoordinatorDecision coordinatorDecision() {
+		return coordinatorDecision;
+	}
+
+	public void coordinatorDecision(CoordinatorDecision coordinatorDecision) {
+		this.coordinatorDecision = coordinatorDecision;
+	}
+
+	public boolean directAnswerRoute() {
+		return coordinatorDecision != null && coordinatorDecision.directAnswerRoute();
 	}
 
 	public ResearchPlan plan() {
