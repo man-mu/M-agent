@@ -1,25 +1,25 @@
 # Task Handoff: add-background-investigation-session-context
-Updated: 2026-05-22 14:17:00 +08:00
+Updated: 2026-05-22 14:50:11 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 4fc8166db06f0635e5eb9df925f2083125444e0f
-Current Commit: 4fc8166db06f0635e5eb9df925f2083125444e0f
+Base Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
+Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to align with `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
 - The project evolves DeepResearch workflow semantics in `SimpleResearchRunner` before adopting the full Spring AI Alibaba Graph stack.
-- Completed stages now provide real model calls, Bocha-only real web search, planner/researcher/processor/reporter execution, a lightweight `research_team` loop, human feedback plan pause/resume/replan, running `/chat/stop` cancellation, PostgreSQL-backed completed report persistence, and PostgreSQL-backed session history persistence.
-- Durable artifacts now include `research_reports` for final report bodies and `research_session_histories` for lifecycle/query/report-link history.
-- The next mainline step is to make durable session history useful to the next research run by feeding recent completed reports into a lightweight background-investigation/session-context phase, matching the reference project's `BackgroundInvestigationNode` use of `SessionContextService.getRecentReports(sessionId)`.
+- Completed stages now provide real model calls, Bocha-only real web search, planner/researcher/processor/reporter execution, a lightweight `research_team` loop, human feedback plan pause/resume/replan, running `/chat/stop` cancellation, PostgreSQL-backed completed report persistence, PostgreSQL-backed session history persistence, and lightweight background/session context injection before planning.
+- Durable artifacts now include `research_reports` for final report bodies and `research_session_histories` for lifecycle/query/report-link history; this stage turns those artifacts into active planner context for later runs in the same session.
+- The next mainline step can build on this context bridge toward richer background investigation or report continuity, while still avoiding full RAG, Redis, MCP, Elasticsearch, frontend, or Graph checkpoint migration unless explicitly requested.
 
 ## Stage Role in Mainline
 
-- This stage should turn persisted history from a queryable artifact into active research context.
-- It exists because `add-session-history-persistence` can list completed reports and lifecycle states, but the next run does not yet use earlier reports from the same session.
-- It should align with `deepresearch-main` `BackgroundInvestigationNode`: before planning, gather current background information and include recent session reports as context for the background agent/planner.
-- It should remain a small backend-only implementation that reuses existing PostgreSQL/R2DBC report and session-history services, without adding RAG, Redis, MCP, Elasticsearch, frontend, or full Graph checkpointing.
+- This stage turned persisted history from a queryable artifact into active research context.
+- It exists because `add-session-history-persistence` could list completed reports and lifecycle states, but the next run did not yet use earlier reports from the same session.
+- It aligns with `deepresearch-main` `BackgroundInvestigationNode` in reduced form: before planning, M-agent now reads recent completed reports for the same session and gives compact report excerpts to the planner.
+- It remains backend-only and reuses existing PostgreSQL/R2DBC report and session-history services, without adding RAG, Redis, MCP, Elasticsearch, frontend, or full Graph checkpointing.
 
 ## Mainline Progression
 
@@ -30,46 +30,40 @@ Current Commit: 4fc8166db06f0635e5eb9df925f2083125444e0f
 - `add-chat-stop-session-lifecycle` and `add-running-chat-stop-cancellation` made paused and running chat sessions stoppable.
 - `add-postgres-report-persistence` added durable completed reports.
 - `add-session-history-persistence` added durable session/task lifecycle history and recent-history APIs.
-- `add-background-investigation-session-context` should use that durable history as input to future planning/reporting, creating a bridge toward the reference project's `background_investigator -> planner/reporter` flow while staying in M-agent's simpler runner/node architecture.
+- `add-background-investigation-session-context` now uses durable session history and report storage as input to future planning, creating a small bridge toward the reference project's `background_investigator -> planner` flow while staying in M-agent's simpler runner/node architecture.
 
 ## Related Stage Handoffs
 
 - `add-session-history-persistence`: immediate upstream; completed and committed as `49bcae5` with a Chinese message meaning "Add session history persistence".
 - `add-postgres-report-persistence`: upstream durable report storage used by this stage.
-- `add-human-feedback-plan-gate`: planner pause/resume behavior must continue to work after adding background context.
+- `add-human-feedback-plan-gate`: planner pause/resume behavior remains compatible after adding background context.
 - Earlier task handoffs under `.codex/tasks/` preserve the cross-stage project story.
 
 ## Goal
 
-- Add a lightweight background-investigation/session-context capability that reads recent completed reports for the same `session_id`, formats them as useful context, and feeds that context into planning and/or reporting so a second research run can benefit from prior completed reports in the same session.
+- Add a lightweight background-investigation/session-context capability that reads recent completed reports for the same `session_id`, formats them as useful context, and feeds that context into planning so a second research run can benefit from prior completed reports in the same session.
 
 ## Task Theme / User Intent
 
-- The user will start a new conversation to implement `add-background-investigation-session-context` and continue aligning M-agent with `C:/MainData/code/Codex_project/deepresearch-main`.
-- The user wants the next step to follow from the completed session history persistence stage.
-- The recommended direction is to implement the smallest runnable backend capability corresponding to `deepresearch-main` `BackgroundInvestigationNode`, not to migrate the whole Graph/RAG/MCP stack.
-- The implementation should keep real model/search paths, use Docker Desktop PostgreSQL on Windows, and avoid mock production behavior.
+- Continue aligning M-agent with `C:/MainData/code/Codex_project/deepresearch-main` while keeping the implementation small and runnable.
+- Follow from the completed session history persistence stage.
+- Implement the smallest backend capability corresponding to the reference project's use of recent session reports in background investigation, not the whole Graph/RAG/MCP stack.
+- Keep real model/search paths and avoid mock production behavior; tests may use isolated stubs.
 
 ## Acceptance Criteria
 
-- Add a minimal background/session-context model, for example a `SessionContextReport` record or a formatted context string derived from recent `COMPLETED` histories.
-- Add service behavior that reads recent completed session histories from `SessionHistoryService`, follows `report_thread_id` into `ReportService`, and returns bounded report context for the same session.
-- Exclude the current thread from its own recent-report context when possible.
-- Limit context size and count to avoid injecting entire large reports blindly; recommended defaults: 3 to 5 reports and a clear per-report character cap.
-- Add a lightweight `BackgroundInvestigationNode` or equivalent service that can run before `planner`.
-- Extend `ResearchState` to hold background/session context, for example `backgroundContext` or `backgroundInvestigationResults`.
-- Feed background/session context into `LlmPlannerAgent` prompt input so planning can consider previous completed reports.
-- Keep `/api/research/stream` and `/chat/stream` behavior compatible; chat should use the request `session_id`, while `/api/research/stream` can continue using `session_id = threadId`.
-- Preserve human feedback plan gate, resume/replan, stop, completion, and failed history behavior.
-- Add focused tests showing:
-  - recent completed reports are loaded and formatted for a new run in the same session,
-  - the current thread is excluded,
-  - no context is produced for a new session,
-  - planner receives context when it exists,
-  - existing lifecycle/history tests remain valid.
-- Run Java 17 `mvn test`.
-- When practical, run Docker/PostgreSQL-backed curl verification: create one completed report in a session, start a second run in that session, confirm background/session context is observable through an event or testable output, then stop any manually started backend and confirm port `8080` is released.
-- Commit the completed stage with a Chinese commit message.
+- Done: Added `SessionContextReport` and `SessionContextService` under `top.lanshan.manmu.sessioncontext`.
+- Done: Added `PostgresSessionContextService`, which reads recent histories from `SessionHistoryService`, follows `report_thread_id` through `ReportService.getReport(...)`, excludes the current thread, and returns bounded formatted report context.
+- Done: Context is bounded by configurable defaults: `manmu.session-context.max-reports` default `5`, and `manmu.session-context.max-report-characters` default `1200`.
+- Done: Added `ResearchState.backgroundContext`.
+- Done: `SimpleResearchRunner` loads background context before planning for normal run, chat run, plan-gated run, and rejected-feedback replan.
+- Done: `PlannerNode` passes background context to `PlannerAgent`; `LlmPlannerAgent` injects it into the user prompt when present.
+- Done: `/api/research/stream` and `/chat/stream` behavior remains compatible. `/api/research/stream` keeps `session_id = threadId`; chat continues to use request `session_id`.
+- Done: Human feedback plan gate, accepted resume, rejected replan, stop, completion, and failed history tests remain valid.
+- Done: Focused tests cover context formatting/loading, current-thread exclusion, empty new-session context, count/size limits, planner context propagation, and runner loading before planning.
+- Done: Java 17 `mvn test` passed with 61 tests.
+- Not run: Optional Docker/PostgreSQL curl verification, because full Maven tests including real model workflow already passed and no manually started backend was needed.
+- Done: Implementation committed with Chinese commit message `添加背景调查会话上下文`.
 
 ## Scope
 
@@ -78,7 +72,7 @@ Current Commit: 4fc8166db06f0635e5eb9df925f2083125444e0f
 - Backend-only scope: services, model/state additions, node/runner integration, prompt input changes, tests, and optional Docker-backed verification.
 - Do not edit the read-only reference project.
 - Do not add frontend, RAG, MCP integration features, Redis, Elasticsearch, export/download/PDF, or full Spring AI Alibaba Graph migration in this stage.
-- Do not add a new database table unless a clear need appears; prefer reusing `research_session_histories` and `research_reports`.
+- Do not add a new database table; this stage reuses `research_session_histories` and `research_reports`.
 - Preserve real provider paths and do not introduce mock production behavior.
 
 ## Scope Safety
@@ -112,106 +106,136 @@ Current Commit: 4fc8166db06f0635e5eb9df925f2083125444e0f
 ## Current State
 
 - Current branch: `main`.
-- Current commit: `4fc8166db06f0635e5eb9df925f2083125444e0f` (`update session history persistence task handoff`).
-- Immediate implementation commit for upstream stage: `49bcae5a1294de3443133d1859c93bce10e0d73e` (`add session history persistence`).
+- Current commit before handoff update: `6e5d3142220dbf41fca3716d0724744fb5f79f7a` (`添加背景调查会话上下文`).
 - No upstream Git branch is configured for `main`.
-- Working tree has only unrelated untracked `.claude/settings.local.json`; do not edit, delete, stage, or commit it.
-- No code implementation has started for `add-background-investigation-session-context`.
-- No backend service should be running on port `8080`; the prior stage stopped its manually started backend and confirmed port release.
+- Implementation commit is complete and tested.
+- Working tree after implementation commit had only unrelated untracked `.claude/`; do not edit, delete, stage, or commit it.
+- No backend service was manually started, so there is no manually started process to stop.
 
 ## Completed
 
-- Completed upstream session history persistence:
-  - Added `research_session_histories` Flyway migration.
-  - Added `top.lanshan.manmu.sessionhistory` service/repository/entity/response classes.
-  - Added `/api/sessions/{sessionId}/history`, `/api/sessions/{sessionId}/threads/{threadId}`, and `/api/sessions/{sessionId}/recent`.
-  - Wired `SimpleResearchRunner` lifecycle transitions into durable session history.
-  - Kept report bodies in `research_reports` and linked histories by `report_thread_id`.
-  - Passed `mvn test` with 55 tests.
-  - Verified completed, paused, stopped, and recent history via Docker/PostgreSQL-backed curl.
-- Inspected reference `deepresearch-main` background context flow:
-  - `BackgroundInvestigationNode` gets `session_id`, calls `sessionContextService.getRecentReports(sessionId)`, builds an assistant message containing prior DeepResearch reports, and asks `backgroundAgent` for background results.
-  - `PlannerNode` consumes `background_investigation_results` when `enable_deepresearch` is true.
-  - `DeepResearchConfiguration` wires `background_investigator` before planner/reporter in the full Graph.
+- Added `top.lanshan.manmu.sessioncontext.SessionContextReport`.
+- Added `top.lanshan.manmu.sessioncontext.SessionContextService`.
+- Added `top.lanshan.manmu.sessioncontext.PostgresSessionContextService`:
+  - reads recent histories by session,
+  - filters to `COMPLETED`,
+  - requires `report_thread_id`,
+  - excludes current thread/report thread,
+  - fetches linked report text,
+  - strips and truncates report excerpts,
+  - formats compact per-report context blocks.
+- Added `ResearchState.backgroundContext`.
+- Extended `PlannerAgent` with a default four-argument `plan(...)` overload.
+- Updated `LlmPlannerAgent` to include a `Recent completed reports from the same session` prompt section when context exists.
+- Updated `PlannerNode` to pass state background context to the planner agent.
+- Updated `SimpleResearchRunner` to load background context before planner execution and defer planner node execution until after context is loaded.
+- Added tests:
+  - `PostgresSessionContextServiceTest`
+  - `PlannerNodeTest`
+  - `LlmPlannerAgentTest`
+  - new runner coverage in `SimpleResearchRunnerTest`.
+- Committed implementation as `6e5d314` with message `添加背景调查会话上下文`.
 
 ## Decisions
 
-- Recommended next stage is a lightweight session-context/background-investigation step, not RAG, MCP, Redis, Elasticsearch, frontend, or full Graph migration.
-- Reuse `SessionHistoryService.findRecentBySessionId(...)` and `ReportService.getReport(...)` or `ReportService.findBySessionId(...)` rather than adding a new persistence table.
-- Prefer passing compact prior-report context into planner prompt input first; a dedicated background LLM agent can be added only if the codebase shape makes it worthwhile.
-- Keep context bounded by count and size to protect prompt budget.
-- Make the behavior testable without requiring real external provider calls in unit/service tests.
+- Use a lightweight session-context service rather than adding a visible SSE `background_investigator` node/event in this first implementation.
+- Pass compact prior-report context into planner prompt input first; a dedicated background LLM agent can be added later if needed.
+- Keep context bounded by count and per-report character cap to protect prompt budget.
+- Reuse `SessionHistoryService.findRecentBySessionId(...)` and `ReportService.getReport(...)` instead of adding a new table.
+- Keep tests isolated from external provider availability by testing prompt propagation and service formatting with stubs.
 
 ## Evidence / References
 
-- M-agent upstream files:
-  - `src/main/java/top/lanshan/manmu/sessionhistory/SessionHistoryService.java`
-  - `src/main/java/top/lanshan/manmu/sessionhistory/PostgresSessionHistoryService.java`
-  - `src/main/java/top/lanshan/manmu/report/ReportService.java`
+- M-agent implementation files:
+  - `src/main/java/top/lanshan/manmu/sessioncontext/SessionContextReport.java`
+  - `src/main/java/top/lanshan/manmu/sessioncontext/SessionContextService.java`
+  - `src/main/java/top/lanshan/manmu/sessioncontext/PostgresSessionContextService.java`
   - `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
   - `src/main/java/top/lanshan/manmu/model/ResearchState.java`
+  - `src/main/java/top/lanshan/manmu/node/PlannerNode.java`
   - `src/main/java/top/lanshan/manmu/agent/PlannerAgent.java`
   - `src/main/java/top/lanshan/manmu/agent/LlmPlannerAgent.java`
-  - `src/main/resources/prompts/planner.md`
-- Reference project files:
+- M-agent tests:
+  - `src/test/java/top/lanshan/manmu/sessioncontext/PostgresSessionContextServiceTest.java`
+  - `src/test/java/top/lanshan/manmu/node/PlannerNodeTest.java`
+  - `src/test/java/top/lanshan/manmu/agent/LlmPlannerAgentTest.java`
+  - `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- Reference project files inspected:
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/BackgroundInvestigationNode.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/dispatcher/BackgroundInvestigationDispatcher.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/PlannerNode.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/config/DeepResearchConfiguration.java`
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/SessionContextService.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/model/SessionHistory.java`
+  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/PlannerNode.java`
 
 ## Files Touched
 
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/agent/LlmPlannerAgent.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/agent/PlannerAgent.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/model/ResearchState.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/node/PlannerNode.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/sessioncontext/PostgresSessionContextService.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/sessioncontext/SessionContextReport.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/sessioncontext/SessionContextService.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/agent/LlmPlannerAgentTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/node/PlannerNodeTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/sessioncontext/PostgresSessionContextServiceTest.java`
 - `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-background-investigation-session-context.md`
 
 ## Commands Run
 
-- `Get-Content -Raw C:\Users\20232\.codex\skills\task-handoff\SKILL.md`
-- `git status --short --branch --untracked-files=all`
+- `Get-Content -Path C:\Users\20232\.codex\skills\task-handoff\SKILL.md`
+- `git status --short --branch`
 - `git rev-parse --show-toplevel`
 - `git branch --show-current`
+- `git status --short`
+- `git diff --stat`
+- `git diff --name-only`
 - `git rev-parse HEAD`
-- `git rev-parse --abbrev-ref --symbolic-full-name @{upstream}`
+- `git rev-parse --abbrev-ref --symbolic-full-name @{upstream}` (failed: no upstream configured)
+- `git merge-base HEAD @{upstream}` (failed: no upstream configured)
+- `Get-Content -Path AGENTS.md`
 - `git log --oneline --decorate -8`
-- `Get-Content -Raw AGENTS.md`
-- `Get-Content -Raw .codex\tasks\add-session-history-persistence.md`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\node\BackgroundInvestigationNode.java`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\dispatcher\BackgroundInvestigationDispatcher.java`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\node\PlannerNode.java`
-- `rg "background|Background|recentReports|getRecentReports|SessionHistory|session history|history" ...`
-- `Get-Content -Raw` for M-agent `PlannerAgent`, `LlmPlannerAgent`, `ResearchState`, `SessionHistoryService`, `ReportService`, and `prompts/planner.md`
+- `rg --files src/main/java/top/lanshan/manmu src/main/resources src/test/java/top/lanshan/manmu src/test/resources`
+- `Get-Content -Path` for M-agent runner, planner, agent, state, report, session history, prompt, and tests.
+- `Get-Content -Path` for reference `BackgroundInvestigationNode.java`, `SessionContextService.java`, and `PlannerNode.java`.
+- `mvn '-Dtest=PostgresSessionContextServiceTest,PlannerNodeTest,LlmPlannerAgentTest,SimpleResearchRunnerTest' test` with Java 17: first run after code changes found a runner deferral test issue, second run passed 17 tests.
+- `mvn test` with Java 17: passed 61 tests.
+- `git diff --check`: no whitespace errors; only CRLF conversion warnings.
+- `git add -- ...`
+- `git commit -m "添加背景调查会话上下文"`: created `6e5d314`.
 
 ## Verification
 
-- No code implementation has started for this stage.
-- Handoff creation inspected the current git state and relevant reference files.
-- Current workspace has no tracked diff before writing this handoff.
-- Upstream stage verification from `add-session-history-persistence`:
-  - Java 17 `mvn test` passed with 55 tests.
-  - Docker/PostgreSQL-backed curl verification passed for completed, paused, stopped, and recent session history.
-  - Manually started backend service was stopped and port `8080` released.
+- Targeted tests passed after fixing planner execution deferral:
+  - `PostgresSessionContextServiceTest`
+  - `PlannerNodeTest`
+  - `LlmPlannerAgentTest`
+  - `SimpleResearchRunnerTest`
+  - 17 tests total.
+- Full Java 17 `mvn test` passed:
+  - 61 tests, 0 failures, 0 errors, 0 skipped.
+- Real model workflow tests included in full suite passed in this environment.
+- `git diff --check` reported no whitespace errors, only Windows CRLF conversion warnings.
+- No manual backend service was started; no port `8080` cleanup was required.
 
 ## Known Failures / Blockers
 
 - No upstream Git branch is configured.
-- Unrelated untracked `.claude/settings.local.json` exists and must remain uncommitted.
+- Unrelated untracked `.claude/` exists and must remain uncommitted.
 - `.gitignore` ignores `.local/`, `target/`, and `.idea/`, but not `.claude/`; project instructions still forbid editing or committing `.claude/`.
-- Real LLM/search verification may fail from external network/API issues; keep unit/service tests isolated from provider availability.
-- Some existing Chinese strings in source appear mojibake in terminal output because of encoding display issues; avoid editing unrelated display-title/comment text unless required.
+- Some existing Chinese strings in source appear mojibake in terminal output; this stage did not edit unrelated display-title/comment text.
 
 ## Next Actions
 
-- Design the minimal session-context service/model that loads recent completed histories for a session, fetches linked report text from `ReportService`, excludes the current thread, and returns bounded formatted context.
-- Add the background/session context into `ResearchState`, runner flow before planner execution, and `LlmPlannerAgent` prompt input; add focused tests for context loading and planner prompt propagation.
-- Run Java 17 `mvn test`, optionally run Docker/PostgreSQL curl verification for two runs in the same session, stop any manually started backend service, then commit with a Chinese message.
+- Optional next stage: expose a lightweight `background_investigator` SSE event or debug payload if the UI/API needs visibility into which prior reports influenced planning.
+- Optional next stage: add a dedicated background LLM agent that summarizes recent reports before planner input if raw excerpts become too noisy.
+- Optional next stage: run Docker/PostgreSQL-backed curl verification with two chat runs in the same session if manual end-to-end evidence is desired beyond the passing test suite.
 
 ## Open Questions
 
-- Should the first implementation expose background/session context as a visible SSE `background_investigator` event, or keep it internal and verify through tests?
-- Should `PlannerAgent.plan(...)` gain a fourth `backgroundContext` argument, or should context be folded into `ResearchState` and read by `PlannerNode` before calling the agent?
-- Should prior report context include full report snippets, only summaries/headings, or a fixed character window per report?
-- Should the context source include only `COMPLETED` histories with `report_thread_id`, or also failed/stopped queries as negative context later?
+- Should background/session context be visible to clients as a first-class stream event, or remain internal planner context?
+- Should later context include only report excerpts, model-generated summaries, or structured report metadata and citations?
+- Should failed/stopped queries ever be included as negative or avoidance context, or should the source stay limited to completed reports?
 
 ## Avoid / Do Not Redo
 
