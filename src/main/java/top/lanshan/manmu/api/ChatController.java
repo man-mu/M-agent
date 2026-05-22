@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatRequest;
 import top.lanshan.manmu.model.ChatStreamResponse;
@@ -64,9 +65,10 @@ public class ChatController {
 	}
 
 	@PostMapping("/stop")
-	public ApiResponse<String> stop(@Valid @RequestBody GraphId graphId) {
-		return runner.stop(graphId.threadId()) ? ApiResponse.success(graphId.threadId())
-				: ApiResponse.error("Failure", graphId.threadId());
+	public Mono<ApiResponse<String>> stop(@Valid @RequestBody GraphId graphId) {
+		return runner.stopAndRecord(graphId.threadId())
+			.map(stopped -> stopped ? ApiResponse.success(graphId.threadId())
+					: ApiResponse.error("Failure", graphId.threadId()));
 	}
 
 	private GraphId graphId(ChatRequest request) {

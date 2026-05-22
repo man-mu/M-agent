@@ -16,6 +16,8 @@ import top.lanshan.manmu.model.StepType;
 import top.lanshan.manmu.node.ResearchNode;
 import top.lanshan.manmu.report.ReportService;
 import top.lanshan.manmu.report.ResearchReport;
+import top.lanshan.manmu.sessionhistory.ResearchSessionHistory;
+import top.lanshan.manmu.sessionhistory.SessionHistoryService;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,8 +30,10 @@ class SimpleResearchRunnerTest {
 	@Test
 	void routesThroughInformationResearcherProcessorAndReporter() {
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService);
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-1", 1)).collectList().block();
 
@@ -43,15 +47,22 @@ class SimpleResearchRunnerTest {
 			assertThat(report.query()).isEqualTo("Explain workflow.");
 			assertThat(report.report()).isEqualTo("done");
 		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
+		assertThat(sessionHistoryService.histories()).last().satisfies(history -> {
+			assertThat(history.threadId()).isEqualTo("thread-1");
+			assertThat(history.sessionId()).isEqualTo("thread-1");
+			assertThat(history.reportThreadId()).isEqualTo("thread-1");
+		});
 	}
 
 	@Test
 	void runChatCanBeStoppedWhileRunning() {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(),
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
 
 		StepVerifier
 			.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1),
@@ -63,14 +74,17 @@ class SimpleResearchRunnerTest {
 
 		assertThat(runner.stop("thread-running-stop")).isFalse();
 		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "STOPPED");
 		releaseInformation.tryEmitEmpty();
 	}
 
 	@Test
 	void runChatCleansUpAfterNormalCompletion() {
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService);
 
 		var events = runner.runChat(new ResearchRequest("Explain workflow.", "thread-normal-cleanup", 1),
 				"session-normal-cleanup")
@@ -85,13 +99,15 @@ class SimpleResearchRunnerTest {
 			assertThat(report.threadId()).isEqualTo("thread-normal-cleanup");
 			assertThat(report.sessionId()).isEqualTo("session-normal-cleanup");
 		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
 	}
 
 	@Test
 	void pausesAfterPlannerWhenPlanGateIsRequested() {
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
-				new RecordingReportService());
+				new RecordingReportService(), sessionHistoryService);
 
 		var events = runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-2", 1), "session-2")
 			.collectList()
@@ -101,14 +117,17 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
 		assertThat(events.get(1).phase()).isEqualTo("waiting");
 		assertThat(events.get(1).payload()).isInstanceOf(ResearchPlan.class);
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
 	}
 
 	@Test
 	void acceptedResumeContinuesFromInformationWithoutReplanning() {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-3", 1), "session-3")
 			.collectList()
@@ -124,6 +143,7 @@ class SimpleResearchRunnerTest {
 			assertThat(report.threadId()).isEqualTo("thread-3");
 			assertThat(report.sessionId()).isEqualTo("session-3");
 		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "COMPLETED");
 	}
 
 	@Test
@@ -131,9 +151,10 @@ class SimpleResearchRunnerTest {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode,
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume-stop", 1),
 				"session-resume-stop")
@@ -148,6 +169,7 @@ class SimpleResearchRunnerTest {
 		assertThat(planningNode.runCount()).isEqualTo(1);
 		assertThat(runner.stop("thread-resume-stop")).isFalse();
 		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "STOPPED");
 		releaseInformation.tryEmitEmpty();
 	}
 
@@ -155,8 +177,10 @@ class SimpleResearchRunnerTest {
 	void rejectedResumeReplansWithFeedbackAndWaitsAgain() {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService);
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-4", 1), "session-4")
 			.collectList()
@@ -169,13 +193,14 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
 		assertThat(events.get(1).phase()).isEqualTo("waiting");
 		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "PAUSED");
 	}
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
-				new RecordingReportService());
+				new RecordingReportService(), new RecordingSessionHistoryService());
 
 		var events = runner.resume("missing-thread", new ResumeDecision(true, null)).collectList().block();
 
@@ -189,9 +214,10 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void stopRemovesPausedState() {
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
-				new RecordingReportService());
+				new RecordingReportService(), sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop", 1), "session-stop")
 			.collectList()
@@ -206,15 +232,38 @@ class SimpleResearchRunnerTest {
 			assertThat(event.phase()).isEqualTo("error");
 			assertThat(event.content()).contains("No paused research state found");
 		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "STOPPED");
 	}
 
 	@Test
 	void stopMissingThreadReturnsFalse() {
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
 				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
-				new RecordingReportService());
+				new RecordingReportService(), new RecordingSessionHistoryService());
 
 		assertThat(runner.stop("missing-thread")).isFalse();
+	}
+
+	@Test
+	void failedWorkflowMarksSessionHistoryFailed() {
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new FailingPlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService(), sessionHistoryService);
+
+		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-failed", 1)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.node()).isEqualTo("runner");
+			assertThat(event.phase()).isEqualTo("error");
+			assertThat(event.content()).contains("planner failed");
+		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "FAILED");
+		assertThat(sessionHistoryService.histories()).last().satisfies(history -> {
+			assertThat(history.threadId()).isEqualTo("thread-failed");
+			assertThat(history.errorMessage()).contains("planner failed");
+		});
 	}
 
 	private static class PlanningNode implements ResearchNode {
@@ -250,6 +299,15 @@ class SimpleResearchRunnerTest {
 
 		String lastFeedback() {
 			return lastFeedback;
+		}
+
+	}
+
+	private static class FailingPlanningNode extends PlanningNode {
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			return Flux.error(new IllegalStateException("planner failed"));
 		}
 
 	}
@@ -429,6 +487,92 @@ class SimpleResearchRunnerTest {
 
 		List<ResearchReport> savedReports() {
 			return savedReports;
+		}
+
+	}
+
+	private static class RecordingSessionHistoryService implements SessionHistoryService {
+
+		private final List<ResearchSessionHistory> histories = new ArrayList<>();
+
+		@Override
+		public Mono<ResearchSessionHistory> start(String threadId, String sessionId, String query) {
+			return record(threadId, sessionId, query, "RUNNING", null, null);
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> markRunning(String threadId) {
+			return record(threadId, sessionId(threadId), query(threadId), "RUNNING", null, null);
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> markPaused(String threadId) {
+			return record(threadId, sessionId(threadId), query(threadId), "PAUSED", null, null);
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> markCompleted(String threadId, String reportThreadId) {
+			return record(threadId, sessionId(threadId), query(threadId), "COMPLETED", reportThreadId, null);
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> markStopped(String threadId) {
+			return record(threadId, sessionId(threadId), query(threadId), "STOPPED", null, null);
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> markFailed(String threadId, String errorMessage) {
+			return record(threadId, sessionId(threadId), query(threadId), "FAILED", null, errorMessage);
+		}
+
+		@Override
+		public Flux<ResearchSessionHistory> findBySessionId(String sessionId) {
+			return Flux.fromIterable(histories).filter(history -> sessionId.equals(history.sessionId()));
+		}
+
+		@Override
+		public Mono<ResearchSessionHistory> findBySessionIdAndThreadId(String sessionId, String threadId) {
+			return Flux.fromIterable(histories)
+				.filter(history -> sessionId.equals(history.sessionId()) && threadId.equals(history.threadId()))
+				.last();
+		}
+
+		@Override
+		public Flux<ResearchSessionHistory> findRecentBySessionId(String sessionId, int count) {
+			return findBySessionId(sessionId).take(count);
+		}
+
+		List<ResearchSessionHistory> histories() {
+			return histories;
+		}
+
+		List<String> statuses() {
+			return histories.stream().map(ResearchSessionHistory::status).toList();
+		}
+
+		private Mono<ResearchSessionHistory> record(String threadId, String sessionId, String query, String status,
+				String reportThreadId, String errorMessage) {
+			ResearchSessionHistory history = new ResearchSessionHistory(threadId, sessionId, query, status, reportThreadId,
+					errorMessage, Instant.now(), Instant.now(), "COMPLETED".equals(status) ? Instant.now() : null,
+					"STOPPED".equals(status) ? Instant.now() : null);
+			histories.add(history);
+			return Mono.just(history);
+		}
+
+		private String sessionId(String threadId) {
+			return histories.stream()
+				.filter(history -> threadId.equals(history.threadId()))
+				.findFirst()
+				.map(ResearchSessionHistory::sessionId)
+				.orElse(threadId);
+		}
+
+		private String query(String threadId) {
+			return histories.stream()
+				.filter(history -> threadId.equals(history.threadId()))
+				.findFirst()
+				.map(ResearchSessionHistory::query)
+				.orElse("");
 		}
 
 	}

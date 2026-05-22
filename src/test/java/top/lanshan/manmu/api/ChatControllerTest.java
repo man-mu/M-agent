@@ -5,6 +5,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchEvent;
@@ -127,7 +128,7 @@ class ChatControllerTest {
 	@Test
 	void stopReturnsSuccessWhenRunnerStopsThread() {
 		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
-		when(runner.stop("thread-3")).thenReturn(true);
+		when(runner.stopAndRecord("thread-3")).thenReturn(Mono.just(true));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var response = client.post()
@@ -145,13 +146,13 @@ class ChatControllerTest {
 		assertThat(response.code()).isEqualTo(200);
 		assertThat(response.status()).isEqualTo("success");
 		assertThat(response.data()).isEqualTo("thread-3");
-		verify(runner).stop("thread-3");
+		verify(runner).stopAndRecord("thread-3");
 	}
 
 	@Test
 	void stopReturnsFailureWhenThreadIsMissing() {
 		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
-		when(runner.stop("missing-thread")).thenReturn(false);
+		when(runner.stopAndRecord("missing-thread")).thenReturn(Mono.just(false));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var response = client.post()
@@ -170,7 +171,7 @@ class ChatControllerTest {
 		assertThat(response.status()).isEqualTo("error");
 		assertThat(response.message()).isEqualTo("Failure");
 		assertThat(response.data()).isEqualTo("missing-thread");
-		verify(runner).stop("missing-thread");
+		verify(runner).stopAndRecord("missing-thread");
 	}
 
 }
