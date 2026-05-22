@@ -7,6 +7,7 @@ import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.PlanValidatorRoute;
 import top.lanshan.manmu.model.HumanFeedbackRoute;
 import top.lanshan.manmu.node.ResearchNode;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -23,7 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-public class SimpleResearchRunner {
+@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "simple", matchIfMissing = true)
+public class SimpleResearchRunner implements ResearchRunner {
 
 	private final List<ResearchNode> nodes;
 
@@ -78,16 +80,19 @@ public class SimpleResearchRunner {
 		this.sessionContextService = sessionContextService;
 	}
 
+	@Override
 	public Flux<ResearchEvent> run(ResearchRequest request) {
 		ResearchState state = ResearchState.from(request);
 		return startHistoryThenRun(state, runToCompletion(state));
 	}
 
+	@Override
 	public Flux<ResearchEvent> runChat(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
 		return withRunningStop(state.threadId(), startHistoryThenRun(state, runToCompletion(state)));
 	}
 
+	@Override
 	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
 		state.autoAcceptedPlan(false);
@@ -102,6 +107,7 @@ public class SimpleResearchRunner {
 			.subscribeOn(Schedulers.boundedElastic())));
 	}
 
+	@Override
 	public Flux<ResearchEvent> resume(String threadId, ResumeDecision decision) {
 		ResearchState state = pausedStates.remove(threadId);
 		if (state == null) {
@@ -122,6 +128,7 @@ public class SimpleResearchRunner {
 		return stopAndRecord(threadId).blockOptional().orElse(false);
 	}
 
+	@Override
 	public Mono<Boolean> stopAndRecord(String threadId) {
 		if (threadId == null || threadId.isBlank()) {
 			return Mono.just(false);

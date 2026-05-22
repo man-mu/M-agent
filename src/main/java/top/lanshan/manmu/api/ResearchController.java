@@ -2,7 +2,7 @@ package top.lanshan.manmu.api;
 
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
-import top.lanshan.manmu.runner.SimpleResearchRunner;
+import top.lanshan.manmu.runner.ResearchRunner;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -16,9 +16,9 @@ import reactor.core.publisher.Flux;
 @RequestMapping("/api/research")
 public class ResearchController {
 
-	private final SimpleResearchRunner runner;
+	private final ResearchRunner runner;
 
-	public ResearchController(SimpleResearchRunner runner) {
+	public ResearchController(ResearchRunner runner) {
 		this.runner = runner;
 	}
 

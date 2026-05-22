@@ -10,8 +10,8 @@ import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
+import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
-import top.lanshan.manmu.runner.SimpleResearchRunner;
 
 import java.time.Duration;
 import java.util.Map;
@@ -28,7 +28,7 @@ class ChatControllerTest {
 
 	@Test
 	void streamUsesPlanGateWhenAutoAcceptedPlanIsFalse() {
-		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runUntilPlanGate(any(), eq("session-a"))).thenReturn(Flux.just(ResearchEvent.message("thread-1",
 				"human_feedback", "waiting", "Waiting for feedback", null)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
@@ -62,7 +62,7 @@ class ChatControllerTest {
 
 	@Test
 	void streamUsesCancellableChatRunWhenAutoAcceptedPlanIsTrue() {
-		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runChat(any(), eq("session-auto")))
 			.thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user")));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
@@ -94,7 +94,7 @@ class ChatControllerTest {
 
 	@Test
 	void resumeForwardsFeedbackDecisionAndReturnsChatEnvelope() {
-		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.resume(eq("thread-2"), any())).thenReturn(Flux.just(ResearchEvent.message("thread-2",
 				"planner", "completed", "Plan regenerated", null)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
@@ -127,7 +127,7 @@ class ChatControllerTest {
 
 	@Test
 	void stopReturnsSuccessWhenRunnerStopsThread() {
-		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.stopAndRecord("thread-3")).thenReturn(Mono.just(true));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
@@ -151,7 +151,7 @@ class ChatControllerTest {
 
 	@Test
 	void stopReturnsFailureWhenThreadIsMissing() {
-		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.stopAndRecord("missing-thread")).thenReturn(Mono.just(false));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 

@@ -29,6 +29,8 @@ logging:
     top.lanshan.manmu: info
 
 mvp:
+  research:
+    runner: simple
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search

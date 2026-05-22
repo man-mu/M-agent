@@ -20,8 +20,8 @@ import top.lanshan.manmu.model.GraphId;
 import top.lanshan.manmu.model.InformationPayload;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
+import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
-import top.lanshan.manmu.runner.SimpleResearchRunner;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,11 +33,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequestMapping("/chat")
 public class ChatController {
 
-	private final SimpleResearchRunner runner;
+	private final ResearchRunner runner;
 
 	private final ConcurrentHashMap<String, Integer> sessionCount = new ConcurrentHashMap<>();
 
-	public ChatController(SimpleResearchRunner runner) {
+	public ChatController(ResearchRunner runner) {
 		this.runner = runner;
 	}
 
