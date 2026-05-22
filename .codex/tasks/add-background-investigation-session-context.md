@@ -1,9 +1,9 @@
 # Task Handoff: add-background-investigation-session-context
-Updated: 2026-05-22 14:50:11 +08:00
+Updated: 2026-05-22 15:08:58 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
-Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
+Base Commit: d5111066ac25adddf7a205cf67498153c02a04ed
+Current Commit: d5111066ac25adddf7a205cf67498153c02a04ed
 
 ## Project Mainline
 
@@ -62,8 +62,10 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 - Done: Human feedback plan gate, accepted resume, rejected replan, stop, completion, and failed history tests remain valid.
 - Done: Focused tests cover context formatting/loading, current-thread exclusion, empty new-session context, count/size limits, planner context propagation, and runner loading before planning.
 - Done: Java 17 `mvn test` passed with 61 tests.
-- Not run: Optional Docker/PostgreSQL curl verification, because full Maven tests including real model workflow already passed and no manually started backend was needed.
-- Done: Implementation committed with Chinese commit message `添加背景调查会话上下文`.
+- Done: Docker/PostgreSQL-backed curl verification passed with two `/chat/stream` runs in the same session using real DeepSeek calls.
+- Done: The curl check proved that the second run observed a unique marker from the first completed report through session context.
+- Done: Implementation committed with Chinese commit message meaning "Add background investigation session context".
+- Done: Follow-up fix committed with Chinese commit message meaning "Fix background context planning thread switch".
 
 ## Scope
 
@@ -85,7 +87,6 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 - `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu`
 - `C:/MainData/code/Codex_project/M-agent/src/test/resources`
 - `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-background-investigation-session-context.md`
-- Optional update: `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-session-history-persistence.md` only if correcting cross-stage details.
 
 ### Read-only Reference Roots
 
@@ -106,11 +107,11 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 ## Current State
 
 - Current branch: `main`.
-- Current commit before handoff update: `6e5d3142220dbf41fca3716d0724744fb5f79f7a` (`添加背景调查会话上下文`).
+- Current commit before this handoff update: `d5111066ac25adddf7a205cf67498153c02a04ed` (Chinese message meaning "Fix background context planning thread switch").
 - No upstream Git branch is configured for `main`.
-- Implementation commit is complete and tested.
-- Working tree after implementation commit had only unrelated untracked `.claude/`; do not edit, delete, stage, or commit it.
-- No backend service was manually started, so there is no manually started process to stop.
+- Implementation and follow-up runtime fix are complete and tested.
+- Working tree after the follow-up fix commit had only unrelated untracked `.claude/`; do not edit, delete, stage, or commit it.
+- Manual backend service used for curl verification was stopped and port `8080` was confirmed free.
 
 ## Completed
 
@@ -129,12 +130,14 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 - Updated `LlmPlannerAgent` to include a `Recent completed reports from the same session` prompt section when context exists.
 - Updated `PlannerNode` to pass state background context to the planner agent.
 - Updated `SimpleResearchRunner` to load background context before planner execution and defer planner node execution until after context is loaded.
+- Follow-up fixed `SimpleResearchRunner.runPlanner(...)` to run the planner node on `Schedulers.boundedElastic()` after R2DBC background-context loading, avoiding blocking Spring AI calls on Reactor Netty event-loop threads.
 - Added tests:
   - `PostgresSessionContextServiceTest`
   - `PlannerNodeTest`
   - `LlmPlannerAgentTest`
   - new runner coverage in `SimpleResearchRunnerTest`.
-- Committed implementation as `6e5d314` with message `添加背景调查会话上下文`.
+- Committed implementation as `6e5d314` with a Chinese message meaning "Add background investigation session context".
+- Committed follow-up runtime fix as `d511106` with a Chinese message meaning "Fix background context planning thread switch".
 
 ## Decisions
 
@@ -160,6 +163,7 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
   - `src/test/java/top/lanshan/manmu/node/PlannerNodeTest.java`
   - `src/test/java/top/lanshan/manmu/agent/LlmPlannerAgentTest.java`
   - `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+- Curl verification artifacts were written under ignored `target/curl-e2e/`.
 - Reference project files inspected:
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/BackgroundInvestigationNode.java`
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/SessionContextService.java`
@@ -200,9 +204,22 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 - `Get-Content -Path` for reference `BackgroundInvestigationNode.java`, `SessionContextService.java`, and `PlannerNode.java`.
 - `mvn '-Dtest=PostgresSessionContextServiceTest,PlannerNodeTest,LlmPlannerAgentTest,SimpleResearchRunnerTest' test` with Java 17: first run after code changes found a runner deferral test issue, second run passed 17 tests.
 - `mvn test` with Java 17: passed 61 tests.
+- Started backend with Java 17 `mvn spring-boot:run` against Docker PostgreSQL `manmu-postgres`.
+- Used `curl.exe` to set DeepSeek API key through `/api/model/providers/deepseek/key` without logging the key, switch to `deepseek-chat`, and call `/api/model/current`.
+- First attempted `/chat/stream` curl failed with a Reactor Netty event-loop blocking error; this exposed the need for the follow-up `runPlanner(...)` thread-switch fix.
+- Re-ran targeted tests after the fix: `mvn '-Dtest=SimpleResearchRunnerTest,PostgresSessionContextServiceTest,LlmPlannerAgentTest,PlannerNodeTest' test`, 17 tests passed.
+- Re-ran backend and curl verification:
+  - First `/chat/stream` run used session `curl-bgctx-session-20260522b`, thread `curl-bgctx-thread-1-20260522b`, and marker `BGCTX-CURL-MARKER-20260522B`.
+  - Confirmed first SSE completed, session history was `COMPLETED`, and `/api/reports/curl-bgctx-thread-1-20260522b` contained the marker.
+  - Second `/chat/stream` run used the same session and thread `curl-bgctx-thread-2-20260522b`.
+  - Confirmed second SSE completed and contained the prior marker in researcher, processor, reporter, and final `__END__` output.
+  - Confirmed `/api/reports/curl-bgctx-thread-2-20260522b` contained the prior marker.
+- Stopped manually started backend process and confirmed port `8080` was free.
+- Re-ran Java 17 `mvn test`: passed 61 tests.
 - `git diff --check`: no whitespace errors; only CRLF conversion warnings.
-- `git add -- ...`
-- `git commit -m "添加背景调查会话上下文"`: created `6e5d314`.
+- `git commit -m "<Chinese: add background investigation session context>"`: created `6e5d314`.
+- `git commit -m "<Chinese: update background investigation session context handoff>"`: created `38974fe`.
+- `git commit -m "<Chinese: fix background context planning thread switch>"`: created `d511106`.
 
 ## Verification
 
@@ -212,11 +229,20 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
   - `LlmPlannerAgentTest`
   - `SimpleResearchRunnerTest`
   - 17 tests total.
+- Targeted tests passed after fixing the curl-discovered thread switch:
+  - 17 tests, 0 failures, 0 errors, 0 skipped.
 - Full Java 17 `mvn test` passed:
   - 61 tests, 0 failures, 0 errors, 0 skipped.
 - Real model workflow tests included in full suite passed in this environment.
+- Docker/PostgreSQL-backed curl verification passed after the follow-up thread fix:
+  - `manmu-postgres` was healthy and mapped to local port `5432`.
+  - Backend ran on port `8080`.
+  - Real DeepSeek `deepseek-chat` calls completed for two chat runs in the same session.
+  - First run persisted a report containing `BGCTX-CURL-MARKER-20260522B`.
+  - Second run observed the marker from the first completed report through session context and included it in stream output and persisted report.
+  - Backend was stopped and port `8080` was confirmed free.
 - `git diff --check` reported no whitespace errors, only Windows CRLF conversion warnings.
-- No manual backend service was started; no port `8080` cleanup was required.
+- A failed initial curl attempt found and fixed a runtime threading issue: blocking Spring AI planner calls must run on `boundedElastic` after reactive R2DBC session-context loading.
 
 ## Known Failures / Blockers
 
@@ -229,7 +255,7 @@ Current Commit: 6e5d3142220dbf41fca3716d0724744fb5f79f7a
 
 - Optional next stage: expose a lightweight `background_investigator` SSE event or debug payload if the UI/API needs visibility into which prior reports influenced planning.
 - Optional next stage: add a dedicated background LLM agent that summarizes recent reports before planner input if raw excerpts become too noisy.
-- Optional next stage: run Docker/PostgreSQL-backed curl verification with two chat runs in the same session if manual end-to-end evidence is desired beyond the passing test suite.
+- Optional next stage: expose the exact background/session-context payload in a debug-only endpoint or SSE event if manual observability is desired without marker-style prompts.
 
 ## Open Questions
 
