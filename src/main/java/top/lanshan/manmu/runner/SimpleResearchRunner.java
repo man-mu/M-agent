@@ -136,7 +136,8 @@ public class SimpleResearchRunner {
 	}
 
 	private Flux<ResearchEvent> runPlanner(ResearchState state) {
-		return loadBackgroundContext(state).thenMany(Flux.defer(() -> plannerNode.run(state)));
+		return loadBackgroundContext(state)
+			.thenMany(Flux.defer(() -> plannerNode.run(state)).subscribeOn(Schedulers.boundedElastic()));
 	}
 
 	private Mono<Void> loadBackgroundContext(ResearchState state) {
