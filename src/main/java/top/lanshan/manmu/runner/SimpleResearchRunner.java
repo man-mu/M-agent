@@ -4,6 +4,7 @@ import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchTeamRoute;
+import top.lanshan.manmu.model.PlanValidatorRoute;
 import top.lanshan.manmu.node.ResearchNode;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -28,6 +29,8 @@ public class SimpleResearchRunner {
 	private final ResearchNode coordinatorNode;
 
 	private final ResearchNode plannerNode;
+
+	private final ResearchNode planValidatorNode;
 
 	private final ResearchNode queryRewriteNode;
 
@@ -60,6 +63,7 @@ public class SimpleResearchRunner {
 		this.queryRewriteNode = requiredNode("rewrite_multi_query");
 		this.backgroundInvestigatorNode = requiredNode("background_investigator");
 		this.plannerNode = requiredNode("planner");
+		this.planValidatorNode = requiredNode("plan_validator");
 		this.informationNode = requiredNode("information");
 		this.researchTeamNode = requiredNode("research_team");
 		this.researcherNode = requiredNode("researcher");
@@ -82,13 +86,14 @@ public class SimpleResearchRunner {
 
 	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
+		state.autoAcceptedPlan(false);
 
 		return withRunningStop(state.threadId(), startHistoryThenRun(state, runCoordinator(state)
 			.concatWith(Flux.defer(() -> {
 				if (state.directAnswerRoute()) {
 					return saveCompletedReport(state);
 				}
-				return runPlanner(state).concatWith(pauseForHumanFeedback(state));
+				return runPlanValidation(state).concatWith(Flux.defer(() -> routeValidatedPlan(state)));
 			}))
 			.subscribeOn(Schedulers.boundedElastic())));
 	}
@@ -104,14 +109,8 @@ public class SimpleResearchRunner {
 					resumeExecution(state).subscribeOn(Schedulers.boundedElastic())));
 		}
 		state.planFeedback(decision.feedbackContent());
-		return markRunningThenRun(state, runPlanner(state)
-			.concatWith(Flux.defer(() -> {
-				pausedStates.put(state.threadId(), state);
-				return sessionHistoryService.markPaused(state.threadId())
-					.thenReturn(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
-							"Waiting for human plan feedback", state.plan()))
-					.flux();
-			}))
+		return markRunningThenRun(state, runPlanValidation(state)
+			.concatWith(Flux.defer(() -> routeValidatedPlan(state)))
 			.subscribeOn(Schedulers.boundedElastic()));
 	}
 
@@ -139,13 +138,10 @@ public class SimpleResearchRunner {
 	private Flux<ResearchEvent> runToCompletion(ResearchState state) {
 		return Flux.concat(runCoordinator(state), Flux.defer(() -> {
 			if (state.directAnswerRoute()) {
-				return Flux.empty();
+				return saveCompletedReport(state);
 			}
-			return Flux.concat(runPlanner(state), informationNode.run(state),
-					Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state));
-		}))
-			.subscribeOn(Schedulers.boundedElastic())
-			.concatWith(Flux.defer(() -> saveCompletedReport(state)));
+			return runPlanValidation(state).concatWith(Flux.defer(() -> routeValidatedPlanWithSave(state)));
+		})).subscribeOn(Schedulers.boundedElastic());
 	}
 
 	private Flux<ResearchEvent> runCoordinator(ResearchState state) {
@@ -159,6 +155,40 @@ public class SimpleResearchRunner {
 		return rewriteEvents.concatWith(backgroundInvestigationEvents)
 			.concatWith(loadBackgroundContext(state)
 				.thenMany(Flux.defer(() -> plannerNode.run(state)).subscribeOn(Schedulers.boundedElastic())));
+	}
+
+	private Flux<ResearchEvent> runPlanValidation(ResearchState state) {
+		return runPlanner(state).concatWith(planValidatorNode.run(state)).concatWith(Flux.defer(() -> {
+			PlanValidatorRoute route = state.planValidatorDecision().nextRoute();
+			if (PlanValidatorRoute.PLANNER.equals(route)) {
+				return runPlanValidation(state);
+			}
+			if (PlanValidatorRoute.FAILED.equals(route)) {
+				return Flux.error(new IllegalStateException("Planner did not produce a valid plan after "
+						+ state.planIterations() + " attempt(s): " + state.planValidatorDecision().reason()));
+			}
+			return Flux.empty();
+		}));
+	}
+
+	private Flux<ResearchEvent> routeValidatedPlan(ResearchState state) {
+		PlanValidatorRoute route = state.planValidatorDecision().nextRoute();
+		return switch (route) {
+			case RESEARCH_TEAM -> resumeExecutionWithoutSaving(state);
+			case HUMAN_FEEDBACK -> pauseForHumanFeedback(state);
+			case PLANNER -> Flux.error(new IllegalStateException("Plan validator retry route was not exhausted"));
+			case FAILED -> Flux.error(new IllegalStateException(state.planValidatorDecision().reason()));
+		};
+	}
+
+	private Flux<ResearchEvent> routeValidatedPlanWithSave(ResearchState state) {
+		PlanValidatorRoute route = state.planValidatorDecision().nextRoute();
+		return switch (route) {
+			case RESEARCH_TEAM -> resumeExecution(state);
+			case HUMAN_FEEDBACK -> pauseForHumanFeedback(state);
+			case PLANNER -> Flux.error(new IllegalStateException("Plan validator retry route was not exhausted"));
+			case FAILED -> Flux.error(new IllegalStateException(state.planValidatorDecision().reason()));
+		};
 	}
 
 	private Flux<ResearchEvent> pauseForHumanFeedback(ResearchState state) {
@@ -178,9 +208,13 @@ public class SimpleResearchRunner {
 	}
 
 	private Flux<ResearchEvent> resumeExecution(ResearchState state) {
-		return Flux.concat(informationNode.run(state),
-				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
+		return resumeExecutionWithoutSaving(state)
 			.concatWith(Flux.defer(() -> saveCompletedReport(state)));
+	}
+
+	private Flux<ResearchEvent> resumeExecutionWithoutSaving(ResearchState state) {
+		return Flux.concat(informationNode.run(state),
+				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state));
 	}
 
 	private Flux<ResearchEvent> saveCompletedReport(ResearchState state) {

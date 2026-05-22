@@ -7,7 +7,9 @@ import java.util.UUID;
 
 public record ResearchRequest(@NotBlank String query, String threadId, Integer maxSteps,
 		@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
-		@JsonProperty("enable_deepresearch") Boolean enableDeepResearch) {
+		@JsonProperty("enable_deepresearch") Boolean enableDeepResearch,
+		@JsonProperty("auto_accepted_plan") Boolean autoAcceptedPlan,
+		@JsonProperty("max_plan_iterations") Integer maxPlanIterations) {
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps) {
 		this(query, threadId, maxSteps, null);
@@ -16,6 +18,19 @@ public record ResearchRequest(@NotBlank String query, String threadId, Integer m
 	public ResearchRequest(String query, String threadId, Integer maxSteps,
 			@JsonProperty("optimize_query_num") Integer optimizeQueryNum) {
 		this(query, threadId, maxSteps, optimizeQueryNum, null);
+	}
+
+	public ResearchRequest(String query, String threadId, Integer maxSteps,
+			@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
+			@JsonProperty("enable_deepresearch") Boolean enableDeepResearch) {
+		this(query, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, null, null);
+	}
+
+	public ResearchRequest(String query, String threadId, Integer maxSteps,
+			@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
+			@JsonProperty("enable_deepresearch") Boolean enableDeepResearch,
+			@JsonProperty("auto_accepted_plan") Boolean autoAcceptedPlan) {
+		this(query, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, autoAcceptedPlan, null);
 	}
 
 	public ResearchRequest {
@@ -39,6 +54,15 @@ public record ResearchRequest(@NotBlank String query, String threadId, Integer m
 		}
 		if (enableDeepResearch == null) {
 			enableDeepResearch = true;
+		}
+		if (autoAcceptedPlan == null) {
+			autoAcceptedPlan = true;
+		}
+		if (maxPlanIterations == null || maxPlanIterations < 1) {
+			maxPlanIterations = 3;
+		}
+		if (maxPlanIterations > 5) {
+			maxPlanIterations = 5;
 		}
 	}
 

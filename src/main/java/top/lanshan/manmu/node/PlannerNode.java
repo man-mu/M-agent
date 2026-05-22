@@ -29,13 +29,31 @@ public class PlannerNode implements ResearchNode {
 	@Override
 	public Flux<ResearchEvent> run(ResearchState state) {
 		return Flux.defer(() -> {
-			ResearchPlan plan = plannerAgent.plan(state.query(), state.maxSteps(), state.planFeedback(),
-					state.backgroundContext(), state.optimizedQueries(), state.backgroundInvestigationContext());
-			state.plan(plan);
-			return Flux.just(
-					ResearchEvent.message(state.threadId(), name(), "started", "Planning research steps", null),
-					ResearchEvent.message(state.threadId(), name(), "completed", "Plan generated", plan));
+			state.recordPlanAttempt();
+			state.plannerError(null);
+			ResearchEvent started =
+					ResearchEvent.message(state.threadId(), name(), "started", "Planning research steps", null);
+			try {
+				ResearchPlan plan = plannerAgent.plan(state.query(), state.maxSteps(), state.planFeedback(),
+						state.backgroundContext(), state.optimizedQueries(), state.backgroundInvestigationContext());
+				state.plan(plan);
+				return Flux.just(started,
+						ResearchEvent.message(state.threadId(), name(), "completed", "Plan generated", plan));
+			}
+			catch (RuntimeException error) {
+				state.plan(null);
+				state.plannerError(errorMessage(error));
+				return Flux.just(started, ResearchEvent.message(state.threadId(), name(), "failed",
+						"Plan generation failed", state.plannerError()));
+			}
 		});
+	}
+
+	private String errorMessage(RuntimeException error) {
+		if (error.getMessage() != null && !error.getMessage().isBlank()) {
+			return error.getMessage();
+		}
+		return error.getClass().getSimpleName();
 	}
 
 }

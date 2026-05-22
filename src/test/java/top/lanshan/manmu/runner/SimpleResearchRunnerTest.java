@@ -15,6 +15,8 @@ import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.StepType;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
+import top.lanshan.manmu.model.PlanValidatorDecision;
+import top.lanshan.manmu.model.PlanValidatorRoute;
 import top.lanshan.manmu.node.ResearchNode;
 import top.lanshan.manmu.report.ReportService;
 import top.lanshan.manmu.report.ResearchReport;
@@ -46,8 +48,8 @@ class SimpleResearchRunnerTest {
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
 			.containsExactly("coordinator", "rewrite_multi_query", "background_investigator", "planner",
-					"information", "research_team", "researcher", "research_team", "processor", "research_team",
-					"reporter", "__END__");
+					"plan_validator", "information", "research_team", "researcher", "research_team", "processor",
+					"research_team", "reporter", "__END__");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-1");
 			assertThat(report.sessionId()).isEqualTo("thread-1");
@@ -79,6 +81,7 @@ class SimpleResearchRunnerTest {
 			.expectNextMatches(event -> "rewrite_multi_query".equals(event.node()))
 			.expectNextMatches(event -> "background_investigator".equals(event.node()))
 			.expectNextMatches(event -> "planner".equals(event.node()))
+			.expectNextMatches(event -> "plan_validator".equals(event.node()))
 			.then(() -> assertThat(runner.stop("thread-running-stop")).isTrue())
 			.expectNextMatches(event -> event.done() && "__END__".equals(event.node()) && "stopped".equals(event.phase()))
 			.verifyComplete();
@@ -126,9 +129,9 @@ class SimpleResearchRunnerTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "rewrite_multi_query",
-				"background_investigator", "planner", "human_feedback");
-		assertThat(events.get(4).phase()).isEqualTo("waiting");
-		assertThat(events.get(4).payload()).isInstanceOf(ResearchPlan.class);
+				"background_investigator", "planner", "plan_validator", "human_feedback");
+		assertThat(events.get(5).phase()).isEqualTo("waiting");
+		assertThat(events.get(5).payload()).isInstanceOf(ResearchPlan.class);
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
 	}
 
@@ -202,8 +205,9 @@ class SimpleResearchRunnerTest {
 		assertThat(events).isNotNull();
 		assertThat(planningNode.runCount()).isEqualTo(2);
 		assertThat(planningNode.lastFeedback()).isEqualTo("Focus on risks.");
-		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
-		assertThat(events.get(1).phase()).isEqualTo("waiting");
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "plan_validator",
+				"human_feedback");
+		assertThat(events.get(2).phase()).isEqualTo("waiting");
 		assertThat(reportService.savedReports()).isEmpty();
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "PAUSED");
 	}
@@ -283,13 +287,61 @@ class SimpleResearchRunnerTest {
 	}
 
 	@Test
+	void invalidPlanIsRetriedBeforeResearchContinues() {
+		RetryingPlanningNode planningNode = new RetryingPlanningNode(1);
+		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(),
+				new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(), planningNode,
+				new RealPlanValidatorNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new RecordingSessionContextService());
+
+		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-retry", 1))
+			.collectList()
+			.block();
+
+		assertThat(events).isNotNull();
+		assertThat(planningNode.runCount()).isEqualTo(2);
+		assertThat(events).extracting(ResearchEvent::node).containsSubsequence("planner", "plan_validator",
+				"planner", "plan_validator", "information", "__END__");
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-retry");
+			assertThat(report.report()).isEqualTo("done");
+		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
+	}
+
+	@Test
+	void invalidPlanFailureMarksSessionHistoryFailedAfterRetryLimit() {
+		RetryingPlanningNode planningNode = new RetryingPlanningNode(5);
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(),
+				new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(), planningNode,
+				new RealPlanValidatorNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(), sessionHistoryService,
+				new RecordingSessionContextService());
+
+		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-retry-failed", 1,
+				null, true, true, 2)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(planningNode.runCount()).isEqualTo(2);
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "rewrite_multi_query",
+				"background_investigator", "planner", "plan_validator", "planner", "plan_validator", "runner");
+		assertThat(events.get(events.size() - 1).content()).contains("Planner did not produce a valid plan after 2");
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "FAILED");
+	}
+
+	@Test
 	void loadsBackgroundContextBeforePlanning() {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
 		sessionContextService.context("session-context", "Prior report context");
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
-				new BackgroundInvestigatorNodeStub(), planningNode, new InformationNode(), new TeamNode(),
-				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(),
+				new PlanValidatorNodeStub(), new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(),
+				planningNode, new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
 				new RecordingSessionHistoryService(), sessionContextService);
 
 		runner.runChat(new ResearchRequest("Continue the investigation.", "thread-context", 1), "session-context")
@@ -305,16 +357,18 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		QueryRewriteNodeStub queryRewriteNode = new QueryRewriteNodeStub();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(), queryRewriteNode,
-				new BackgroundInvestigatorNodeStub(), planningNode, new InformationNode(), new TeamNode(),
-				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
-				new RecordingSessionHistoryService(), sessionContextService);
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new CoordinatorNodeStub(),
+				new PlanValidatorNodeStub(), queryRewriteNode, new BackgroundInvestigatorNodeStub(), planningNode,
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), new RecordingReportService(), new RecordingSessionHistoryService(),
+				sessionContextService);
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-order", 1)).collectList().block();
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.startsWith("coordinator", "rewrite_multi_query", "background_investigator", "planner");
+			.startsWith("coordinator", "rewrite_multi_query", "background_investigator", "planner",
+					"plan_validator");
 		assertThat(queryRewriteNode.lastOptimizeQueryNum()).isEqualTo(3);
 		assertThat(planningNode.lastOptimizedQueries()).containsExactly("Explain workflow.",
 				"Explain workflow. architecture");
@@ -325,6 +379,7 @@ class SimpleResearchRunnerTest {
 			SessionHistoryService sessionHistoryService) {
 		List<ResearchNode> nodesWithCoordinator = new ArrayList<>();
 		nodesWithCoordinator.add(new CoordinatorNodeStub());
+		nodesWithCoordinator.add(new PlanValidatorNodeStub());
 		nodesWithCoordinator.addAll(nodes);
 		return new SimpleResearchRunner(nodesWithCoordinator, reportService, sessionHistoryService,
 				new RecordingSessionContextService());
@@ -335,9 +390,10 @@ class SimpleResearchRunnerTest {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
-				new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(), new PlanningNode(),
-				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
-				new ReporterNode()), reportService, sessionHistoryService, new RecordingSessionContextService());
+				new PlanValidatorNodeStub(), new QueryRewriteNodeStub(), new BackgroundInvestigatorNodeStub(),
+				new PlanningNode(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new RecordingSessionContextService());
 
 		var events = runner.run(new ResearchRequest("Say hello.", "thread-direct", 2, null, false))
 			.collectList()
@@ -397,6 +453,51 @@ class SimpleResearchRunnerTest {
 
 	}
 
+	private static class PlanValidatorNodeStub implements ResearchNode {
+
+		@Override
+		public int order() {
+			return 15;
+		}
+
+		@Override
+		public String name() {
+			return "plan_validator";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			PlanValidatorRoute route = state.autoAcceptedPlan() ? PlanValidatorRoute.RESEARCH_TEAM
+					: PlanValidatorRoute.HUMAN_FEEDBACK;
+			state.planValidatorDecision(new PlanValidatorDecision(route, true, state.planIterations(),
+					state.maxPlanIterations(), "Valid plan"));
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "validated",
+					state.planValidatorDecision()));
+		}
+
+	}
+
+	private static class RealPlanValidatorNodeAdapter implements ResearchNode {
+
+		private final top.lanshan.manmu.node.PlanValidatorNode delegate = new top.lanshan.manmu.node.PlanValidatorNode();
+
+		@Override
+		public int order() {
+			return delegate.order();
+		}
+
+		@Override
+		public String name() {
+			return delegate.name();
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			return delegate.run(state);
+		}
+
+	}
+
 	private static class PlanningNode implements ResearchNode {
 
 		private int runCount;
@@ -451,6 +552,50 @@ class SimpleResearchRunnerTest {
 
 		List<String> lastOptimizedQueries() {
 			return lastOptimizedQueries;
+		}
+
+	}
+
+	private static class RetryingPlanningNode implements ResearchNode {
+
+		private final int failuresBeforeSuccess;
+
+		private int runCount;
+
+		RetryingPlanningNode(int failuresBeforeSuccess) {
+			this.failuresBeforeSuccess = failuresBeforeSuccess;
+		}
+
+		@Override
+		public int order() {
+			return 10;
+		}
+
+		@Override
+		public String name() {
+			return "planner";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			runCount++;
+			state.recordPlanAttempt();
+			if (runCount <= failuresBeforeSuccess) {
+				state.plan(null);
+				state.plannerError("planner failed");
+				return Flux.just(ResearchEvent.message(state.threadId(), name(), "failed",
+						"Plan generation failed", state.plannerError()));
+			}
+			state.plannerError(null);
+			state.plan(new ResearchPlan("Plan", true, "Think", List.of(new ResearchStep("Step", "Do work", false,
+					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING),
+					new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
+							ResearchStep.STATUS_PENDING))));
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "planned", state.plan()));
+		}
+
+		int runCount() {
+			return runCount;
 		}
 
 	}

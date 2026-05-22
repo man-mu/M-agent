@@ -44,7 +44,7 @@ public class ChatController {
 	public Flux<ServerSentEvent<ChatStreamResponse>> stream(@Valid @RequestBody ChatRequest request) {
 		GraphId graphId = graphId(request);
 		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum(),
-				request.optimizeQueryNum(), request.enableDeepResearch());
+				request.optimizeQueryNum(), request.enableDeepResearch(), request.autoAcceptedPlan());
 
 		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest, graphId.sessionId())
 				: runner.runUntilPlanGate(researchRequest, graphId.sessionId());
@@ -121,6 +121,7 @@ public class ChatController {
 			case "background_investigator" -> "Background Investigation";
 			case "human_feedback" -> "人工反馈";
 			case "planner" -> "研究计划";
+			case "plan_validator" -> "Plan Validator";
 			case "information" -> "信息检索";
 			case "research_team" -> "研究团队";
 			case "researcher" -> "研究执行";

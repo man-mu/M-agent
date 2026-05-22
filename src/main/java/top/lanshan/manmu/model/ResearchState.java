@@ -18,7 +18,17 @@ public class ResearchState {
 
 	private final boolean deepResearchEnabled;
 
+	private boolean autoAcceptedPlan;
+
+	private final int maxPlanIterations;
+
+	private int planIterations;
+
+	private String plannerError;
+
 	private CoordinatorDecision coordinatorDecision;
+
+	private PlanValidatorDecision planValidatorDecision;
 
 	private ResearchPlan plan;
 
@@ -47,13 +57,15 @@ public class ResearchState {
 	private String report;
 
 	private ResearchState(String threadId, String sessionId, String query, int maxSteps, int optimizeQueryNum,
-			boolean deepResearchEnabled) {
+			boolean deepResearchEnabled, boolean autoAcceptedPlan, int maxPlanIterations) {
 		this.threadId = threadId;
 		this.sessionId = sessionId;
 		this.query = query;
 		this.maxSteps = maxSteps;
 		this.optimizeQueryNum = optimizeQueryNum;
 		this.deepResearchEnabled = deepResearchEnabled;
+		this.autoAcceptedPlan = autoAcceptedPlan;
+		this.maxPlanIterations = maxPlanIterations;
 	}
 
 	public static ResearchState from(ResearchRequest request) {
@@ -65,7 +77,8 @@ public class ResearchState {
 			sessionId = request.threadId();
 		}
 		return new ResearchState(request.threadId(), sessionId, request.query(), request.maxSteps(),
-				request.optimizeQueryNum(), request.enableDeepResearch());
+				request.optimizeQueryNum(), request.enableDeepResearch(), request.autoAcceptedPlan(),
+				request.maxPlanIterations());
 	}
 
 	public String threadId() {
@@ -92,6 +105,34 @@ public class ResearchState {
 		return deepResearchEnabled;
 	}
 
+	public boolean autoAcceptedPlan() {
+		return autoAcceptedPlan;
+	}
+
+	public void autoAcceptedPlan(boolean autoAcceptedPlan) {
+		this.autoAcceptedPlan = autoAcceptedPlan;
+	}
+
+	public int maxPlanIterations() {
+		return maxPlanIterations;
+	}
+
+	public int planIterations() {
+		return planIterations;
+	}
+
+	public void recordPlanAttempt() {
+		this.planIterations++;
+	}
+
+	public String plannerError() {
+		return plannerError;
+	}
+
+	public void plannerError(String plannerError) {
+		this.plannerError = plannerError;
+	}
+
 	public CoordinatorDecision coordinatorDecision() {
 		return coordinatorDecision;
 	}
@@ -102,6 +143,14 @@ public class ResearchState {
 
 	public boolean directAnswerRoute() {
 		return coordinatorDecision != null && coordinatorDecision.directAnswerRoute();
+	}
+
+	public PlanValidatorDecision planValidatorDecision() {
+		return planValidatorDecision;
+	}
+
+	public void planValidatorDecision(PlanValidatorDecision planValidatorDecision) {
+		this.planValidatorDecision = planValidatorDecision;
 	}
 
 	public ResearchPlan plan() {
