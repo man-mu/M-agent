@@ -62,7 +62,21 @@ public final class ResearchGraphState {
 	}
 
 	public static List<ResearchEvent> events(Map<String, Object> graphState) {
-		return List.copyOf(eventsForAppend(graphState));
+		Object events = optionalValue(graphState, ResearchGraphStateKeys.EVENTS);
+		if (events == null) {
+			return List.of();
+		}
+		if (events instanceof List<?> eventList) {
+			for (Object event : eventList) {
+				if (!(event instanceof ResearchEvent)) {
+					throw new IllegalStateException("Graph state value '" + ResearchGraphStateKeys.EVENTS
+							+ "' contains a non-ResearchEvent value");
+				}
+			}
+			return List.copyOf(eventList.stream().map(ResearchEvent.class::cast).toList());
+		}
+		throw new IllegalStateException("Graph state value '" + ResearchGraphStateKeys.EVENTS
+				+ "' is not a List");
 	}
 
 	public static void resumeDecision(Map<String, Object> graphState, ResumeDecision decision) {
