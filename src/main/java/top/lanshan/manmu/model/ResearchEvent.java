@@ -19,6 +19,10 @@ public record ResearchEvent(String threadId, String node, String phase, String c
 		return new ResearchEvent(threadId, "__END__", "completed", content, payload, true, Instant.now());
 	}
 
+	public static ResearchEvent stopped(String threadId, String content) {
+		return new ResearchEvent(threadId, "__END__", "stopped", content, null, true, Instant.now());
+	}
+
 	public static ResearchEvent error(String threadId, String node, Throwable throwable) {
 		// error 事件也是一条正常 SSE 消息。这样前端能收到结构化错误，而不是只看到连接中断。
 		return new ResearchEvent(threadId, node, "error", throwable.getMessage(), null, true, Instant.now());

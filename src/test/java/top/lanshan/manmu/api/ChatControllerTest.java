@@ -54,9 +54,40 @@ class ChatControllerTest {
 
 		ArgumentCaptor<ResearchRequest> requestCaptor = ArgumentCaptor.forClass(ResearchRequest.class);
 		verify(runner).runUntilPlanGate(requestCaptor.capture());
-		verify(runner, never()).run(any());
+		verify(runner, never()).runChat(any());
 		assertThat(requestCaptor.getValue().threadId()).isEqualTo("thread-1");
 		assertThat(requestCaptor.getValue().maxSteps()).isEqualTo(2);
+	}
+
+	@Test
+	void streamUsesCancellableChatRunWhenAutoAcceptedPlanIsTrue() {
+		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		when(runner.runChat(any())).thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user")));
+		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+
+		var events = client.post()
+			.uri("/chat/stream")
+			.contentType(MediaType.APPLICATION_JSON)
+			.bodyValue(Map.of("session_id", "session-auto", "thread_id", "thread-auto", "max_step_num", 2,
+					"auto_accepted_plan", true, "query", "Explain the workflow."))
+			.exchange()
+			.expectStatus()
+			.isOk()
+			.returnResult(ChatStreamResponse.class)
+			.getResponseBody()
+			.collectList()
+			.block(Duration.ofSeconds(5));
+
+		assertThat(events).isNotNull();
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.nodeName()).isEqualTo("__END__");
+			assertThat(event.graphId().threadId()).isEqualTo("thread-auto");
+			assertThat(event.content()).isEqualTo(Map.of("reason", "Stopped by user", "done", true));
+		});
+
+		verify(runner).runChat(any());
+		verify(runner, never()).run(any());
+		verify(runner, never()).runUntilPlanGate(any());
 	}
 
 	@Test

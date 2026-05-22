@@ -43,7 +43,7 @@ public class ChatController {
 		GraphId graphId = graphId(request);
 		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum());
 
-		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.run(researchRequest)
+		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest)
 				: runner.runUntilPlanGate(researchRequest);
 		return events.map(event -> ServerSentEvent.<ChatStreamResponse>builder()
 			.id(graphId.threadId())
@@ -87,6 +87,9 @@ public class ChatController {
 		if ("error".equals(event.phase())) {
 			return Map.of("reason", event.content());
 		}
+		if ("stopped".equals(event.phase())) {
+			return Map.of("reason", event.content(), "done", true);
+		}
 		if (event.done()) {
 			return Map.of("output", event.payload(), "done", true);
 		}
@@ -121,6 +124,9 @@ public class ChatController {
 	private String eventName(ResearchEvent event) {
 		if ("error".equals(event.phase())) {
 			return "error";
+		}
+		if ("stopped".equals(event.phase())) {
+			return "stopped";
 		}
 		return event.done() ? "done" : "message";
 	}

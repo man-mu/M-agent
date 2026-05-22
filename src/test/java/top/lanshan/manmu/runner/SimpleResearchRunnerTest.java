@@ -2,6 +2,8 @@ package top.lanshan.manmu.runner;
 
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
+import reactor.test.StepVerifier;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.model.ResearchRequest;
@@ -29,6 +31,38 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node)
 			.containsExactly("planner", "information", "research_team", "researcher", "research_team", "processor",
 					"research_team", "reporter", "__END__");
+	}
+
+	@Test
+	void runChatCanBeStoppedWhileRunning() {
+		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(),
+				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()));
+
+		StepVerifier.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1)))
+			.expectNextMatches(event -> "planner".equals(event.node()))
+			.then(() -> assertThat(runner.stop("thread-running-stop")).isTrue())
+			.expectNextMatches(event -> event.done() && "__END__".equals(event.node()) && "stopped".equals(event.phase()))
+			.verifyComplete();
+
+		assertThat(runner.stop("thread-running-stop")).isFalse();
+		releaseInformation.tryEmitEmpty();
+	}
+
+	@Test
+	void runChatCleansUpAfterNormalCompletion() {
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		var events = runner.runChat(new ResearchRequest("Explain workflow.", "thread-normal-cleanup", 1))
+			.collectList()
+			.block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).last().isEqualTo("__END__");
+		assertThat(events).extracting(ResearchEvent::phase).last().isEqualTo("completed");
+		assertThat(runner.stop("thread-normal-cleanup")).isFalse();
 	}
 
 	@Test
@@ -60,6 +94,26 @@ class SimpleResearchRunnerTest {
 		assertThat(events).extracting(ResearchEvent::node)
 			.containsExactly("information", "research_team", "researcher", "research_team", "processor",
 					"research_team", "reporter", "__END__");
+	}
+
+	@Test
+	void acceptedResumeCanBeStoppedWhileRunning() {
+		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		PlanningNode planningNode = new PlanningNode();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode,
+				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()));
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume-stop", 1)).collectList().block();
+
+		StepVerifier.create(runner.resume("thread-resume-stop", new ResumeDecision(true, null)))
+			.then(() -> assertThat(runner.stop("thread-resume-stop")).isTrue())
+			.expectNextMatches(event -> event.done() && "__END__".equals(event.node()) && "stopped".equals(event.phase()))
+			.verifyComplete();
+
+		assertThat(planningNode.runCount()).isEqualTo(1);
+		assertThat(runner.stop("thread-resume-stop")).isFalse();
+		releaseInformation.tryEmitEmpty();
 	}
 
 	@Test
@@ -171,6 +225,33 @@ class SimpleResearchRunnerTest {
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()));
+		}
+
+	}
+
+	private static class BlockingInformationNode implements ResearchNode {
+
+		private final Sinks.Empty<Void> release;
+
+		BlockingInformationNode(Sinks.Empty<Void> release) {
+			this.release = release;
+		}
+
+		@Override
+		public int order() {
+			return 20;
+		}
+
+		@Override
+		public String name() {
+			return "information";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			return release.asMono()
+				.thenReturn(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()))
+				.flux();
 		}
 
 	}
