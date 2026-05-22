@@ -30,6 +30,12 @@ public class ResearchState {
 
 	private PlanValidatorDecision planValidatorDecision;
 
+	private Boolean humanFeedbackAccepted;
+
+	private String humanFeedbackContent;
+
+	private HumanFeedbackDecision humanFeedbackDecision;
+
 	private ResearchPlan plan;
 
 	private String planFeedback;
@@ -151,6 +157,32 @@ public class ResearchState {
 
 	public void planValidatorDecision(PlanValidatorDecision planValidatorDecision) {
 		this.planValidatorDecision = planValidatorDecision;
+	}
+
+	public Boolean humanFeedbackAccepted() {
+		return humanFeedbackAccepted;
+	}
+
+	public String humanFeedbackContent() {
+		return humanFeedbackContent;
+	}
+
+	public void humanFeedback(Boolean accepted, String feedbackContent) {
+		this.humanFeedbackAccepted = accepted;
+		this.humanFeedbackContent = feedbackContent;
+	}
+
+	public void clearHumanFeedbackInput() {
+		this.humanFeedbackAccepted = null;
+		this.humanFeedbackContent = null;
+	}
+
+	public HumanFeedbackDecision humanFeedbackDecision() {
+		return humanFeedbackDecision;
+	}
+
+	public void humanFeedbackDecision(HumanFeedbackDecision humanFeedbackDecision) {
+		this.humanFeedbackDecision = humanFeedbackDecision;
 	}
 
 	public ResearchPlan plan() {

@@ -5,6 +5,7 @@ import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.PlanValidatorRoute;
+import top.lanshan.manmu.model.HumanFeedbackRoute;
 import top.lanshan.manmu.node.ResearchNode;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -31,6 +32,8 @@ public class SimpleResearchRunner {
 	private final ResearchNode plannerNode;
 
 	private final ResearchNode planValidatorNode;
+
+	private final ResearchNode humanFeedbackNode;
 
 	private final ResearchNode queryRewriteNode;
 
@@ -64,6 +67,7 @@ public class SimpleResearchRunner {
 		this.backgroundInvestigatorNode = requiredNode("background_investigator");
 		this.plannerNode = requiredNode("planner");
 		this.planValidatorNode = requiredNode("plan_validator");
+		this.humanFeedbackNode = requiredNode("human_feedback");
 		this.informationNode = requiredNode("information");
 		this.researchTeamNode = requiredNode("research_team");
 		this.researcherNode = requiredNode("researcher");
@@ -105,13 +109,13 @@ public class SimpleResearchRunner {
 					new IllegalArgumentException("No paused research state found for thread: " + threadId)));
 		}
 		if (decision.accepted()) {
+			state.humanFeedback(true, null);
 			return withRunningStop(state.threadId(), markRunningThenRun(state,
-					resumeExecution(state).subscribeOn(Schedulers.boundedElastic())));
+					runHumanFeedbackRoute(state).subscribeOn(Schedulers.boundedElastic())));
 		}
-		state.planFeedback(decision.feedbackContent());
-		return markRunningThenRun(state, runPlanValidation(state)
-			.concatWith(Flux.defer(() -> routeValidatedPlan(state)))
-			.subscribeOn(Schedulers.boundedElastic()));
+		state.humanFeedback(false, decision.feedbackContent());
+		return withRunningStop(state.threadId(),
+				markRunningThenRun(state, runHumanFeedbackRoute(state).subscribeOn(Schedulers.boundedElastic())));
 	}
 
 	public boolean stop(String threadId) {
@@ -195,10 +199,21 @@ public class SimpleResearchRunner {
 		return Flux.defer(() -> {
 			pausedStates.put(state.threadId(), state);
 			return sessionHistoryService.markPaused(state.threadId())
-				.thenReturn(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
-						"Waiting for human plan feedback", state.plan()))
-				.flux();
+				.thenMany(humanFeedbackNode.run(state));
 		});
+	}
+
+	private Flux<ResearchEvent> runHumanFeedbackRoute(ResearchState state) {
+		return humanFeedbackNode.run(state).concatWith(Flux.defer(() -> routeHumanFeedback(state)));
+	}
+
+	private Flux<ResearchEvent> routeHumanFeedback(ResearchState state) {
+		HumanFeedbackRoute route = state.humanFeedbackDecision().nextRoute();
+		return switch (route) {
+			case RESEARCH_TEAM -> resumeExecution(state);
+			case PLANNER -> runPlanValidation(state).concatWith(Flux.defer(() -> routeValidatedPlan(state)));
+			case WAITING -> pauseForHumanFeedback(state);
+		};
 	}
 
 	private Mono<Void> loadBackgroundContext(ResearchState state) {
@@ -237,9 +252,19 @@ public class SimpleResearchRunner {
 	}
 
 	private Flux<ResearchEvent> markFailedThenReturnError(ResearchState state, Throwable error) {
-		return sessionHistoryService.markFailed(state.threadId(), error.getMessage())
+		return sessionHistoryService.markFailed(state.threadId(), errorMessage(error))
 			.onErrorResume(markError -> Mono.empty())
 			.thenMany(Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	private String errorMessage(Throwable error) {
+		if (error == null) {
+			return "Unknown error";
+		}
+		if (error.getMessage() != null && !error.getMessage().isBlank()) {
+			return error.getMessage();
+		}
+		return error.getClass().getSimpleName();
 	}
 
 	private Flux<ResearchEvent> withRunningStop(String threadId, Flux<ResearchEvent> events) {

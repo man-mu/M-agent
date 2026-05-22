@@ -23,6 +23,7 @@ import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.runner.ResumeDecision;
 import top.lanshan.manmu.runner.SimpleResearchRunner;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,15 +90,22 @@ public class ChatController {
 
 	private Object content(ResearchEvent event) {
 		if ("error".equals(event.phase())) {
-			return Map.of("reason", event.content());
+			return Map.of("reason", safeContent(event.content(), "Unknown error"));
 		}
 		if ("stopped".equals(event.phase())) {
-			return Map.of("reason", event.content(), "done", true);
+			return Map.of("reason", safeContent(event.content(), "Research workflow stopped"), "done", true);
 		}
 		if (event.done()) {
-			return Map.of("output", event.payload(), "done", true);
+			Map<String, Object> done = new LinkedHashMap<>();
+			done.put("output", event.payload());
+			done.put("done", true);
+			return done;
 		}
 		return event.payload() == null ? event.content() : event.payload();
+	}
+
+	private String safeContent(String content, String fallback) {
+		return content == null || content.isBlank() ? fallback : content;
 	}
 
 	private Object siteInformation(ResearchEvent event) {
