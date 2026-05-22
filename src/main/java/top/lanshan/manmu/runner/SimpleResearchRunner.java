@@ -29,6 +29,8 @@ public class SimpleResearchRunner {
 
 	private final ResearchNode queryRewriteNode;
 
+	private final ResearchNode backgroundInvestigatorNode;
+
 	private final ResearchNode informationNode;
 
 	private final ResearchNode researchTeamNode;
@@ -53,6 +55,7 @@ public class SimpleResearchRunner {
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
 		this.nodes = nodes.stream().sorted(Comparator.comparingInt(ResearchNode::order)).toList();
 		this.queryRewriteNode = requiredNode("rewrite_multi_query");
+		this.backgroundInvestigatorNode = requiredNode("background_investigator");
 		this.plannerNode = requiredNode("planner");
 		this.informationNode = requiredNode("information");
 		this.researchTeamNode = requiredNode("research_team");
@@ -140,8 +143,11 @@ public class SimpleResearchRunner {
 
 	private Flux<ResearchEvent> runPlanner(ResearchState state) {
 		Flux<ResearchEvent> rewriteEvents = state.queryRewriteCompleted() ? Flux.empty() : queryRewriteNode.run(state);
-		return rewriteEvents.concatWith(loadBackgroundContext(state)
-			.thenMany(Flux.defer(() -> plannerNode.run(state)).subscribeOn(Schedulers.boundedElastic())));
+		Flux<ResearchEvent> backgroundInvestigationEvents = state.backgroundInvestigationCompleted() ? Flux.empty()
+				: backgroundInvestigatorNode.run(state);
+		return rewriteEvents.concatWith(backgroundInvestigationEvents)
+			.concatWith(loadBackgroundContext(state)
+				.thenMany(Flux.defer(() -> plannerNode.run(state)).subscribeOn(Schedulers.boundedElastic())));
 	}
 
 	private Mono<Void> loadBackgroundContext(ResearchState state) {

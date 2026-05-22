@@ -22,15 +22,21 @@ public class ResearchState {
 
 	private String backgroundContext;
 
+	private String backgroundInvestigationContext;
+
 	private List<String> optimizedQueries = List.of();
 
 	private boolean queryRewriteCompleted;
+
+	private boolean backgroundInvestigationCompleted;
 
 	private ResearchTeamDecision researchTeamDecision;
 
 	private final List<String> observations = new ArrayList<>();
 
 	private final List<StepSearchContext> searchContexts = new ArrayList<>();
+
+	private List<BackgroundInvestigationSearchResult> backgroundInvestigationResults = List.of();
 
 	private final List<SiteInformation> siteInformation = new ArrayList<>();
 
@@ -100,6 +106,14 @@ public class ResearchState {
 		this.backgroundContext = backgroundContext;
 	}
 
+	public String backgroundInvestigationContext() {
+		return backgroundInvestigationContext;
+	}
+
+	public void backgroundInvestigationContext(String backgroundInvestigationContext) {
+		this.backgroundInvestigationContext = backgroundInvestigationContext;
+	}
+
 	public List<String> optimizedQueries() {
 		return optimizedQueries;
 	}
@@ -114,6 +128,14 @@ public class ResearchState {
 
 	public void queryRewriteCompleted(boolean queryRewriteCompleted) {
 		this.queryRewriteCompleted = queryRewriteCompleted;
+	}
+
+	public boolean backgroundInvestigationCompleted() {
+		return backgroundInvestigationCompleted;
+	}
+
+	public void backgroundInvestigationCompleted(boolean backgroundInvestigationCompleted) {
+		this.backgroundInvestigationCompleted = backgroundInvestigationCompleted;
 	}
 
 	public ResearchTeamDecision researchTeamDecision() {
@@ -134,6 +156,15 @@ public class ResearchState {
 
 	public List<StepSearchContext> searchContexts() {
 		return searchContexts;
+	}
+
+	public List<BackgroundInvestigationSearchResult> backgroundInvestigationResults() {
+		return backgroundInvestigationResults;
+	}
+
+	public void backgroundInvestigationResults(List<BackgroundInvestigationSearchResult> backgroundInvestigationResults) {
+		this.backgroundInvestigationResults =
+				backgroundInvestigationResults == null ? List.of() : List.copyOf(backgroundInvestigationResults);
 	}
 
 	public void addSearchContext(StepSearchContext searchContext) {

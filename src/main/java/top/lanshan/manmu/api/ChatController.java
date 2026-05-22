@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ApiResponse;
+import top.lanshan.manmu.model.BackgroundInvestigationPayload;
 import top.lanshan.manmu.model.ChatRequest;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.FeedbackRequest;
@@ -106,12 +107,17 @@ public class ChatController {
 		if ("information".equals(event.node()) && event.payload() instanceof List<?> payload) {
 			return payload;
 		}
+		if ("background_investigator".equals(event.node())
+				&& event.payload() instanceof BackgroundInvestigationPayload payload) {
+			return payload.siteInformation();
+		}
 		return List.of();
 	}
 
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
 			case "rewrite_multi_query" -> "Query Rewrite";
+			case "background_investigator" -> "Background Investigation";
 			case "human_feedback" -> "人工反馈";
 			case "planner" -> "研究计划";
 			case "information" -> "信息检索";

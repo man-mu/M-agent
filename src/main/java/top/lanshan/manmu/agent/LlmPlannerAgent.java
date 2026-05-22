@@ -46,6 +46,12 @@ public class LlmPlannerAgent implements PlannerAgent {
 	@Override
 	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
 			List<String> optimizedQueries) {
+		return plan(query, maxSteps, feedbackContent, backgroundContext, optimizedQueries, null);
+	}
+
+	@Override
+	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+			List<String> optimizedQueries, String backgroundInvestigationContext) {
 		String userPrompt = """
 				User question:
 				%s
@@ -54,8 +60,10 @@ public class LlmPlannerAgent implements PlannerAgent {
 				%s
 				%s
 				%s
+				%s
 				""".formatted(query, maxSteps, optimizedQueriesPrompt(optimizedQueries),
-				backgroundContextPrompt(backgroundContext), feedbackPrompt(feedbackContent));
+				backgroundInvestigationPrompt(backgroundInvestigationContext), backgroundContextPrompt(backgroundContext),
+				feedbackPrompt(feedbackContent));
 
 		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
@@ -77,6 +85,18 @@ public class LlmPlannerAgent implements PlannerAgent {
 				%s
 				Use these query variants to understand the user's intent and improve the coverage of the plan. Keep the original user question as the source of truth.
 				""".formatted(queries);
+	}
+
+	private String backgroundInvestigationPrompt(String backgroundInvestigationContext) {
+		if (backgroundInvestigationContext == null || backgroundInvestigationContext.isBlank()) {
+			return "";
+		}
+		return """
+
+				Current-question background investigation from web search:
+				%s
+				Use this current background as grounded context for deciding what still needs to be researched. Do not treat failed or missing searches as evidence.
+				""".formatted(backgroundInvestigationContext.strip());
 	}
 
 	private String backgroundContextPrompt(String backgroundContext) {
