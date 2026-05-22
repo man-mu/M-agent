@@ -50,7 +50,7 @@ public class InformationNode implements ResearchNode {
 					"Collecting web information for " + searchableSteps.size() + " planned steps", null));
 
 			for (ResearchStep step : searchableSteps) {
-				String searchQuery = searchQuery(state.query(), step);
+				String searchQuery = searchQuery(state, step);
 				List<SiteInformation> results = webSearchClient.search(searchQuery);
 				StepSearchContext searchContext = new StepSearchContext(step.title(), searchQuery, results);
 				step.searchContext(searchContext);
@@ -66,13 +66,26 @@ public class InformationNode implements ResearchNode {
 		});
 	}
 
-	private String searchQuery(String userQuery, ResearchStep step) {
+	private String searchQuery(ResearchState state, ResearchStep step) {
+		String optimizedQueries = optimizedQueriesText(state);
 		return """
+				%s
 				%s
 
 				%s
 				%s
-				""".formatted(userQuery, step.title(), step.description()).strip();
+				""".formatted(state.query(), optimizedQueries, step.title(), step.description()).strip();
+	}
+
+	private String optimizedQueriesText(ResearchState state) {
+		if (state.optimizedQueries().isEmpty()) {
+			return "";
+		}
+		return """
+
+				Optimized queries:
+				%s
+				""".formatted(String.join("\n", state.optimizedQueries()));
 	}
 
 }

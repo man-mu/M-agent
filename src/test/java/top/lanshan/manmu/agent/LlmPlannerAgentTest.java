@@ -15,9 +15,12 @@ class LlmPlannerAgentTest {
 		LlmPlannerAgent plannerAgent = new LlmPlannerAgent(agentClient, new PromptService(new DefaultResourceLoader()),
 				new PlannerOutputMapper());
 
-		plannerAgent.plan("Continue the topic.", 2, "Focus on risks.", "Prior report context");
+		plannerAgent.plan("Continue the topic.", 2, "Focus on risks.", "Prior report context",
+				java.util.List.of("Continue the topic.", "Continue the topic with Java backend risks"));
 
 		assertThat(agentClient.userPrompt).contains("Continue the topic.")
+			.contains("Optimized research queries")
+			.contains("Continue the topic with Java backend risks")
 			.contains("Recent completed reports from the same session")
 			.contains("Prior report context")
 			.contains("Human feedback for replanning")

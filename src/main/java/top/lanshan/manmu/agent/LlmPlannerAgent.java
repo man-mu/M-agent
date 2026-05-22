@@ -6,6 +6,10 @@ import top.lanshan.manmu.agent.client.AgentClient;
 import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.prompt.PromptService;
 
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 @Component
 public class LlmPlannerAgent implements PlannerAgent {
 
@@ -36,6 +40,12 @@ public class LlmPlannerAgent implements PlannerAgent {
 
 	@Override
 	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext) {
+		return plan(query, maxSteps, feedbackContent, backgroundContext, List.of());
+	}
+
+	@Override
+	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+			List<String> optimizedQueries) {
 		String userPrompt = """
 				User question:
 				%s
@@ -43,13 +53,30 @@ public class LlmPlannerAgent implements PlannerAgent {
 				Maximum number of steps: %d
 				%s
 				%s
-				""".formatted(query, maxSteps, backgroundContextPrompt(backgroundContext), feedbackPrompt(feedbackContent));
+				%s
+				""".formatted(query, maxSteps, optimizedQueriesPrompt(optimizedQueries),
+				backgroundContextPrompt(backgroundContext), feedbackPrompt(feedbackContent));
 
 		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
 		PlannerResponse response = outputConverter.convert(modelOutput);
 
 		return outputMapper.toResearchPlan(response, query, maxSteps);
+	}
+
+	private String optimizedQueriesPrompt(List<String> optimizedQueries) {
+		if (optimizedQueries == null || optimizedQueries.isEmpty()) {
+			return "";
+		}
+		String queries = IntStream.range(0, optimizedQueries.size())
+			.mapToObj(index -> "%d. %s".formatted(index + 1, optimizedQueries.get(index)))
+			.collect(Collectors.joining("\n"));
+		return """
+
+				Optimized research queries:
+				%s
+				Use these query variants to understand the user's intent and improve the coverage of the plan. Keep the original user question as the source of truth.
+				""".formatted(queries);
 	}
 
 	private String backgroundContextPrompt(String backgroundContext) {

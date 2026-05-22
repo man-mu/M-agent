@@ -30,7 +30,7 @@ public class PlannerNode implements ResearchNode {
 	public Flux<ResearchEvent> run(ResearchState state) {
 		return Flux.defer(() -> {
 			ResearchPlan plan = plannerAgent.plan(state.query(), state.maxSteps(), state.planFeedback(),
-					state.backgroundContext());
+					state.backgroundContext(), state.optimizedQueries());
 			state.plan(plan);
 			return Flux.just(
 					ResearchEvent.message(state.threadId(), name(), "started", "Planning research steps", null),

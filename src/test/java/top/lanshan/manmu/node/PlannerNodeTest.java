@@ -22,6 +22,7 @@ class PlannerNodeTest {
 				"session-1");
 		state.planFeedback("Prefer implementation details.");
 		state.backgroundContext("Previous report context");
+		state.optimizedQueries(List.of("Continue research.", "Continue research implementation risks"));
 
 		plannerNode.run(state).collectList().block();
 
@@ -29,6 +30,8 @@ class PlannerNodeTest {
 		assertThat(plannerAgent.lastMaxSteps).isEqualTo(2);
 		assertThat(plannerAgent.lastFeedback).isEqualTo("Prefer implementation details.");
 		assertThat(plannerAgent.lastBackgroundContext).isEqualTo("Previous report context");
+		assertThat(plannerAgent.lastOptimizedQueries)
+			.containsExactly("Continue research.", "Continue research implementation risks");
 		assertThat(state.plan()).isNotNull();
 	}
 
@@ -42,6 +45,8 @@ class PlannerNodeTest {
 
 		private String lastBackgroundContext;
 
+		private List<String> lastOptimizedQueries;
+
 		@Override
 		public ResearchPlan plan(String query, int maxSteps) {
 			return plan(query, maxSteps, null, null);
@@ -49,10 +54,17 @@ class PlannerNodeTest {
 
 		@Override
 		public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext) {
+			return plan(query, maxSteps, feedbackContent, backgroundContext, List.of());
+		}
+
+		@Override
+		public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+				List<String> optimizedQueries) {
 			lastQuery = query;
 			lastMaxSteps = maxSteps;
 			lastFeedback = feedbackContent;
 			lastBackgroundContext = backgroundContext;
+			lastOptimizedQueries = optimizedQueries;
 			return new ResearchPlan("Plan", true, "Use context.",
 					List.of(new ResearchStep("Step", "Do work.", false, StepType.RESEARCH, null,
 							ResearchStep.STATUS_PENDING)));

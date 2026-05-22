@@ -14,11 +14,17 @@ public class ResearchState {
 
 	private final int maxSteps;
 
+	private final int optimizeQueryNum;
+
 	private ResearchPlan plan;
 
 	private String planFeedback;
 
 	private String backgroundContext;
+
+	private List<String> optimizedQueries = List.of();
+
+	private boolean queryRewriteCompleted;
 
 	private ResearchTeamDecision researchTeamDecision;
 
@@ -30,11 +36,12 @@ public class ResearchState {
 
 	private String report;
 
-	private ResearchState(String threadId, String sessionId, String query, int maxSteps) {
+	private ResearchState(String threadId, String sessionId, String query, int maxSteps, int optimizeQueryNum) {
 		this.threadId = threadId;
 		this.sessionId = sessionId;
 		this.query = query;
 		this.maxSteps = maxSteps;
+		this.optimizeQueryNum = optimizeQueryNum;
 	}
 
 	public static ResearchState from(ResearchRequest request) {
@@ -45,7 +52,8 @@ public class ResearchState {
 		if (sessionId == null || sessionId.isBlank()) {
 			sessionId = request.threadId();
 		}
-		return new ResearchState(request.threadId(), sessionId, request.query(), request.maxSteps());
+		return new ResearchState(request.threadId(), sessionId, request.query(), request.maxSteps(),
+				request.optimizeQueryNum());
 	}
 
 	public String threadId() {
@@ -62,6 +70,10 @@ public class ResearchState {
 
 	public int maxSteps() {
 		return maxSteps;
+	}
+
+	public int optimizeQueryNum() {
+		return optimizeQueryNum;
 	}
 
 	public ResearchPlan plan() {
@@ -86,6 +98,22 @@ public class ResearchState {
 
 	public void backgroundContext(String backgroundContext) {
 		this.backgroundContext = backgroundContext;
+	}
+
+	public List<String> optimizedQueries() {
+		return optimizedQueries;
+	}
+
+	public void optimizedQueries(List<String> optimizedQueries) {
+		this.optimizedQueries = optimizedQueries == null ? List.of() : List.copyOf(optimizedQueries);
+	}
+
+	public boolean queryRewriteCompleted() {
+		return queryRewriteCompleted;
+	}
+
+	public void queryRewriteCompleted(boolean queryRewriteCompleted) {
+		this.queryRewriteCompleted = queryRewriteCompleted;
 	}
 
 	public ResearchTeamDecision researchTeamDecision() {

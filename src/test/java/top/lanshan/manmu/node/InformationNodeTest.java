@@ -27,6 +27,7 @@ class InformationNodeTest {
 		ResearchStep localStep = new ResearchStep("Summarize architecture", "Use the repository context.", false,
 				StepType.PROCESSING, null, ResearchStep.STATUS_PENDING);
 		ResearchState state = stateWithPlan(List.of(searchStep, localStep));
+		state.optimizedQueries(List.of("Explain search integration.", "Bocha search Java WebFlux integration"));
 
 		StepVerifier.create(node.run(state))
 			.assertNext(event -> assertThat(event.phase()).isEqualTo("started"))
@@ -36,6 +37,8 @@ class InformationNodeTest {
 
 		assertThat(searchClient.queries).hasSize(1);
 		assertThat(searchClient.queries.get(0)).contains("Explain search integration")
+			.contains("Optimized queries")
+			.contains("Bocha search Java WebFlux integration")
 			.contains("Find current API docs")
 			.contains("Look up Bocha web search parameters.");
 		assertThat(searchStep.searchContext()).isNotNull();

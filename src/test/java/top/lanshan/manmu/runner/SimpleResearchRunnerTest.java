@@ -35,16 +35,16 @@ class SimpleResearchRunnerTest {
 	void routesThroughInformationResearcherProcessorAndReporter() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
-				sessionHistoryService);
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), reportService, sessionHistoryService);
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-1", 1)).collectList().block();
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsExactly("planner", "information", "research_team", "researcher", "research_team", "processor",
-					"research_team", "reporter", "__END__");
+			.containsExactly("rewrite_multi_query", "planner", "information", "research_team", "researcher",
+					"research_team", "processor", "research_team", "reporter", "__END__");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-1");
 			assertThat(report.sessionId()).isEqualTo("thread-1");
@@ -65,12 +65,14 @@ class SimpleResearchRunnerTest {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(),
-				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
+				new QueryRewriteNodeStub(), new BlockingInformationNode(releaseInformation), new TeamNode(),
+				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService);
 
 		StepVerifier
 			.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-running-stop", 1),
 					"session-running-stop"))
+			.expectNextMatches(event -> "rewrite_multi_query".equals(event.node()))
 			.expectNextMatches(event -> "planner".equals(event.node()))
 			.then(() -> assertThat(runner.stop("thread-running-stop")).isTrue())
 			.expectNextMatches(event -> event.done() && "__END__".equals(event.node()) && "stopped".equals(event.phase()))
@@ -86,9 +88,9 @@ class SimpleResearchRunnerTest {
 	void runChatCleansUpAfterNormalCompletion() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
-				sessionHistoryService);
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), reportService, sessionHistoryService);
 
 		var events = runner.runChat(new ResearchRequest("Explain workflow.", "thread-normal-cleanup", 1),
 				"session-normal-cleanup")
@@ -109,8 +111,8 @@ class SimpleResearchRunnerTest {
 	@Test
 	void pausesAfterPlannerWhenPlanGateIsRequested() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
 		var events = runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-2", 1), "session-2")
@@ -118,9 +120,10 @@ class SimpleResearchRunnerTest {
 			.block();
 
 		assertThat(events).isNotNull();
-		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
-		assertThat(events.get(1).phase()).isEqualTo("waiting");
-		assertThat(events.get(1).payload()).isInstanceOf(ResearchPlan.class);
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("rewrite_multi_query", "planner",
+				"human_feedback");
+		assertThat(events.get(2).phase()).isEqualTo("waiting");
+		assertThat(events.get(2).payload()).isInstanceOf(ResearchPlan.class);
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
 	}
 
@@ -129,9 +132,9 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
-				sessionHistoryService);
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), planningNode,
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), reportService, sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-3", 1), "session-3")
 			.collectList()
@@ -156,7 +159,7 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(planningNode,
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), planningNode,
 				new BlockingInformationNode(releaseInformation), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService);
 
@@ -182,9 +185,9 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
-				sessionHistoryService);
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), planningNode,
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ReporterNode()), reportService, sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-4", 1), "session-4")
 			.collectList()
@@ -202,8 +205,8 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), new RecordingSessionHistoryService());
 
 		var events = runner.resume("missing-thread", new ResumeDecision(true, null)).collectList().block();
@@ -219,8 +222,8 @@ class SimpleResearchRunnerTest {
 	@Test
 	void stopRemovesPausedState() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop", 1), "session-stop")
@@ -241,8 +244,8 @@ class SimpleResearchRunnerTest {
 
 	@Test
 	void stopMissingThreadReturnsFalse() {
-		SimpleResearchRunner runner = newRunner(List.of(new PlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new PlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), new RecordingSessionHistoryService());
 
 		assertThat(runner.stop("missing-thread")).isFalse();
@@ -251,14 +254,15 @@ class SimpleResearchRunnerTest {
 	@Test
 	void failedWorkflowMarksSessionHistoryFailed() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		SimpleResearchRunner runner = newRunner(List.of(new FailingPlanningNode(), new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = newRunner(List.of(new QueryRewriteNodeStub(), new FailingPlanningNode(),
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), sessionHistoryService);
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-failed", 1)).collectList().block();
 
 		assertThat(events).isNotNull();
-		assertThat(events).singleElement().satisfies(event -> {
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("rewrite_multi_query", "runner");
+		assertThat(events.get(1)).satisfies(event -> {
 			assertThat(event.node()).isEqualTo("runner");
 			assertThat(event.phase()).isEqualTo("error");
 			assertThat(event.content()).contains("planner failed");
@@ -275,8 +279,8 @@ class SimpleResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
 		sessionContextService.context("session-context", "Prior report context");
-		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
-				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new QueryRewriteNodeStub(), planningNode,
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
 				new RecordingReportService(), new RecordingSessionHistoryService(), sessionContextService);
 
 		runner.runChat(new ResearchRequest("Continue the investigation.", "thread-context", 1), "session-context")
@@ -285,6 +289,24 @@ class SimpleResearchRunnerTest {
 
 		assertThat(sessionContextService.lookups()).containsExactly("session-context/thread-context");
 		assertThat(planningNode.lastBackgroundContext()).isEqualTo("Prior report context");
+	}
+
+	@Test
+	void rewritesQueryBeforeLoadingBackgroundContextAndPlanning() {
+		PlanningNode planningNode = new PlanningNode();
+		QueryRewriteNodeStub queryRewriteNode = new QueryRewriteNodeStub();
+		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(queryRewriteNode, planningNode,
+				new InformationNode(), new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()),
+				new RecordingReportService(), new RecordingSessionHistoryService(), sessionContextService);
+
+		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-order", 1)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).startsWith("rewrite_multi_query", "planner");
+		assertThat(queryRewriteNode.lastOptimizeQueryNum()).isEqualTo(3);
+		assertThat(planningNode.lastOptimizedQueries()).containsExactly("Explain workflow.",
+				"Explain workflow. architecture");
 	}
 
 	private static SimpleResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
@@ -299,6 +321,8 @@ class SimpleResearchRunnerTest {
 		private String lastFeedback;
 
 		private String lastBackgroundContext;
+
+		private List<String> lastOptimizedQueries = List.of();
 
 		@Override
 		public int order() {
@@ -315,6 +339,7 @@ class SimpleResearchRunnerTest {
 			runCount++;
 			lastFeedback = state.planFeedback();
 			lastBackgroundContext = state.backgroundContext();
+			lastOptimizedQueries = state.optimizedQueries();
 			state.plan(new ResearchPlan("Plan", true, "Think", List.of(new ResearchStep("Step", "Do work", false,
 					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING),
 					new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
@@ -332,6 +357,39 @@ class SimpleResearchRunnerTest {
 
 		String lastBackgroundContext() {
 			return lastBackgroundContext;
+		}
+
+		List<String> lastOptimizedQueries() {
+			return lastOptimizedQueries;
+		}
+
+	}
+
+	private static class QueryRewriteNodeStub implements ResearchNode {
+
+		private int lastOptimizeQueryNum;
+
+		@Override
+		public int order() {
+			return 5;
+		}
+
+		@Override
+		public String name() {
+			return "rewrite_multi_query";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			lastOptimizeQueryNum = state.optimizeQueryNum();
+			state.optimizedQueries(List.of(state.query(), state.query() + " architecture"));
+			state.queryRewriteCompleted(true);
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "rewritten",
+					state.optimizedQueries()));
+		}
+
+		int lastOptimizeQueryNum() {
+			return lastOptimizeQueryNum;
 		}
 
 	}

@@ -42,7 +42,8 @@ public class ChatController {
 	@PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<ChatStreamResponse>> stream(@Valid @RequestBody ChatRequest request) {
 		GraphId graphId = graphId(request);
-		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum());
+		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum(),
+				request.optimizeQueryNum());
 
 		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest, graphId.sessionId())
 				: runner.runUntilPlanGate(researchRequest, graphId.sessionId());
@@ -110,6 +111,7 @@ public class ChatController {
 
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
+			case "rewrite_multi_query" -> "Query Rewrite";
 			case "human_feedback" -> "人工反馈";
 			case "planner" -> "研究计划";
 			case "information" -> "信息检索";
