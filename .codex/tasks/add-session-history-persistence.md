@@ -1,25 +1,25 @@
 # Task Handoff: add-session-history-persistence
-Updated: 2026-05-22 13:34:00 +08:00
+Updated: 2026-05-22 14:05:00 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
-Current Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
+Base Commit: 49bcae5a1294de3443133d1859c93bce10e0d73e
+Current Commit: current HEAD handoff commit; verify with `git rev-parse HEAD`
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to align with `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
-- The project has been evolving the DeepResearch workflow semantics in `SimpleResearchRunner` before any full Spring AI Alibaba Graph migration.
-- Completed stages now provide real model calls, Bocha-only real web search, planner/researcher/processor/reporter execution, a lightweight `research_team` loop, human feedback plan pause/resume/replan, running `/chat/stop` cancellation, and PostgreSQL-backed completed report persistence.
-- The current durable artifact layer is `research_reports`, persisted through Spring Data R2DBC and Flyway-backed PostgreSQL.
-- The next mainline step is to persist the session/task lifecycle itself so completed, paused, stopped, and failed research runs become queryable history, moving closer to `deepresearch-main` `SessionHistory` / `SessionContextService` behavior without adopting Redis, RAG, MCP, frontend, or the full Graph stack yet.
+- The project evolves DeepResearch workflow semantics in `SimpleResearchRunner` before adopting any full Spring AI Alibaba Graph stack.
+- Completed stages now provide real model calls, Bocha-only real web search, planner/researcher/processor/reporter execution, a lightweight `research_team` loop, human feedback plan pause/resume/replan, running `/chat/stop` cancellation, PostgreSQL-backed completed report persistence, and PostgreSQL-backed session history persistence.
+- Durable artifacts now include `research_reports` for final report bodies and `research_session_histories` for lifecycle history.
+- The next mainline step can build UI/history retrieval, retry/export/download, or deeper Graph alignment on top of durable session status without introducing Redis, RAG, MCP, frontend, or full checkpointing prematurely.
 
 ## Stage Role in Mainline
 
-- This stage should add database-backed session history after completed report persistence.
-- It exists because M-agent can now save final reports, but only completed reports are queryable; lifecycle states such as `RUNNING`, `PAUSED`, `STOPPED`, and `FAILED` are still not durable.
-- It should align behaviorally with `deepresearch-main` session history concepts: sessions group thread IDs, histories preserve user query and report linkage, and recent session reports can be retrieved.
-- It should remain a minimal backend-only stage, using the existing PostgreSQL/R2DBC/Flyway setup rather than adding Redis or a full Spring AI Alibaba Graph saver.
+- This stage added database-backed session history after completed report persistence.
+- It closes the gap where final reports were durable but lifecycle states such as `RUNNING`, `PAUSED`, `STOPPED`, and `FAILED` were not queryable.
+- It aligns with `deepresearch-main` `SessionHistory` / `SessionContextService` concepts by grouping thread histories under a session, preserving the user query, linking to report storage, and exposing recent histories.
+- It remains a minimal backend-only step using the existing PostgreSQL, Flyway, R2DBC, WebFlux, and Docker Desktop setup.
 
 ## Mainline Progression
 
@@ -29,12 +29,12 @@ Current Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
 - `add-human-feedback-plan-gate` added planner pause/resume/replan.
 - `add-chat-stop-session-lifecycle` and `add-running-chat-stop-cancellation` made paused and running chat sessions stoppable.
 - `add-postgres-report-persistence` added Docker PostgreSQL, Flyway schema migration, R2DBC report persistence, `/api/reports` get/exists/delete/session APIs, and verified the real curl chain.
-- `add-session-history-persistence` should build on `research_reports` by introducing durable session/task history rows and lifecycle status updates that future report history UI, export/download, retry, and eventual Graph migration can reuse.
+- `add-session-history-persistence` added durable session/task history rows and lifecycle status transitions that future report history UI, export/download, retry, and eventual Graph migration can reuse.
 
 ## Related Stage Handoffs
 
-- `add-postgres-report-persistence`: immediate upstream; completed and committed as `8e1e006` with a Chinese commit message meaning "Add Postgres report persistence".
-- `add-running-chat-stop-cancellation`: upstream lifecycle behavior; stop must remain cancellable and emit `event:stopped`.
+- `add-postgres-report-persistence`: immediate upstream; completed and committed as `8e1e006` with a Chinese message meaning "Add Postgres report persistence".
+- `add-running-chat-stop-cancellation`: upstream lifecycle behavior; stop remains cancellable and emits `event:stopped`.
 - `add-chat-stop-session-lifecycle`: upstream paused stop cleanup.
 - `add-human-feedback-plan-gate`: upstream paused `human_feedback` state.
 - Earlier stage handoffs under `.codex/tasks/` provide the rest of the mainline.
@@ -45,29 +45,24 @@ Current Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
 
 ## Task Theme / User Intent
 
-- The user will start a new conversation to implement `add-session-history-persistence` and continue aligning M-agent with `C:/MainData/code/Codex_project/deepresearch-main`.
-- The user wants this handoff to summarize the just-completed Postgres report persistence stage and set the next stage direction.
-- The next stage should prioritize a small, runnable backend capability over broad migration.
-- Database and middleware should run through Docker Desktop on Windows.
-- Do not use an in-memory-only session store; use the existing real PostgreSQL setup from the prior stage.
+- Continue aligning M-agent with `C:/MainData/code/Codex_project/deepresearch-main` through a small runnable backend capability.
+- Use the existing real PostgreSQL setup from the prior stage instead of an in-memory-only session store.
+- Preserve real model/search execution paths and avoid mock production behavior.
+- Keep the implementation backend-only and deliberately smaller than the reference project's full Graph/RAG/Redis stack.
 
 ## Acceptance Criteria
 
-- Add a durable session/task history table, for example `research_session_histories` or `research_tasks`, through a new Flyway migration.
-- Track at least `thread_id`, `session_id`, `query`, `status`, `created_at`, `updated_at`, and optionally `report_id`/`report_thread_id`, `error_message`, `completed_at`, `stopped_at`, or `metadata`.
-- Use clear lifecycle statuses such as `RUNNING`, `PAUSED`, `COMPLETED`, `STOPPED`, and `FAILED`.
-- Create/update history when `/chat/stream` starts, when planner waits for human feedback, when `/chat/resume` continues or replans, when the workflow completes, when `/chat/stop` stops paused or running work, and when the runner emits an error.
-- Decide whether `/api/research/stream` should also create history; recommended default is yes with `session_id = threadId`, matching the report persistence decision.
-- Keep completed report storage in `research_reports`; session history should link to report content instead of duplicating full report text unless a small snapshot is deliberately chosen.
-- Add minimal APIs aligned with `deepresearch-main` concepts, for example:
-  - `GET /api/sessions/{sessionId}/history`
-  - `GET /api/sessions/{sessionId}/threads/{threadId}`
-  - optional `GET /api/sessions/{sessionId}/recent?count=5`
-  - optional delete only if it stays small and consistent with existing report delete behavior.
-- Add focused service/controller/runner tests for status transitions, session listing, stopped non-completed behavior, and failed state if implemented.
-- Run Java 17 `mvn test`.
-- Run Docker/PostgreSQL backed verification when practical with `curl.exe`, then stop any manually started backend service and confirm port `8080` is released.
-- Commit the completed stage with a Chinese commit message.
+- Done: added Flyway migration `V2__create_research_session_histories.sql`.
+- Done: tracks `thread_id`, `session_id`, `query`, `status`, `report_thread_id`, `error_message`, `created_at`, `updated_at`, `completed_at`, and `stopped_at`.
+- Done: uses `RUNNING`, `PAUSED`, `COMPLETED`, `STOPPED`, and `FAILED`.
+- Done: creates/updates history for `/chat/stream` start, planner human-feedback wait, `/chat/resume` continue/replan, completion, `/chat/stop`, and runner errors.
+- Done: `/api/research/stream` also creates history because it uses `SimpleResearchRunner.run(...)`, with `session_id = threadId`.
+- Done: completed report content remains in `research_reports`; session history links by `report_thread_id`.
+- Done: added `GET /api/sessions/{sessionId}/history`, `GET /api/sessions/{sessionId}/threads/{threadId}`, and `GET /api/sessions/{sessionId}/recent?count=5`.
+- Done: added focused service, controller, and runner tests for status transitions, listing, stopped behavior, and failed state.
+- Done: Java 17 `mvn test` passed.
+- Done: Docker/PostgreSQL-backed curl verification passed and the manually started backend was stopped; port `8080` was released.
+- Done: implementation committed with Chinese message `添加会话历史持久化`.
 
 ## Scope
 
@@ -89,7 +84,6 @@ Current Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
 - `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu`
 - `C:/MainData/code/Codex_project/M-agent/src/test/resources`
 - `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-session-history-persistence.md`
-- Optional update: `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-postgres-report-persistence.md` only if correcting cross-stage handoff details.
 
 ### Read-only Reference Roots
 
@@ -110,117 +104,134 @@ Current Commit: 8e1e0064b8df155680310d8c7825813f4fe4fb82
 ## Current State
 
 - Current branch: `main`.
-- Current commit: `8e1e0064b8df155680310d8c7825813f4fe4fb82` (`添加Postgres报告持久化`).
-- Working tree has only unrelated untracked `.claude/settings.local.json`; do not edit, delete, stage, or commit it.
-- `add-postgres-report-persistence` is complete and committed.
-- Docker PostgreSQL `manmu-postgres` was running and healthy during verification; the next session should inspect live Docker state before relying on it.
-- No backend service should be running on port `8080`; the prior manual curl verification stopped the app and confirmed port release.
-- There is no session history persistence layer yet.
+- Current handoff commit: self-referential; verify with `git rev-parse HEAD`.
+- Implementation commit: `49bcae5a1294de3443133d1859c93bce10e0d73e` (`添加会话历史持久化`).
+- No upstream Git branch is configured for `main`.
+- Working tree after implementation commit only had unrelated untracked `.claude/settings.local.json`; it must remain uncommitted.
+- Docker PostgreSQL `manmu-postgres` was running and healthy during verification.
+- The manually started backend service was stopped after curl verification and port `8080` was confirmed released.
+- The `target/manual-session-history-app.log` and `.err.log` verification artifacts are under ignored `target/`.
 
 ## Completed
 
-- Completed upstream report persistence stage:
-  - Added `docker-compose.yml` with `manmu-postgres` using `postgres:17-alpine`.
-  - Added Spring Data R2DBC, PostgreSQL R2DBC/JDBC, Flyway, H2 test profile, and migrations.
-  - Added `research_reports` schema with `thread_id`, `session_id`, `query`, `report`, `status`, `error_message`, `created_at`, and `updated_at`.
-  - Added report service/repository/controller under `top.lanshan.manmu.report` and `/api/reports`.
-  - Persisted completed reports before the final SSE `done` event.
-  - Kept stopped workflows from creating completed report rows.
-  - Added tests and passed full `mvn test`.
-  - Ran curl-based full chain against real Docker PostgreSQL, DeepSeek, and Bocha paths; report get/exists/session/delete worked and port `8080` was released afterward.
-- Inspected `deepresearch-main` session history references:
-  - `SessionHistory`
-  - `SessionContextService`
-  - `InMemorySessionContextService`
-  - `ReporterNode` usage of `SessionContextService.addSessionHistory(...)`
-  - `BackgroundInvestigationNode` usage of `getRecentReports(sessionId)`
+- Added `research_session_histories` schema with indexes in `src/main/resources/db/migration/V2__create_research_session_histories.sql`.
+- Added `top.lanshan.manmu.sessionhistory`:
+  - `ResearchSessionHistory`
+  - `ResearchSessionHistoryEntity`
+  - `ResearchSessionHistoryRepository`
+  - `SessionHistoryStatus`
+  - `SessionHistoryService`
+  - `PostgresSessionHistoryService`
+  - `SessionHistoryResponse`
+- Added `SessionHistoryController` under `/api/sessions`.
+- Wired `SimpleResearchRunner` to create `RUNNING` rows, mark planner gates as `PAUSED`, mark resume/replan as `RUNNING`, mark completed workflows as `COMPLETED`, mark stopped workflows as `STOPPED`, and persist `FAILED` for runner errors.
+- Updated `/chat/stop` to return `Mono<ApiResponse<String>>` and wait for `stopAndRecord(...)`, so a follow-up history query sees `STOPPED` deterministically.
+- Kept report bodies in `research_reports`; `research_session_histories.report_thread_id` links to the report thread.
+- Added service, controller, and runner tests for the new persistence and lifecycle behavior.
+- Committed implementation as `49bcae5` with Chinese message `添加会话历史持久化`.
 
 ## Decisions
 
-- The next stage should use the existing R2DBC/PostgreSQL stack rather than MyBatis/MyBatis-Plus, because the app is WebFlux/SSE based and the current persistence layer is reactive.
-- Session history should be durable in PostgreSQL, not in memory.
-- Start with lifecycle/history APIs and avoid pulling in reference-project RAG, short-term memory, Redis, or full Graph checkpointing.
-- Prefer linking session history to `research_reports` by `thread_id` rather than duplicating report body in a second table.
-- Keep `/api/research/stream` behavior consistent with report persistence unless a strong reason appears to scope history only to `/chat`.
+- The table name is `research_session_histories`.
+- Persistence uses the existing Spring Data R2DBC/PostgreSQL stack, not MyBatis/MyBatis-Plus.
+- `STOPPED` rows do not link to a report unless completion already happened; normal stopped workflows do not save completed report rows.
+- `FAILED` is persisted for runner errors after history creation starts.
+- `/api/research/stream` creates history through `SimpleResearchRunner.run(...)` with session equal to thread ID.
+- `/chat/stop` keeps the existing response shape but now waits for history persistence.
+- Session history APIs use a separate `SessionHistoryResponse` envelope rather than reusing `ReportResponse`.
 
 ## Evidence / References
 
-- Upstream committed report persistence:
-  - `src/main/java/top/lanshan/manmu/report/PostgresReportService.java`
-  - `src/main/java/top/lanshan/manmu/api/ReportController.java`
-  - `src/main/resources/db/migration/V1__create_research_reports.sql`
-  - `docker-compose.yml`
-- Runner lifecycle integration points:
-  - `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
-  - `src/main/java/top/lanshan/manmu/api/ChatController.java`
-  - `src/main/java/top/lanshan/manmu/api/ResearchController.java`
-  - `src/main/java/top/lanshan/manmu/model/ResearchState.java`
-- Reference session history:
+- New schema: `src/main/resources/db/migration/V2__create_research_session_histories.sql`
+- New service/repository model: `src/main/java/top/lanshan/manmu/sessionhistory`
+- New API: `src/main/java/top/lanshan/manmu/api/SessionHistoryController.java`
+- Lifecycle integration: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- Stop API integration: `src/main/java/top/lanshan/manmu/api/ChatController.java`
+- Tests:
+  - `src/test/java/top/lanshan/manmu/sessionhistory/PostgresSessionHistoryServiceTest.java`
+  - `src/test/java/top/lanshan/manmu/api/SessionHistoryControllerTest.java`
+  - `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
+  - `src/test/java/top/lanshan/manmu/api/ChatControllerTest.java`
+- Reference session history inspected:
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/model/SessionHistory.java`
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/SessionContextService.java`
   - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/service/InMemorySessionContextService.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/ReporterNode.java`
-  - `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/BackgroundInvestigationNode.java`
-- User direction: continue aligning with `C:/MainData/code/Codex_project/deepresearch-main` in a new session under task `add-session-history-persistence`.
 
 ## Files Touched
 
+- `C:/MainData/code/Codex_project/M-agent/src/main/resources/db/migration/V2__create_research_session_histories.sql`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/sessionhistory/*`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/api/SessionHistoryController.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/api/ChatController.java`
+- `C:/MainData/code/Codex_project/M-agent/src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/sessionhistory/PostgresSessionHistoryServiceTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/api/SessionHistoryControllerTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/api/ChatControllerTest.java`
+- `C:/MainData/code/Codex_project/M-agent/src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
 - `C:/MainData/code/Codex_project/M-agent/.codex/tasks/add-session-history-persistence.md`
 
 ## Commands Run
 
-- `Get-Content -Raw C:\Users\20232\.codex\skills\task-handoff\SKILL.md`
 - `git status --short --branch --untracked-files=all`
-- `git log --oneline --decorate -8`
-- `Get-Content -Raw .codex\tasks\add-postgres-report-persistence.md`
-- `Get-ChildItem -File .codex\tasks`
-- `git rev-parse HEAD`
-- `Get-Content -Raw AGENTS.md`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\model\SessionHistory.java`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\service\SessionContextService.java`
-- `Get-Content -Raw C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch\service\InMemorySessionContextService.java`
-- `rg "SessionHistory|SessionContext|history|/api/sessions|session" C:\MainData\code\Codex_project\deepresearch-main\src\main\java\com\alibaba\cloud\ai\example\deepresearch -n`
+- `git log --oneline --decorate -10`
+- `docker_container_list(all=true)`
+- `docker_container_inspect(manmu-postgres)`
+- `Get-Content` for project instructions, report layer, runner/controller files, tests, and reference `deepresearch-main` session history files
+- `rg "new SimpleResearchRunner|SimpleResearchRunner\(" src/test src/main -n`
+- `$env:JAVA_HOME='C:\WorkResources\JDKs\JDK17'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"; mvn test`
+- `Start-Process mvn.cmd spring-boot:run`
+- `curl.exe` verification for model switch, `/chat/stream`, `/api/sessions/{sessionId}/threads/{threadId}`, `/api/reports/session/{sessionId}`, `/chat/stop`, and `/api/sessions/{sessionId}/recent?count=2`
+- `Get-NetTCPConnection -LocalPort 8080`
+- `Stop-Process` for the manually started Maven/Spring Boot process tree
+- `git add ...`
+- `git commit -m "添加会话历史持久化"`
 
 ## Verification
 
-- No code implementation has started for `add-session-history-persistence`.
-- Upstream verification from `add-postgres-report-persistence`:
-  - `mvn test` passed 46 tests.
-  - Curl-based full chain passed against real Docker PostgreSQL and real model/search paths.
-  - Backend service was stopped and port `8080` released after verification.
+- `mvn test` passed twice with Java 17; final run reported 55 tests, 0 failures, 0 errors, 0 skipped.
+- Docker/PostgreSQL verification used running healthy `manmu-postgres` on localhost port 5432.
+- Manual backend startup applied Flyway version 2 against PostgreSQL and listened on port 8080.
+- Curl verification passed:
+  - DeepSeek key set and current model switched to `deepseek-chat`.
+  - Auto-accepted `/chat/stream` emitted message events and `event:done`.
+  - Completed thread history returned `status=COMPLETED` and `report_thread_id=<threadId>`.
+  - `/api/reports/session/{sessionId}` returned the completed report row.
+  - Plan-gated `/chat/stream` returned `PAUSED` history before stop.
+  - `/chat/stop` returned success.
+  - Stopped thread history returned `status=STOPPED` and `stopped_at`.
+  - `/api/sessions/{sessionId}/recent?count=2` returned the stopped and completed histories in updated order.
+- The manually started backend service was stopped and port `8080` was confirmed released.
 
 ## Known Failures / Blockers
 
 - No upstream Git branch is configured.
 - Unrelated untracked `.claude/settings.local.json` exists and must remain uncommitted.
-- The next stage must inspect current Docker state before assuming `manmu-postgres` is still running.
-- Real LLM/search verification may fail from external network/API issues; keep unit/service tests isolated from provider availability and use curl verification for end-to-end confidence.
+- `.gitignore` currently ignores `.local/`, `target/`, and `.idea/`, but not `.claude/`; project instructions still forbid editing or committing `.claude/`.
+- Real LLM/search verification can fail from external network/API issues; keep unit/service tests isolated from provider availability and use curl verification for end-to-end confidence.
 
 ## Next Actions
 
-- On resume, inspect git status, Docker/PostgreSQL state, current schema/migrations, and reference `SessionHistory` / `SessionContextService` usage before editing.
-- Design and implement the minimal PostgreSQL-backed session history schema/service/controller and wire lifecycle updates into `SimpleResearchRunner`, `ChatController`, and possibly `ResearchController`.
-- Run Java 17 `mvn test`, then perform a Docker/PostgreSQL `curl.exe` verification for create/list/get/status transitions, stop behavior, and completed report linkage; stop the backend service and commit with a Chinese message.
+- Optional: add a frontend/history UI or richer history endpoint that joins report metadata without returning full report bodies unless requested.
+- Optional: decide whether future delete behavior should delete only reports, only history, or both for a thread/session.
+- Optional: use the durable history table as the base for retry/resume/export/download or later Graph checkpoint alignment.
 
 ## Open Questions
 
-- Should history rows be called `research_session_histories`, `research_tasks`, or another name that better fits future frontend/API use?
-- Should `STOPPED` rows include a report link when a report was partially generated, or should stopped rows never link to reports?
-- Should `FAILED` be persisted for all runner errors now, and should errors before planner creation still create history rows?
-- Should `/chat/stop` return the updated history status in its `ApiResponse`, or remain a thread ID response for now?
-- Should session history APIs reuse `ReportResponse` style envelopes or introduce a separate session response type?
+- Should `.claude/` be added to `.gitignore` in a future housekeeping commit, or should it remain manually untracked per current instructions?
+- Should session history expose a lightweight joined report summary endpoint, separate from `/api/reports/session/{sessionId}`?
+- Should failed histories capture a structured error code/source node beyond the current `error_message` string?
 
 ## Avoid / Do Not Redo
 
-- Do not reimplement report persistence from scratch; build on the committed `research_reports` layer.
+- Do not reimplement report persistence from scratch; build on `research_reports`.
 - Do not use an in-memory-only session history store.
 - Do not edit `C:/MainData/code/Codex_project/deepresearch-main`.
-- Do not introduce MyBatis/MyBatis-Plus unless the user explicitly asks to change the persistence stack; current app uses WebFlux-friendly R2DBC.
-- Do not add Redis, Elasticsearch, RAG, MCP feature integration, frontend changes, export/download/PDF, or full Graph saver/checkpoint infrastructure in this stage.
+- Do not introduce MyBatis/MyBatis-Plus unless the user explicitly asks to change the persistence stack.
+- Do not add Redis, Elasticsearch, RAG, MCP feature integration, frontend changes, export/download/PDF, or full Graph saver/checkpoint infrastructure unless it becomes a later explicit stage.
 - Do not introduce mock agent output, mock search, fake reports, or fake search context in production code.
 - Do not commit `.local`, `target`, `.idea`, `.claude`, API keys, generated SSE/curl output, or logs.
 - Do not leave manually started backend services running after tests.
-- Do not undo the completed chat stop/cancellation behavior, report persistence behavior, or `stopped` SSE contract.
+- Do not undo chat stop/cancellation behavior, report persistence behavior, or the `stopped` SSE contract.
 
 ## Resume Prompt
 Resume task add-session-history-persistence. Read .codex/tasks/add-session-history-persistence.md, inspect git status and diff, read project-level instructions such as AGENTS.md, restore the Project Mainline before the stage task details, verify Scope Safety and allowed write roots before editing, continue from Next Actions, and update the handoff file before stopping.
