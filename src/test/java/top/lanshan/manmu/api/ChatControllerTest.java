@@ -5,6 +5,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
+import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
@@ -89,6 +90,55 @@ class ChatControllerTest {
 		verify(runner).resume(eq("thread-2"), decisionCaptor.capture());
 		assertThat(decisionCaptor.getValue().accepted()).isFalse();
 		assertThat(decisionCaptor.getValue().feedbackContent()).isEqualTo("Focus on risks.");
+	}
+
+	@Test
+	void stopReturnsSuccessWhenRunnerStopsThread() {
+		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		when(runner.stop("thread-3")).thenReturn(true);
+		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+
+		var response = client.post()
+			.uri("/chat/stop")
+			.contentType(MediaType.APPLICATION_JSON)
+			.bodyValue(Map.of("session_id", "session-c", "thread_id", "thread-3"))
+			.exchange()
+			.expectStatus()
+			.isOk()
+			.expectBody(ApiResponse.class)
+			.returnResult()
+			.getResponseBody();
+
+		assertThat(response).isNotNull();
+		assertThat(response.code()).isEqualTo(200);
+		assertThat(response.status()).isEqualTo("success");
+		assertThat(response.data()).isEqualTo("thread-3");
+		verify(runner).stop("thread-3");
+	}
+
+	@Test
+	void stopReturnsFailureWhenThreadIsMissing() {
+		SimpleResearchRunner runner = mock(SimpleResearchRunner.class);
+		when(runner.stop("missing-thread")).thenReturn(false);
+		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+
+		var response = client.post()
+			.uri("/chat/stop")
+			.contentType(MediaType.APPLICATION_JSON)
+			.bodyValue(Map.of("session_id", "session-c", "thread_id", "missing-thread"))
+			.exchange()
+			.expectStatus()
+			.isOk()
+			.expectBody(ApiResponse.class)
+			.returnResult()
+			.getResponseBody();
+
+		assertThat(response).isNotNull();
+		assertThat(response.code()).isEqualTo(500);
+		assertThat(response.status()).isEqualTo("error");
+		assertThat(response.message()).isEqualTo("Failure");
+		assertThat(response.data()).isEqualTo("missing-thread");
+		verify(runner).stop("missing-thread");
 	}
 
 }

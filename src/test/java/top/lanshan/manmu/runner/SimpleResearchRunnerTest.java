@@ -93,6 +93,32 @@ class SimpleResearchRunnerTest {
 		});
 	}
 
+	@Test
+	void stopRemovesPausedState() {
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop", 1)).collectList().block();
+
+		assertThat(runner.stop("thread-stop")).isTrue();
+		var events = runner.resume("thread-stop", new ResumeDecision(true, null)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.node()).isEqualTo("human_feedback");
+			assertThat(event.phase()).isEqualTo("error");
+			assertThat(event.content()).contains("No paused research state found");
+		});
+	}
+
+	@Test
+	void stopMissingThreadReturnsFalse() {
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		assertThat(runner.stop("missing-thread")).isFalse();
+	}
+
 	private static class PlanningNode implements ResearchNode {
 
 		private int runCount;

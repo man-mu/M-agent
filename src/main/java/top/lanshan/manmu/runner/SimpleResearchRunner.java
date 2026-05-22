@@ -81,6 +81,13 @@ public class SimpleResearchRunner {
 			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
 	}
 
+	public boolean stop(String threadId) {
+		if (threadId == null || threadId.isBlank()) {
+			return false;
+		}
+		return pausedStates.remove(threadId) != null;
+	}
+
 	private Flux<ResearchEvent> runToCompletion(ResearchState state) {
 		return Flux.concat(plannerNode.run(state), informationNode.run(state),
 				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
