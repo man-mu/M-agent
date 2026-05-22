@@ -14,6 +14,8 @@ public class ResearchState {
 
 	private ResearchPlan plan;
 
+	private String planFeedback;
+
 	private ResearchTeamDecision researchTeamDecision;
 
 	private final List<String> observations = new ArrayList<>();
@@ -52,6 +54,14 @@ public class ResearchState {
 
 	public void plan(ResearchPlan plan) {
 		this.plan = plan;
+	}
+
+	public String planFeedback() {
+		return planFeedback;
+	}
+
+	public void planFeedback(String planFeedback) {
+		this.planFeedback = planFeedback;
 	}
 
 	public ResearchTeamDecision researchTeamDecision() {

@@ -31,7 +31,73 @@ class SimpleResearchRunnerTest {
 					"research_team", "reporter", "__END__");
 	}
 
+	@Test
+	void pausesAfterPlannerWhenPlanGateIsRequested() {
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		var events = runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-2", 1))
+			.collectList()
+			.block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
+		assertThat(events.get(1).phase()).isEqualTo("waiting");
+		assertThat(events.get(1).payload()).isInstanceOf(ResearchPlan.class);
+	}
+
+	@Test
+	void acceptedResumeContinuesFromInformationWithoutReplanning() {
+		PlanningNode planningNode = new PlanningNode();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-3", 1)).collectList().block();
+		var events = runner.resume("thread-3", new ResumeDecision(true, null)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(planningNode.runCount()).isEqualTo(1);
+		assertThat(events).extracting(ResearchEvent::node)
+			.containsExactly("information", "research_team", "researcher", "research_team", "processor",
+					"research_team", "reporter", "__END__");
+	}
+
+	@Test
+	void rejectedResumeReplansWithFeedbackAndWaitsAgain() {
+		PlanningNode planningNode = new PlanningNode();
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(planningNode, new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-4", 1)).collectList().block();
+		var events = runner.resume("thread-4", new ResumeDecision(false, "Focus on risks.")).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(planningNode.runCount()).isEqualTo(2);
+		assertThat(planningNode.lastFeedback()).isEqualTo("Focus on risks.");
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("planner", "human_feedback");
+		assertThat(events.get(1).phase()).isEqualTo("waiting");
+	}
+
+	@Test
+	void missingPausedStateReturnsHumanFeedbackError() {
+		SimpleResearchRunner runner = new SimpleResearchRunner(List.of(new PlanningNode(), new InformationNode(),
+				new TeamNode(), new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()));
+
+		var events = runner.resume("missing-thread", new ResumeDecision(true, null)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.node()).isEqualTo("human_feedback");
+			assertThat(event.phase()).isEqualTo("error");
+			assertThat(event.done()).isTrue();
+		});
+	}
+
 	private static class PlanningNode implements ResearchNode {
+
+		private int runCount;
+
+		private String lastFeedback;
 
 		@Override
 		public int order() {
@@ -45,11 +111,21 @@ class SimpleResearchRunnerTest {
 
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
+			runCount++;
+			lastFeedback = state.planFeedback();
 			state.plan(new ResearchPlan("Plan", true, "Think", List.of(new ResearchStep("Step", "Do work", false,
 					StepType.RESEARCH, null, ResearchStep.STATUS_PENDING),
 					new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
 							ResearchStep.STATUS_PENDING))));
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "planned", state.plan()));
+		}
+
+		int runCount() {
+			return runCount;
+		}
+
+		String lastFeedback() {
+			return lastFeedback;
 		}
 
 	}

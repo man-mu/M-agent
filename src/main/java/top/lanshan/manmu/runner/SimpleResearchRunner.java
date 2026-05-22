@@ -11,6 +11,8 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class SimpleResearchRunner {
@@ -29,6 +31,8 @@ public class SimpleResearchRunner {
 
 	private final ResearchNode reporterNode;
 
+	private final Map<String, ResearchState> pausedStates = new ConcurrentHashMap<>();
+
 	public SimpleResearchRunner(List<ResearchNode> nodes) {
 		this.nodes = nodes.stream().sorted(Comparator.comparingInt(ResearchNode::order)).toList();
 		this.plannerNode = requiredNode("planner");
@@ -41,10 +45,54 @@ public class SimpleResearchRunner {
 
 	public Flux<ResearchEvent> run(ResearchRequest request) {
 		ResearchState state = ResearchState.from(request);
+		return runToCompletion(state);
+	}
 
+	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request) {
+		ResearchState state = ResearchState.from(request);
+
+		return plannerNode.run(state)
+			.concatWith(Flux.defer(() -> {
+				pausedStates.put(state.threadId(), state);
+				return Flux.just(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
+						"Waiting for human plan feedback", state.plan()));
+			}))
+			.subscribeOn(Schedulers.boundedElastic())
+			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	public Flux<ResearchEvent> resume(String threadId, ResumeDecision decision) {
+		ResearchState state = pausedStates.remove(threadId);
+		if (state == null) {
+			return Flux.just(ResearchEvent.error(threadId, "human_feedback",
+					new IllegalArgumentException("No paused research state found for thread: " + threadId)));
+		}
+		if (decision.accepted()) {
+			return resumeExecution(state).subscribeOn(Schedulers.boundedElastic());
+		}
+		state.planFeedback(decision.feedbackContent());
+		return plannerNode.run(state)
+			.concatWith(Flux.defer(() -> {
+				pausedStates.put(state.threadId(), state);
+				return Flux.just(ResearchEvent.message(state.threadId(), "human_feedback", "waiting",
+						"Waiting for human plan feedback", state.plan()));
+			}))
+			.subscribeOn(Schedulers.boundedElastic())
+			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	private Flux<ResearchEvent> runToCompletion(ResearchState state) {
 		return Flux.concat(plannerNode.run(state), informationNode.run(state),
 				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
 			.subscribeOn(Schedulers.boundedElastic())
+			.concatWith(Flux.defer(
+					() -> Flux.just(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))))
+			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	private Flux<ResearchEvent> resumeExecution(ResearchState state) {
+		return Flux.concat(informationNode.run(state),
+				Flux.defer(() -> researchLoop(state, state.plan().steps().size() + 1)), reporterNode.run(state))
 			.concatWith(Flux.defer(
 					() -> Flux.just(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))))
 			.onErrorResume(error -> Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));

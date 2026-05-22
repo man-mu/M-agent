@@ -12,10 +12,12 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import top.lanshan.manmu.model.ChatRequest;
 import top.lanshan.manmu.model.ChatStreamResponse;
+import top.lanshan.manmu.model.FeedbackRequest;
 import top.lanshan.manmu.model.GraphId;
 import top.lanshan.manmu.model.InformationPayload;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
+import top.lanshan.manmu.runner.ResumeDecision;
 import top.lanshan.manmu.runner.SimpleResearchRunner;
 
 import java.util.List;
@@ -40,7 +42,20 @@ public class ChatController {
 		GraphId graphId = graphId(request);
 		ResearchRequest researchRequest = new ResearchRequest(request.query(), graphId.threadId(), request.maxStepNum());
 
-		return runner.run(researchRequest).map(event -> ServerSentEvent.<ChatStreamResponse>builder()
+		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.run(researchRequest)
+				: runner.runUntilPlanGate(researchRequest);
+		return events.map(event -> ServerSentEvent.<ChatStreamResponse>builder()
+			.id(graphId.threadId())
+			.event(eventName(event))
+			.data(toResponse(graphId, event))
+			.build());
+	}
+
+	@PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<ServerSentEvent<ChatStreamResponse>> resume(@Valid @RequestBody FeedbackRequest request) {
+		GraphId graphId = new GraphId(request.sessionId(), request.threadId());
+		ResumeDecision decision = new ResumeDecision(request.feedback(), request.feedbackContent());
+		return runner.resume(request.threadId(), decision).map(event -> ServerSentEvent.<ChatStreamResponse>builder()
 			.id(graphId.threadId())
 			.event(eventName(event))
 			.data(toResponse(graphId, event))
@@ -83,6 +98,7 @@ public class ChatController {
 
 	private String displayTitle(String nodeName) {
 		return switch (nodeName) {
+			case "human_feedback" -> "人工反馈";
 			case "planner" -> "研究计划";
 			case "information" -> "信息检索";
 			case "research_team" -> "研究团队";

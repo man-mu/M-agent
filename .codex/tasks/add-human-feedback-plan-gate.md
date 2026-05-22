@@ -1,33 +1,33 @@
 # Task Handoff: add-human-feedback-plan-gate
-Updated: 2026-05-22 00:00:00 +08:00
+Updated: 2026-05-22 10:31:00 +08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
-Base Commit: f887169d09e4cdd1325006768b8bea740f545051
-Current Commit: f887169d09e4cdd1325006768b8bea740f545051
+Base Commit: 9ffccdbaad015db3f5b31ac1ba1d6dd9d20f9461
+Current Commit: 9ffccdbaad015db3f5b31ac1ba1d6dd9d20f9461 before the implementation commit
 
 ## Project Mainline
 
 - This project is a Java 17 / Maven / Spring Boot 3.4.x DeepResearch-lite backend under `C:/MainData/code/Codex_project/M-agent`.
 - The long-term direction is to imitate `C:/MainData/code/Codex_project/deepresearch-main` in a deliberately reduced, runnable backend-first form.
 - The project is growing DeepResearch workflow semantics in `SimpleResearchRunner` before migrating to Spring AI Alibaba Graph.
-- Completed stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, added Bocha-only real web search through an `information` node, and added a real `processor` node for PROCESSING steps.
-- The current stable backend loop is: planner -> information -> research_team -> researcher -> research_team -> processor -> research_team -> reporter -> `__END__`.
-- The next mainline direction is to make that automatic loop controllable by adding a human feedback plan gate, aligned with the reference project's HITL behavior but without migrating to Graph yet.
+- Completed stages removed mock runtime paths, added DeepResearch-compatible SSE envelopes, upgraded Plan/Step state, added a lightweight `research_team` control node, added Bocha-only real web search through an `information` node, added a real `processor` node for PROCESSING steps, and now added a human feedback plan gate for `/chat`.
+- The current stable auto-accepted backend loop is: planner -> information -> research_team -> researcher -> research_team -> processor -> research_team -> reporter -> `__END__`.
+- The current interactive loop is: `/chat/stream` with `auto_accepted_plan=false` runs planner -> `human_feedback` waiting; `/chat/resume` with `feedback=true` continues execution; `/chat/resume` with `feedback=false` replans with `feedback_content` and waits again.
 - New feature work must not introduce mock agents, mock search, fabricated search results, or local secret leaks.
 
 ## Stage Role in Mainline
 
-- This stage should add a minimal human-in-the-loop plan gate after planning.
-- It exists because the backend can now complete an end-to-end real workflow, but users cannot inspect, accept, or revise the generated plan before web search and execution begin.
-- It should align with `deepresearch-main`'s `human_feedback` node and `/chat/resume` contract at the semantic level while keeping the local MVP small and WebFlux/SSE-first.
+- This stage adds a minimal human-in-the-loop plan gate after planning.
+- It exists because the backend could already complete an end-to-end real workflow, but users could not inspect, accept, or revise the generated plan before web search and execution began.
+- It aligns with `deepresearch-main`'s `human_feedback` node and `/chat/resume` contract at the semantic level while keeping the local MVP small and WebFlux/SSE-first.
 
 ## Mainline Progression
 
 - `add-research-team` introduced a controlled loop around step execution.
 - `add-information-node-bocha-search` added real Bocha `information` search before execution.
 - `add-processor-node-search-context` split PROCESSING into a dedicated `processor` path that consumes prior observations and site information.
-- `add-human-feedback-plan-gate` should evolve the workflow from "automatic run-to-completion" to "interactive controllable research": planner emits plan, workflow pauses when auto-accept is disabled, user resumes with accept or revision feedback, then execution continues or replans.
-- Future stages can build on this pause/resume state boundary to add `/chat/stop`, richer session state, frontend plan editing, and eventually Spring AI Alibaba Graph.
+- `add-human-feedback-plan-gate` evolves the workflow from automatic run-to-completion to interactive controllable research: planner emits a plan, the workflow pauses when auto-accept is disabled, the user resumes with accept or revision feedback, and rejected feedback regenerates the plan before another review gate.
+- Future stages can build on this pause/resume state boundary to add `/chat/stop`, expiration for paused state, richer session state, frontend plan editing, and eventually Spring AI Alibaba Graph.
 
 ## Related Stage Handoffs
 
@@ -41,23 +41,22 @@ Current Commit: f887169d09e4cdd1325006768b8bea740f545051
 
 ## Task Theme / User Intent
 
-- The user wants to start a new session and align with `C:/MainData/code/Codex_project/deepresearch-main` for the next stage named `add-human-feedback-plan-gate`.
-- The user specifically asked whether the reference project has human feedback; investigation confirmed it has HITL via `HumanFeedbackNode`, `HumanFeedbackDispatcher`, `/chat/resume`, and Graph `interruptBefore("human_feedback")`.
-- The intended implementation should imitate reference semantics, not copy the full Graph, MemorySaver, Redis, frontend, RAG, MCP, or parallel executor stack.
+- The user wanted to resume the `add-human-feedback-plan-gate` stage and continue aligning `M-agent` with `C:/MainData/code/Codex_project/deepresearch-main`.
+- The reference project has HITL via `HumanFeedbackNode`, `HumanFeedbackDispatcher`, `/chat/resume`, and Graph `interruptBefore("human_feedback")`.
+- The local implementation imitates those semantics without copying Graph, MemorySaver, Redis, frontend, RAG, MCP, or parallel executor infrastructure.
 
 ## Acceptance Criteria
 
-- Add a minimal local human feedback concept, likely a `HumanFeedbackNode` or equivalent stage in the MVP runner.
-- Support a request option matching the existing API style, likely `auto_accepted_plan` / `autoAcceptPlan`, so callers can choose whether the generated plan is auto-accepted.
-- When auto-accept is disabled, `/chat/stream` and/or `/api/research/stream` should emit planner output plus a visible `human_feedback` waiting event, then stop before `information`, `researcher`, `processor`, and `reporter`.
-- Add a resume endpoint, likely `/chat/resume` first, that accepts `session_id`, `thread_id`, `feedback`, and `feedback_content`.
-- If `feedback=true`, resume from the saved state and continue information -> research_team -> researcher/processor -> reporter.
-- If `feedback=false`, carry `feedback_content` into planner context and regenerate the plan before reaching execution.
-- Keep saved state in memory for the MVP; do not introduce Redis or Graph checkpointers in this stage.
+- Add a minimal local human feedback concept in the MVP runner.
+- Support the existing `auto_accepted_plan` / `autoAcceptPlan` chat request option.
+- When auto-accept is disabled, `/chat/stream` emits planner output plus a visible `human_feedback` waiting event, then stops before `information`, `researcher`, `processor`, and `reporter`.
+- Add `/chat/resume` accepting `session_id`, `thread_id`, `feedback`, and `feedback_content`.
+- If `feedback=true`, resume from saved state and continue information -> research_team -> researcher/processor -> reporter.
+- If `feedback=false`, carry `feedback_content` into planner context, regenerate the plan, and pause at `human_feedback` again before execution.
+- Keep saved state in memory for the MVP; do not introduce Redis or Graph checkpointers.
 - Preserve existing auto-accepted behavior for current clients and tests.
 - Add focused tests for pause after planning, accept resume, reject-and-replan behavior, missing thread errors, and existing auto-run compatibility.
-- Run Java 17 verification with `mvn test`; if real provider tests fail due external network or provider limits, record exact failure and run focused non-network tests.
-- If a manual backend service is started for HTTP verification, close it and confirm the temporary port is released.
+- Run Java 17 verification with `mvn test`.
 - Commit the completed stage with a Chinese commit message.
 
 ## Scope
@@ -65,7 +64,7 @@ Current Commit: f887169d09e4cdd1325006768b8bea740f545051
 - Work only in `C:/MainData/code/Codex_project/M-agent`.
 - Inspect `C:/MainData/code/Codex_project/deepresearch-main` as read-only guidance.
 - Keep this stage backend-focused and minimal.
-- Prefer in-memory state management for the MVP; do not add Redis, database tables, Graph saver infrastructure, frontend code, RAG, MCP, or full Spring AI Alibaba Graph migration.
+- Use in-memory state management for the MVP; do not add Redis, database tables, Graph saver infrastructure, frontend code, RAG, MCP, or full Spring AI Alibaba Graph migration.
 - Preserve real provider paths and do not introduce mock production behavior.
 
 ## Scope Safety
@@ -95,106 +94,112 @@ Current Commit: f887169d09e4cdd1325006768b8bea740f545051
 ## Current State
 
 - Git branch: `main`.
-- Current commit: `f887169d09e4cdd1325006768b8bea740f545051`.
-- Working tree was clean before this new handoff file was written.
-- No upstream is configured for `main`.
-- Backend default port is `8080`.
-- Project instruction says any manually started backend service must be closed after testing.
-- Current M-agent has no human feedback plan gate yet.
-- Current `ChatRequest` already has `autoAcceptedPlan` fields in the public envelope, but existing runner behavior still auto-runs through the full workflow.
-- Current runner requires named nodes `planner`, `information`, `research_team`, `researcher`, `processor`, and `reporter`.
-- Current `ResearchState` is in-process per run and has no session registry, checkpoint, paused-state store, or resume contract yet.
+- No upstream branch is configured for `main`.
+- Implementation is complete and ready to commit after this handoff update.
+- `/api/research/stream` remains auto-run only and unchanged at the API contract level.
+- `/chat/stream` now branches on `ChatRequest.autoAcceptedPlan()`.
+- `SimpleResearchRunner` now stores paused states in memory by `threadId`.
+- Missing paused state on resume returns a structured `human_feedback` error event.
+- `PlannerAgent` now has a feedback-aware overload; `LlmPlannerAgent` injects human feedback into the planner prompt only for rejected/replanned runs.
+- No manual backend service was left running; verification used Maven tests and Spring Boot test-managed random ports.
 
 ## Completed
 
-- Confirmed `deepresearch-main` has HITL support.
-- Identified key reference files:
-  - `HumanFeedbackNode`
-  - `HumanFeedbackDispatcher`
-  - `ChatController`
-  - `FeedbackRequest`
-  - `DeepResearchConfiguration`
-  - `DeepResearch.http`
-- Confirmed reference semantics:
-  - Graph is compiled with `interruptBefore("human_feedback")`.
-  - `/chat/resume` accepts `feedback` and `feedback_content`.
-  - `feedback=true` proceeds to `research_team`.
-  - `feedback=false` stores `feedback_content`, clears resume state, and routes back to `planner`.
-- Completed prior processor stage and committed it.
-- Created this next-stage handoff so a fresh session can continue directly.
+- Added `FeedbackRequest` for `/chat/resume` with `session_id`, `thread_id`, `feedback`, and `feedback_content` JSON fields.
+- Added `ResumeDecision` for runner-level resume intent.
+- Added in-memory paused state handling in `SimpleResearchRunner`.
+- Added `runUntilPlanGate(...)` to emit planner events and a `human_feedback` waiting event.
+- Added `resume(...)` to accept a plan and continue execution, or reject a plan, replan with feedback, and pause again.
+- Updated `ChatController` to honor `auto_accepted_plan=false` and expose `/chat/resume` using the existing chat SSE envelope.
+- Updated planner flow so rejected feedback reaches the real LLM planner prompt path.
+- Added runner tests for pause, accepted resume, rejected replan-and-wait, missing paused state, and preserved auto-run behavior.
+- Added controller tests for `/chat/stream` plan gate routing and `/chat/resume` request/envelope behavior.
 
 ## Decisions
 
-- Recommended next stage is `add-human-feedback-plan-gate` before `/chat/stop`, richer frontend rendering, or Graph migration.
-- Implement semantic alignment first; do not migrate to Spring AI Alibaba Graph in this stage.
-- Use in-memory saved `ResearchState` or a small state registry for the MVP rather than Redis or Graph checkpoints.
-- Preserve current auto-run behavior by default so existing clients and tests remain compatible.
-- Start with `/chat/resume` compatibility because the reference project exposes human feedback through `/chat/resume`.
+- Human feedback applies initially to `/chat/stream` and `/chat/resume`, matching the reference project's chat-oriented HITL contract.
+- `/api/research/stream` remains unchanged for compatibility and simple backend verification.
+- Rejected feedback regenerates the plan and pauses again, matching the reference Graph behavior with `interruptBefore("human_feedback")`.
+- Paused state is removed when resume begins. If feedback is rejected, the newly replanned state is stored again for the next resume.
+- No expiration, stop endpoint, persistence, Redis, frontend, or Graph checkpointing was added in this stage.
 
 ## Evidence / References
 
 - Reference docs: `C:/MainData/code/Codex_project/deepresearch-main/README.md`, `README_zh.md`, and `DeepResearch.http` mention HITL and `/chat/resume`.
-- Reference node: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/HumanFeedbackNode.java`
-- Reference dispatcher: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/dispatcher/HumanFeedbackDispatcher.java`
-- Reference controller: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/controller/ChatController.java`
-- Reference request model: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/model/req/FeedbackRequest.java`
-- Reference graph wiring: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/config/DeepResearchConfiguration.java`
-- Current M-agent chat request: `src/main/java/top/lanshan/manmu/model/ChatRequest.java`
-- Current M-agent chat controller: `src/main/java/top/lanshan/manmu/api/ChatController.java`
-- Current M-agent runner: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
-- Current M-agent state: `src/main/java/top/lanshan/manmu/model/ResearchState.java`
-- Current M-agent plan and steps: `src/main/java/top/lanshan/manmu/model/ResearchPlan.java`, `src/main/java/top/lanshan/manmu/model/ResearchStep.java`
+- Reference node: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/node/HumanFeedbackNode.java`.
+- Reference dispatcher: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/dispatcher/HumanFeedbackDispatcher.java`.
+- Reference controller: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/controller/ChatController.java`.
+- Reference graph wiring: `C:/MainData/code/Codex_project/deepresearch-main/src/main/java/com/alibaba/cloud/ai/example/deepresearch/config/DeepResearchConfiguration.java`.
+- Local request model: `src/main/java/top/lanshan/manmu/model/ChatRequest.java`.
+- Local resume request model: `src/main/java/top/lanshan/manmu/model/FeedbackRequest.java`.
+- Local chat controller: `src/main/java/top/lanshan/manmu/api/ChatController.java`.
+- Local runner: `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`.
+- Local state: `src/main/java/top/lanshan/manmu/model/ResearchState.java`.
+- Local planner: `src/main/java/top/lanshan/manmu/agent/PlannerAgent.java`, `src/main/java/top/lanshan/manmu/agent/LlmPlannerAgent.java`, and `src/main/java/top/lanshan/manmu/node/PlannerNode.java`.
 
 ## Files Touched
 
 - `.codex/tasks/add-human-feedback-plan-gate.md`
+- `src/main/java/top/lanshan/manmu/agent/LlmPlannerAgent.java`
+- `src/main/java/top/lanshan/manmu/agent/PlannerAgent.java`
+- `src/main/java/top/lanshan/manmu/api/ChatController.java`
+- `src/main/java/top/lanshan/manmu/model/FeedbackRequest.java`
+- `src/main/java/top/lanshan/manmu/model/ResearchState.java`
+- `src/main/java/top/lanshan/manmu/node/PlannerNode.java`
+- `src/main/java/top/lanshan/manmu/runner/ResumeDecision.java`
+- `src/main/java/top/lanshan/manmu/runner/SimpleResearchRunner.java`
+- `src/test/java/top/lanshan/manmu/api/ChatControllerTest.java`
+- `src/test/java/top/lanshan/manmu/runner/SimpleResearchRunnerTest.java`
 
 ## Commands Run
 
-- `Get-Content -Raw C:\Users\20232\.codex\skills\task-handoff\SKILL.md`
+- `Get-Content -LiteralPath .codex/tasks/add-human-feedback-plan-gate.md`
 - `git rev-parse --show-toplevel`
 - `git branch --show-current`
 - `git status --short`
 - `git diff --stat`
+- `git diff --name-only`
 - `git rev-parse HEAD`
 - `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'` failed because no upstream is configured.
-- `git merge-base HEAD '@{upstream}'` failed because no upstream is configured.
 - `Get-Content -Encoding UTF8 -Raw AGENTS.md`
-- `Get-ChildItem .codex\tasks -File`
-- `Get-Content -Raw .codex\tasks\add-processor-node-search-context.md`
-- `git log --oneline -5`
-- `rg -n "human|feedback|interrupt|resume|HITL|approval|approve|plan feedback|human_feedback|user_feedback" C:\MainData\code\Codex_project\deepresearch-main`
-- `rg --files C:\MainData\code\Codex_project\deepresearch-main | rg "(?i)(feedback|human|interrupt|resume|graph|controller|chat|plan)"`
-- Read reference `HumanFeedbackNode`, `HumanFeedbackDispatcher`, `ChatController`, `DeepResearchConfiguration`, `FeedbackRequest`, and `DeepResearch.http`.
+- `rg --files src/main/java src/test/java`
+- `git log --oneline -8`
+- Read local `ChatRequest`, `ResearchRequest`, `ChatController`, `ResearchController`, `SimpleResearchRunner`, `PlannerNode`, `PlannerAgent`, `ResearchState`, `ResearchEvent`, `ChatStreamResponse`, `GraphId`, `LlmPlannerAgent`, `SimpleResearchRunnerTest`, and `ResearchControllerLlmWorkflowTest`.
+- `rg -n "ChatController|chat/stream|WebTestClient|SimpleResearchRunner|PlannerAgent|autoAccepted|auto_accepted|ResearchRequest" src/test/java src/main/java`
+- Read reference `HumanFeedbackDispatcher`, `HumanFeedbackNode`, `DeepResearchConfiguration`, and `InformationNode`.
+- `mvn -Dtest=SimpleResearchRunnerTest test` with Java 17 passed 5 tests.
+- `mvn '-Dtest=SimpleResearchRunnerTest,ChatControllerTest' test` with Java 17 passed 7 tests.
+- `mvn '-Dtest=ChatControllerTest' test` with Java 17 passed 2 tests.
+- `git diff --check` passed with only line-ending warnings.
+- `mvn test` with Java 17 passed 30 tests. It was run twice after implementation; both runs passed.
 
 ## Verification
 
-- No implementation verification has run for this new stage because implementation has not started.
-- Current repository state before this handoff was clean.
-- Most recent prior implementation verification from `add-processor-node-search-context`:
-  - `mvn test` with Java 17 passed 24 tests.
-  - Manual real HTTP SSE verification on temporary port `18082` observed planner -> information -> researcher -> processor -> reporter -> `__END__`.
-  - Temporary backend service was stopped and port `18082` was released.
+- Focused runner tests passed: 5 tests, 0 failures.
+- Focused runner plus controller tests passed: 7 tests, 0 failures.
+- Focused controller tests passed after display-title polish: 2 tests, 0 failures.
+- Full Java 17 verification passed twice with `mvn test`: 30 tests, 0 failures, 0 errors, 0 skipped.
+- Existing real-provider workflow tests in `ResearchControllerLlmWorkflowTest` passed during the full suite.
+- No manual backend service was started outside Maven tests.
 
 ## Known Failures / Blockers
 
-- No upstream Git branch configured.
-- Real LLM/provider tests can fail from external API rate limits or network timeouts.
-- This new stage needs a careful state-lifetime design because current `ResearchState` is created inside one `SimpleResearchRunner.run(...)` call.
-- A rejected plan needs a clean way to pass `feedback_content` back into planner prompt context; current local `PlannerAgent.plan(query, maxSteps)` does not yet accept feedback text.
-- Some previous handoff content may show Chinese mojibake if read without UTF-8; use `Get-Content -Encoding UTF8` for Chinese docs and source comments.
+- No upstream Git branch is configured for `main`.
+- In-memory paused state is intentionally process-local and will be lost on application restart.
+- Paused state has no expiration or stop/cancel endpoint yet.
+- `/api/research/stream` does not expose the human feedback plan gate in this stage by design.
 
 ## Next Actions
 
-- Inspect current `ChatRequest`, `ResearchRequest`, `ChatController`, `ResearchController`, `SimpleResearchRunner`, `PlannerNode`, `PlannerAgent`, and tests to choose the smallest in-memory pause/resume design.
-- Implement a minimal saved-state/resume path: auto-accepted requests keep current behavior; non-auto-accepted chat requests emit `human_feedback` waiting after planner and store paused state by `threadId`; `/chat/resume` accepts or rejects the plan.
-- Add focused tests for accept resume, reject-and-replan, missing paused state, and existing auto-run compatibility; then run Java 17 verification.
+- Commit the completed implementation and handoff with a Chinese commit message.
+- For a future stage, consider adding `/chat/stop` or paused-state expiration on top of the new in-memory resume boundary.
+- For a future UI stage, render the `human_feedback` waiting event and call `/chat/resume` with accept/reject plan feedback.
 
 ## Open Questions
 
-- Should human feedback initially apply only to `/chat/stream`, matching the reference project, or also to `/api/research/stream`?
-- Should `feedback=false` preserve the old plan as history, or simply replace it after replanning for the MVP?
-- Should paused state expire or be removed immediately after resume in this stage?
+- Should a later stage expose plan review for `/api/research/stream`, or keep HITL chat-only until the Graph migration?
+- What expiration policy should paused states use once sessions can accumulate?
+- Should rejected plan history be retained for the frontend, or is replacing the plan sufficient for the MVP?
 
 ## Avoid / Do Not Redo
 

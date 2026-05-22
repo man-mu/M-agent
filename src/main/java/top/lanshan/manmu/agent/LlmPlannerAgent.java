@@ -26,18 +26,36 @@ public class LlmPlannerAgent implements PlannerAgent {
 
 	@Override
 	public ResearchPlan plan(String query, int maxSteps) {
+		return plan(query, maxSteps, null);
+	}
+
+	@Override
+	public ResearchPlan plan(String query, int maxSteps, String feedbackContent) {
 		String userPrompt = """
 				User question:
 				%s
 
 				Maximum number of steps: %d
-				""".formatted(query, maxSteps);
+				%s
+				""".formatted(query, maxSteps, feedbackPrompt(feedbackContent));
 
 		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
 		PlannerResponse response = outputConverter.convert(modelOutput);
 
 		return outputMapper.toResearchPlan(response, query, maxSteps);
+	}
+
+	private String feedbackPrompt(String feedbackContent) {
+		if (feedbackContent == null || feedbackContent.isBlank()) {
+			return "";
+		}
+		return """
+
+				Human feedback for replanning:
+				%s
+				Revise the research plan to address this feedback before execution.
+				""".formatted(feedbackContent.strip());
 	}
 
 }
