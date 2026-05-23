@@ -72,9 +72,10 @@ public class ProcessorNode implements ResearchNode {
 							"Completed: " + step.title(), Map.of("step", step, "result", result)));
 				}
 				catch (RuntimeException ex) {
-					step.executionStatus(ResearchStep.STATUS_ERROR + ": " + ex.getMessage());
+					String errorMessage = errorMessage(ex);
+					step.executionStatus(ResearchStep.STATUS_ERROR + ": " + errorMessage);
 					events.add(ResearchEvent.message(state.threadId(), name(), "step_error",
-							"Failed: " + step.title(), Map.of("step", step, "error", ex.getMessage())));
+							"Failed: " + step.title(), Map.of("step", step, "error", errorMessage)));
 					throw ex;
 				}
 			}
@@ -92,6 +93,13 @@ public class ProcessorNode implements ResearchNode {
 
 	private boolean hasStatusPrefix(ResearchStep step, String statusPrefix) {
 		return step.executionStatus() != null && step.executionStatus().startsWith(statusPrefix);
+	}
+
+	private String errorMessage(RuntimeException ex) {
+		if (ex.getMessage() != null && !ex.getMessage().isBlank()) {
+			return ex.getMessage();
+		}
+		return ex.getClass().getSimpleName();
 	}
 
 }

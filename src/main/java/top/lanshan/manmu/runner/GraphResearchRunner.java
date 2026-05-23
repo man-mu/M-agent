@@ -2,7 +2,6 @@ package top.lanshan.manmu.runner;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -28,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "graph", matchIfMissing = true)
 public class GraphResearchRunner implements ResearchRunner {
 
 	private final CompiledGraph graph;
@@ -90,7 +88,7 @@ public class GraphResearchRunner implements ResearchRunner {
 		state.humanFeedback(decision.accepted(), decision.feedbackContent());
 		ResearchGraphState.setResearchState(graphState, state);
 		return withRunningStop(state.threadId(), sessionHistoryService.markRunning(state.threadId())
-			.thenMany(runResumeGraph(graphState, state))
+			.thenMany(runResumeGraph(graphState))
 			.onErrorResume(error -> markFailedThenReturnError(state, error)));
 	}
 
@@ -136,11 +134,11 @@ public class GraphResearchRunner implements ResearchRunner {
 				latestGraphState.update(output);
 				return emitNewEvents(output, emittedEvents);
 			})
-			.concatWith(Flux.defer(() -> handlePlanGateCompletion(latestGraphState.graphState(), state)))
+			.concatWith(Flux.defer(() -> handlePlanGateCompletion(latestGraphState.graphState())))
 			.subscribeOn(Schedulers.boundedElastic());
 	}
 
-	private Flux<ResearchEvent> runResumeGraph(Map<String, Object> graphState, ResearchState state) {
+	private Flux<ResearchEvent> runResumeGraph(Map<String, Object> graphState) {
 		LatestGraphState latestGraphState = new LatestGraphState(graphState);
 		List<ResearchEvent> emittedEvents = new ArrayList<>(ResearchGraphState.events(graphState));
 		return resumeGraph.fluxStream(graphState)
@@ -148,15 +146,16 @@ public class GraphResearchRunner implements ResearchRunner {
 				latestGraphState.update(output);
 				return emitNewEvents(output, emittedEvents);
 			})
-			.concatWith(Flux.defer(() -> handleResumeCompletion(latestGraphState.graphState(), state)))
+			.concatWith(Flux.defer(() -> handleResumeCompletion(latestGraphState.graphState())))
 			.subscribeOn(Schedulers.boundedElastic());
 	}
 
 	private Flux<ResearchEvent> emitNewEvents(NodeOutput output, List<ResearchEvent> emittedEvents) {
-		if (!output.state().data().containsKey(ResearchGraphStateKeys.EVENTS)) {
+		Map<String, Object> graphState = graphStateData(output);
+		if (graphState == null || !graphState.containsKey(ResearchGraphStateKeys.EVENTS)) {
 			return Flux.empty();
 		}
-		List<ResearchEvent> currentEvents = ResearchGraphState.events(output.state().data());
+		List<ResearchEvent> currentEvents = ResearchGraphState.events(graphState);
 		List<ResearchEvent> newEvents = currentEvents.stream()
 			.filter(event -> !emittedEvents.contains(event))
 			.toList();
@@ -164,7 +163,8 @@ public class GraphResearchRunner implements ResearchRunner {
 		return Flux.fromIterable(newEvents);
 	}
 
-	private Flux<ResearchEvent> handlePlanGateCompletion(Map<String, Object> graphState, ResearchState state) {
+	private Flux<ResearchEvent> handlePlanGateCompletion(Map<String, Object> graphState) {
+		ResearchState state = ResearchGraphState.researchState(graphState);
 		if (state.directAnswerRoute()) {
 			return saveCompletedReport(state);
 		}
@@ -175,7 +175,8 @@ public class GraphResearchRunner implements ResearchRunner {
 		return saveCompletedReport(state);
 	}
 
-	private Flux<ResearchEvent> handleResumeCompletion(Map<String, Object> graphState, ResearchState state) {
+	private Flux<ResearchEvent> handleResumeCompletion(Map<String, Object> graphState) {
+		ResearchState state = ResearchGraphState.researchState(graphState);
 		if (waitingForHumanFeedback(graphState)) {
 			pausedStates.put(state.threadId(), mutableGraphState(graphState));
 			return sessionHistoryService.markPaused(state.threadId()).thenMany(Flux.empty());
@@ -187,6 +188,13 @@ public class GraphResearchRunner implements ResearchRunner {
 		Map<String, Object> copy = new LinkedHashMap<>(graphState);
 		copy.put(ResearchGraphStateKeys.EVENTS, new ArrayList<>(ResearchGraphState.events(graphState)));
 		return copy;
+	}
+
+	private static Map<String, Object> graphStateData(NodeOutput output) {
+		if (output == null || output.state() == null || output.state().data() == null) {
+			return null;
+		}
+		return output.state().data();
 	}
 
 	private String lastEventNode(Map<String, Object> graphState) {
@@ -250,7 +258,10 @@ public class GraphResearchRunner implements ResearchRunner {
 		}
 
 		private void update(NodeOutput output) {
-			this.graphState = output.state().data();
+			Map<String, Object> data = graphStateData(output);
+			if (data != null) {
+				this.graphState = data;
+			}
 		}
 
 		private Map<String, Object> graphState() {

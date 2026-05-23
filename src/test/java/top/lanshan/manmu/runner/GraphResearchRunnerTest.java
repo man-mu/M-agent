@@ -45,7 +45,7 @@ class GraphResearchRunnerTest {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withUserConfiguration(RunnerSelectionConfiguration.class, ResearchRunnerConfiguration.class,
-				SimpleResearchRunner.class, GraphResearchRunner.class);
+				GraphResearchRunner.class);
 
 	@Test
 	void directAnswerRouteSkipsResearchNodesAndSavesReport() {
@@ -332,23 +332,10 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void graphRunnerIsDefaultAndSimpleRemainsExplicitFallback() {
+	void graphRunnerIsAlwaysRegisteredAsTheOnlyRunner() {
 		contextRunner.run(context -> {
 			assertThat(context).hasSingleBean(ResearchRunner.class);
 			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(GraphResearchRunner.class);
-			assertThat(context).doesNotHaveBean(SimpleResearchRunner.class);
-		});
-
-		contextRunner.withPropertyValues("mvp.research.runner=graph").run(context -> {
-			assertThat(context).hasSingleBean(ResearchRunner.class);
-			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(GraphResearchRunner.class);
-			assertThat(context).doesNotHaveBean(SimpleResearchRunner.class);
-		});
-
-		contextRunner.withPropertyValues("mvp.research.runner=simple").run(context -> {
-			assertThat(context).hasSingleBean(ResearchRunner.class);
-			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(SimpleResearchRunner.class);
-			assertThat(context).doesNotHaveBean(GraphResearchRunner.class);
 		});
 	}
 

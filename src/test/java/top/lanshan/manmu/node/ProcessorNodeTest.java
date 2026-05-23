@@ -56,6 +56,24 @@ class ProcessorNodeTest {
 		assertThat(processingStep.executionStatus()).isEqualTo(ResearchStep.STATUS_COMPLETED);
 	}
 
+	@Test
+	void failedProcessingStepWithBlankExceptionMessageRecordsFallbackError() {
+		ProcessorNode node = new ProcessorNode((state, step) -> {
+			throw new RuntimeException();
+		});
+		ResearchStep processingStep = new ResearchStep("Synthesize findings", "Turn evidence into next steps.",
+				false, StepType.PROCESSING, null, ResearchStep.STATUS_PENDING);
+		ResearchState state = stateWithPlan(List.of(processingStep));
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING, 1, 0, 0,
+				1));
+
+		StepVerifier.create(node.run(state))
+			.expectError(RuntimeException.class)
+			.verify();
+
+		assertThat(processingStep.executionStatus()).isEqualTo("error: RuntimeException");
+	}
+
 	private ResearchState stateWithPlan(List<ResearchStep> steps) {
 		ResearchState state = ResearchState.from(new ResearchRequest("Explain the workflow.", "thread-1", 3));
 		state.plan(new ResearchPlan("Workflow plan", true, "Research first, then process.", steps));
