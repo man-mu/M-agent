@@ -233,16 +233,6 @@ public class ResearchGraphBuilder {
 		};
 	}
 
-	private String routeAcceptedHumanFeedback(com.alibaba.cloud.ai.graph.OverAllState state) {
-		return switch (ResearchGraphState.humanFeedbackRoute(state.data())
-			.orElseThrow(() -> new IllegalStateException("Human feedback did not produce a route"))) {
-			case RESEARCH_TEAM -> "research_team";
-			case PLANNER -> throw new UnsupportedOperationException(
-					"GraphResearchRunner does not support rejected feedback yet");
-			case WAITING -> throw new IllegalStateException("Accepted resume did not receive human feedback input");
-		};
-	}
-
 	private String routeHumanFeedback(com.alibaba.cloud.ai.graph.OverAllState state) {
 		HumanFeedbackRoute route = ResearchGraphState.humanFeedbackRoute(state.data())
 			.orElseThrow(() -> new IllegalStateException("Human feedback did not produce a route"));

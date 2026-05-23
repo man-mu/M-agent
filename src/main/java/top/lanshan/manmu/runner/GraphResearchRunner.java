@@ -118,10 +118,15 @@ public class GraphResearchRunner implements ResearchRunner {
 
 	private Flux<ResearchEvent> runAutoResearchGraph(ResearchState state) {
 		Map<String, Object> graphState = ResearchGraphState.from(state);
+		LatestGraphState latestGraphState = new LatestGraphState(graphState);
 		List<ResearchEvent> emittedEvents = new ArrayList<>();
 		return graph.fluxStream(graphState)
-			.concatMap(output -> emitNewEvents(output, emittedEvents))
-			.concatWith(Flux.defer(() -> saveCompletedReport(state)))
+			.concatMap(output -> {
+				latestGraphState.update(output);
+				return emitNewEvents(output, emittedEvents);
+			})
+			.concatWith(Flux.defer(
+					() -> saveCompletedReport(ResearchGraphState.researchState(latestGraphState.graphState()))))
 			.subscribeOn(Schedulers.boundedElastic());
 	}
 
