@@ -10,6 +10,7 @@ import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
+import top.lanshan.manmu.model.ResearchStreamEventType;
 import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
 
@@ -30,7 +31,7 @@ class ChatControllerTest {
 	void streamUsesPlanGateWhenAutoAcceptedPlanIsFalse() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runUntilPlanGate(any(), eq("session-a"))).thenReturn(Flux.just(ResearchEvent.message("thread-1",
-				"human_feedback", "waiting", "Waiting for feedback", null)));
+				"human_feedback", "waiting", "Waiting for feedback", null).withSequence(1)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var events = client.post()
@@ -51,6 +52,16 @@ class ChatControllerTest {
 			assertThat(event.nodeName()).isEqualTo("human_feedback");
 			assertThat(event.graphId().sessionId()).isEqualTo("session-a");
 			assertThat(event.graphId().threadId()).isEqualTo("thread-1");
+			assertThat(event.sequence()).isEqualTo(1);
+			assertThat(event.eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_WAITING);
+			assertThat(event.stableNodeName()).isEqualTo("human_feedback");
+			assertThat(event.nodeType()).isEqualTo("human_feedback");
+			assertThat(event.phase()).isEqualTo("waiting");
+			assertThat(event.status()).isEqualTo("waiting");
+			assertThat(event.stableDisplayTitle()).isEqualTo(event.displayTitle());
+			assertThat(event.stableGraphId()).isEqualTo(event.graphId());
+			assertThat(event.done()).isFalse();
+			assertThat(event.timestamp()).isNotNull();
 		});
 
 		ArgumentCaptor<ResearchRequest> requestCaptor = ArgumentCaptor.forClass(ResearchRequest.class);
@@ -64,7 +75,7 @@ class ChatControllerTest {
 	void streamUsesCancellableChatRunWhenAutoAcceptedPlanIsTrue() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runChat(any(), eq("session-auto")))
-			.thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user")));
+			.thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user").withSequence(2)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var events = client.post()
@@ -85,6 +96,10 @@ class ChatControllerTest {
 			assertThat(event.nodeName()).isEqualTo("__END__");
 			assertThat(event.graphId().threadId()).isEqualTo("thread-auto");
 			assertThat(event.content()).isEqualTo(Map.of("reason", "Stopped by user", "done", true));
+			assertThat(event.sequence()).isEqualTo(2);
+			assertThat(event.eventType()).isEqualTo(ResearchStreamEventType.GRAPH_STOPPED);
+			assertThat(event.nodeType()).isEqualTo("graph");
+			assertThat(event.done()).isTrue();
 		});
 
 		verify(runner).runChat(any(), eq("session-auto"));
@@ -96,7 +111,7 @@ class ChatControllerTest {
 	void resumeForwardsFeedbackDecisionAndReturnsChatEnvelope() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.resume(eq("thread-2"), any())).thenReturn(Flux.just(ResearchEvent.message("thread-2",
-				"planner", "completed", "Plan regenerated", null)));
+				"planner", "completed", "Plan regenerated", null).withSequence(7)));
 		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
 
 		var events = client.post()
@@ -117,6 +132,8 @@ class ChatControllerTest {
 			assertThat(event.nodeName()).isEqualTo("planner");
 			assertThat(event.graphId().sessionId()).isEqualTo("session-b");
 			assertThat(event.graphId().threadId()).isEqualTo("thread-2");
+			assertThat(event.sequence()).isEqualTo(7);
+			assertThat(event.eventType()).isEqualTo(ResearchStreamEventType.PLAN_GENERATED);
 		});
 
 		ArgumentCaptor<ResumeDecision> decisionCaptor = ArgumentCaptor.forClass(ResumeDecision.class);

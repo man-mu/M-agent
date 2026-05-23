@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 public class GraphResearchRunner implements ResearchRunner {
@@ -43,6 +44,8 @@ public class GraphResearchRunner implements ResearchRunner {
 
 	private final Map<String, RunningResearch> runningResearch = new ConcurrentHashMap<>();
 
+	private final Map<String, AtomicLong> eventSequences = new ConcurrentHashMap<>();
+
 	public GraphResearchRunner(ResearchGraphBuilder graphBuilder, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
 		ResearchGraphBuilder requiredGraphBuilder = Objects.requireNonNull(graphBuilder, "graphBuilder must not be null");
@@ -57,39 +60,44 @@ public class GraphResearchRunner implements ResearchRunner {
 
 	@Override
 	public Flux<ResearchEvent> run(ResearchRequest request) {
-		return startHistoryThenRun(ResearchState.from(request));
+		ResearchState state = ResearchState.from(request);
+		return sequenceEvents(state.threadId(), true, startHistoryThenRun(state));
 	}
 
 	@Override
 	public Flux<ResearchEvent> runChat(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
-		return withRunningStop(state.threadId(), startHistoryThenRun(state));
+		return sequenceEvents(state.threadId(), true, withRunningStop(state.threadId(), startHistoryThenRun(state)));
 	}
 
 	@Override
 	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
 		state.autoAcceptedPlan(false);
-		return withRunningStop(state.threadId(), sessionHistoryService.start(state.threadId(), state.sessionId(), state.query())
-			.thenMany(runPlanGateGraph(state))
-			.onErrorResume(error -> markFailedThenReturnError(state, error)));
+		return sequenceEvents(state.threadId(), true,
+				withRunningStop(state.threadId(),
+						sessionHistoryService.start(state.threadId(), state.sessionId(), state.query())
+							.thenMany(runPlanGateGraph(state))
+							.onErrorResume(error -> markFailedThenReturnError(state, error))));
 	}
 
 	@Override
 	public Flux<ResearchEvent> resume(String threadId, ResumeDecision decision) {
 		Map<String, Object> graphState = pausedStates.get(threadId);
 		if (graphState == null) {
-			return Flux.just(ResearchEvent.error(threadId, "human_feedback",
-					new IllegalArgumentException("No paused research state found for thread: " + threadId)));
+			return sequenceEvents(threadId, false,
+					Flux.just(ResearchEvent.error(threadId, "human_feedback",
+							new IllegalArgumentException("No paused research state found for thread: " + threadId))));
 		}
 		graphState = mutableGraphState(graphState);
 		ResearchState state = ResearchGraphState.researchState(graphState);
 		pausedStates.remove(threadId);
 		state.humanFeedback(decision.accepted(), decision.feedbackContent());
 		ResearchGraphState.setResearchState(graphState, state);
-		return withRunningStop(state.threadId(), sessionHistoryService.markRunning(state.threadId())
-			.thenMany(runResumeGraph(graphState))
-			.onErrorResume(error -> markFailedThenReturnError(state, error)));
+		return sequenceEvents(state.threadId(), false,
+				withRunningStop(state.threadId(), sessionHistoryService.markRunning(state.threadId())
+					.thenMany(runResumeGraph(graphState))
+					.onErrorResume(error -> markFailedThenReturnError(state, error))));
 	}
 
 	@Override
@@ -105,6 +113,7 @@ public class GraphResearchRunner implements ResearchRunner {
 		}
 		boolean stopped = pausedStates.remove(threadId) != null;
 		if (stopped) {
+			eventSequences.remove(threadId);
 			return sessionHistoryService.markStopped(threadId).thenReturn(true).defaultIfEmpty(true);
 		}
 		return Mono.just(false);
@@ -228,6 +237,23 @@ public class GraphResearchRunner implements ResearchRunner {
 		return sessionHistoryService.markFailed(state.threadId(), errorMessage(error))
 			.onErrorResume(markError -> Mono.empty())
 			.thenMany(Flux.just(ResearchEvent.error(state.threadId(), "runner", error)));
+	}
+
+	private Flux<ResearchEvent> sequenceEvents(String threadId, boolean reset, Flux<ResearchEvent> events) {
+		return Flux.defer(() -> {
+			AtomicLong sequence = reset ? new AtomicLong(0)
+					: eventSequences.computeIfAbsent(threadId, key -> new AtomicLong(0));
+			if (reset) {
+				eventSequences.put(threadId, sequence);
+			}
+			return events.map(event -> {
+				ResearchEvent sequencedEvent = event.withSequence(sequence.incrementAndGet());
+				if (sequencedEvent.done()) {
+					eventSequences.remove(threadId, sequence);
+				}
+				return sequencedEvent;
+			});
+		});
 	}
 
 	private String errorMessage(Throwable error) {

@@ -83,16 +83,27 @@ class ResearchControllerLlmWorkflowTest {
 					"research_team", "reporter", "reporter", "__END__");
 		assertThat(events.get(0).graphId().sessionId()).isEqualTo("test-session");
 		assertThat(events.get(0).graphId().threadId()).isEqualTo("test-session-1");
+		assertThat(events).allSatisfy(event -> {
+			assertThat(event.sequence()).isNotNull();
+			assertThat(event.eventType()).isNotNull();
+			assertThat(event.stableNodeName()).isNotBlank();
+			assertThat(event.nodeType()).isNotBlank();
+			assertThat(event.phase()).isNotBlank();
+			assertThat(event.status()).isNotBlank();
+			assertThat(event.stableDisplayTitle()).isEqualTo(event.displayTitle());
+			assertThat(event.stableGraphId()).isEqualTo(event.graphId());
+			assertThat(event.timestamp()).isNotNull();
+		});
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.nodeName()).isEqualTo("planner");
-			assertThat(event.displayTitle()).isEqualTo("研究计划");
+			assertThat(event.displayTitle()).isEqualTo("\u7814\u7a76\u8ba1\u5212");
 			assertThat(event.content()).isNotNull();
 		});
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.nodeName()).isEqualTo("processor");
-			assertThat(event.displayTitle()).isEqualTo("信息整理");
+			assertThat(event.displayTitle()).isEqualTo("\u4fe1\u606f\u6574\u7406");
 		});
-		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("结束");
+		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("\u7ed3\u675f");
 		assertThat(String.valueOf(events.get(events.size() - 1).content())).contains("done=true");
 	}
 

@@ -20,6 +20,7 @@ import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
+import top.lanshan.manmu.model.ResearchStreamEventType;
 import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.ResearchTeamRoute;
 import top.lanshan.manmu.model.StepType;
@@ -64,6 +65,15 @@ class GraphResearchRunnerTest {
 		assertThat(events).isNotNull();
 		assertThat(events).as("events: %s", events).extracting(ResearchEvent::node)
 			.containsExactly("coordinator", "__END__");
+		assertThat(events).extracting(ResearchEvent::sequence).containsExactly(1L, 2L);
+		assertThat(events).extracting(ResearchEvent::eventType)
+			.containsExactly(ResearchStreamEventType.NODE_DELTA, ResearchStreamEventType.GRAPH_COMPLETED);
+		assertThat(events.get(0)).satisfies(event -> {
+			assertThat(event.nodeName()).isEqualTo("coordinator");
+			assertThat(event.nodeType()).isEqualTo("coordinator");
+			assertThat(event.status()).isEqualTo("decision");
+			assertThat(event.displayTitle()).isEqualTo("Coordinator");
+		});
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-direct");
 			assertThat(report.sessionId()).isEqualTo("thread-direct");
@@ -93,6 +103,11 @@ class GraphResearchRunnerTest {
 			.containsExactly("coordinator", "rewrite_multi_query", "background_investigator", "planner",
 					"plan_validator", "information", "research_team", "researcher", "research_team", "processor",
 					"research_team", "reporter", "__END__");
+		assertThat(events).extracting(ResearchEvent::sequence)
+			.containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L);
+		assertThat(events.get(3).eventType()).isEqualTo(ResearchStreamEventType.PLAN_GENERATED);
+		assertThat(events.get(11).eventType()).isEqualTo(ResearchStreamEventType.REPORT_COMPLETED);
+		assertThat(events.get(12).eventType()).isEqualTo(ResearchStreamEventType.GRAPH_COMPLETED);
 		assertThat(planningNode.lastBackgroundContext()).isEqualTo("Prior report context");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-graph");
@@ -152,6 +167,8 @@ class GraphResearchRunnerTest {
 		assertThat(events.get(5)).satisfies(event -> {
 			assertThat(event.phase()).isEqualTo("waiting");
 			assertThat(event.payload()).isInstanceOf(ResearchPlan.class);
+			assertThat(event.sequence()).isEqualTo(6);
+			assertThat(event.eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_WAITING);
 		});
 		assertThat(reportService.savedReports()).isEmpty();
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
@@ -309,7 +326,8 @@ class GraphResearchRunnerTest {
 			.expectNextMatches(event -> "plan_validator".equals(event.node()))
 			.then(() -> assertThat(runner.stopAndRecord("thread-stop-running").block()).isTrue())
 			.expectNextMatches(event -> event.done() && "__END__".equals(event.node())
-					&& "stopped".equals(event.phase()))
+					&& "stopped".equals(event.phase()) && event.sequence() == 6
+					&& ResearchStreamEventType.GRAPH_STOPPED.equals(event.eventType()))
 			.verifyComplete();
 
 		assertThat(runner.stopAndRecord("thread-stop-running").block()).isFalse();

@@ -20,6 +20,7 @@ import top.lanshan.manmu.model.GraphId;
 import top.lanshan.manmu.model.InformationPayload;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
+import top.lanshan.manmu.model.ResearchStreamEventType;
 import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
 
@@ -83,9 +84,9 @@ public class ChatController {
 	}
 
 	private ChatStreamResponse toResponse(GraphId graphId, ResearchEvent event) {
-		String nodeName = event.node();
 		Object content = content(event);
-		return new ChatStreamResponse(nodeName, graphId, displayTitle(nodeName), content, siteInformation(event));
+		Object siteInformation = siteInformation(event);
+		return ChatStreamResponse.from(graphId, event, content, siteInformation);
 	}
 
 	private Object content(ResearchEvent event) {
@@ -122,30 +123,14 @@ public class ChatController {
 		return List.of();
 	}
 
-	private String displayTitle(String nodeName) {
-		return switch (nodeName) {
-			case "rewrite_multi_query" -> "Query Rewrite";
-			case "coordinator" -> "Coordinator";
-			case "background_investigator" -> "Background Investigation";
-			case "human_feedback" -> "人工反馈";
-			case "planner" -> "研究计划";
-			case "plan_validator" -> "Plan Validator";
-			case "information" -> "信息检索";
-			case "research_team" -> "研究团队";
-			case "researcher" -> "研究执行";
-			case "processor" -> "信息整理";
-			case "reporter" -> "报告生成";
-			case "__END__" -> "结束";
-			case "runner" -> "运行异常";
-			default -> nodeName;
-		};
-	}
-
 	private String eventName(ResearchEvent event) {
-		if ("error".equals(event.phase())) {
+		ResearchStreamEventType eventType = event.eventType() == null ? ResearchStreamEventType.from(event)
+				: event.eventType();
+		if (ResearchStreamEventType.GRAPH_FAILED.equals(eventType)
+				|| ResearchStreamEventType.NODE_FAILED.equals(eventType)) {
 			return "error";
 		}
-		if ("stopped".equals(event.phase())) {
+		if (ResearchStreamEventType.GRAPH_STOPPED.equals(eventType)) {
 			return "stopped";
 		}
 		return event.done() ? "done" : "message";
