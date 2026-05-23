@@ -9,6 +9,7 @@ import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.AsyncEdgeAction;
 import com.alibaba.cloud.ai.graph.action.EdgeAction;
 import top.lanshan.manmu.model.CoordinatorRoute;
+import top.lanshan.manmu.model.HumanFeedbackRoute;
 import top.lanshan.manmu.model.PlanValidatorRoute;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchTeamRoute;
@@ -111,17 +112,26 @@ public class ResearchGraphBuilder {
 	}
 
 	public CompiledGraph buildAcceptedResumeGraph() {
+		return buildResumeGraph(null);
+	}
+
+	public CompiledGraph buildResumeGraph(SessionContextService sessionContextService) {
 		try {
-			StateGraph graph = newGraph("research-accepted-resume");
+			StateGraph graph = newGraph("research-resume");
 			addHumanFeedbackNode(graph);
+			graph.addNode(PLANNER, plannerAction(requiredNode(PLANNER), sessionContextService));
+			graph.addNode(PLAN_VALIDATOR, ResearchNodeGraphAction.async(requiredNode(PLAN_VALIDATOR)));
 			graph.addNode(INFORMATION, ResearchNodeGraphAction.async(requiredNode(INFORMATION)));
 			graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
 			graph.addNode(RESEARCHER, ResearchNodeGraphAction.async(requiredNode(RESEARCHER)));
 			graph.addNode(PROCESSOR, ResearchNodeGraphAction.async(requiredNode(PROCESSOR)));
 			graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
 			graph.addEdge(StateGraph.START, HUMAN_FEEDBACK);
-			graph.addConditionalEdges(HUMAN_FEEDBACK, edge(this::routeAcceptedHumanFeedback),
-					Map.of("research_team", INFORMATION));
+			graph.addConditionalEdges(HUMAN_FEEDBACK, edge(this::routeHumanFeedback),
+					Map.of("planner", PLANNER, "research_team", INFORMATION, "waiting", StateGraph.END));
+			graph.addEdge(PLANNER, PLAN_VALIDATOR);
+			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidatorWithHumanFeedback),
+					Map.of("planner", PLANNER, "research_team", INFORMATION, "human_feedback", HUMAN_FEEDBACK));
 			graph.addEdge(INFORMATION, RESEARCH_TEAM);
 			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
 					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
@@ -131,7 +141,7 @@ public class ResearchGraphBuilder {
 			return graph.compile(CompileConfig.builder().build());
 		}
 		catch (Exception ex) {
-			throw new IllegalStateException("Failed to build accepted resume research graph", ex);
+			throw new IllegalStateException("Failed to build resume research graph", ex);
 		}
 	}
 
@@ -230,6 +240,16 @@ public class ResearchGraphBuilder {
 			case PLANNER -> throw new UnsupportedOperationException(
 					"GraphResearchRunner does not support rejected feedback yet");
 			case WAITING -> throw new IllegalStateException("Accepted resume did not receive human feedback input");
+		};
+	}
+
+	private String routeHumanFeedback(com.alibaba.cloud.ai.graph.OverAllState state) {
+		HumanFeedbackRoute route = ResearchGraphState.humanFeedbackRoute(state.data())
+			.orElseThrow(() -> new IllegalStateException("Human feedback did not produce a route"));
+		return switch (route) {
+			case RESEARCH_TEAM -> "research_team";
+			case PLANNER -> "planner";
+			case WAITING -> "waiting";
 		};
 	}
 

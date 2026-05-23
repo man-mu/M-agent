@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
+import reactor.test.StepVerifier;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
@@ -188,11 +190,12 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void unsupportedRejectedResumeKeepsPausedStateForLaterAcceptedResume() {
+	void rejectedResumeReplansWithFeedbackAndWaitsAgain() {
+		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
-				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
+				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
 				new RecordingSessionContextService());
@@ -204,20 +207,40 @@ class GraphResearchRunnerTest {
 		var rejectedEvents = runner.resume("thread-reject", new ResumeDecision(false, "Focus on risks."))
 			.collectList()
 			.block();
-		var acceptedEvents = runner.resume("thread-reject", new ResumeDecision(true, null)).collectList().block();
 
 		assertThat(rejectedEvents).isNotNull();
-		assertThat(rejectedEvents).singleElement().satisfies(event -> {
-			assertThat(event.node()).isEqualTo("human_feedback");
-			assertThat(event.phase()).isEqualTo("error");
-			assertThat(event.content()).contains("does not support rejected feedback yet");
-		});
-		assertThat(acceptedEvents).isNotNull();
-		assertThat(acceptedEvents).extracting(ResearchEvent::node).containsExactly("human_feedback", "information",
+		assertThat(planningNode.runCount()).isEqualTo(2);
+		assertThat(planningNode.lastFeedback()).isEqualTo("Focus on risks.");
+		assertThat(rejectedEvents).extracting(ResearchEvent::node).containsExactly("human_feedback", "planner",
+				"plan_validator", "human_feedback");
+		assertThat(rejectedEvents.get(0).phase()).isEqualTo("decision");
+		assertThat(rejectedEvents.get(3).phase()).isEqualTo("waiting");
+		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "PAUSED");
+	}
+
+	@Test
+	void rejectedResumeContinuesWhenPlanIterationLimitIsReached() {
+		PlanningNode planningNode = new PlanningNode();
+		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new RecordingSessionContextService());
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-limit", 1,
+				null, true, false, 1), "session-limit").collectList().block();
+		var events = runner.resume("thread-limit", new ResumeDecision(false, "Try again.")).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(planningNode.runCount()).isEqualTo(1);
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("human_feedback", "information",
 				"research_team", "researcher", "research_team", "processor", "research_team", "reporter", "__END__");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
-			assertThat(report.threadId()).isEqualTo("thread-reject");
-			assertThat(report.sessionId()).isEqualTo("session-reject");
+			assertThat(report.threadId()).isEqualTo("thread-limit");
+			assertThat(report.sessionId()).isEqualTo("session-limit");
 		});
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "COMPLETED");
 	}
@@ -239,6 +262,73 @@ class GraphResearchRunnerTest {
 			assertThat(event.content()).contains("No paused research state found");
 			assertThat(event.done()).isTrue();
 		});
+	}
+
+	@Test
+	void stopRemovesPausedGraphState() {
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(), sessionHistoryService,
+				new RecordingSessionContextService());
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop-paused", 1),
+				"session-stop-paused").collectList().block();
+
+		assertThat(runner.stopAndRecord("thread-stop-paused").block()).isTrue();
+		assertThat(runner.stopAndRecord("thread-stop-paused").block()).isFalse();
+		var events = runner.resume("thread-stop-paused", new ResumeDecision(true, null)).collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).singleElement().satisfies(event -> {
+			assertThat(event.node()).isEqualTo("human_feedback");
+			assertThat(event.phase()).isEqualTo("error");
+			assertThat(event.content()).contains("No paused research state found");
+		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "STOPPED");
+	}
+
+	@Test
+	void runChatCanBeStoppedWhileRunning() {
+		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
+				new HumanFeedbackNodeStub(), new BlockingInformationNode(releaseInformation), new TeamNode(),
+				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				sessionHistoryService, new RecordingSessionContextService());
+
+		StepVerifier.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-stop-running", 1),
+				"session-stop-running"))
+			.expectNextMatches(event -> "coordinator".equals(event.node()))
+			.expectNextMatches(event -> "rewrite_multi_query".equals(event.node()))
+			.expectNextMatches(event -> "background_investigator".equals(event.node()))
+			.expectNextMatches(event -> "planner".equals(event.node()))
+			.expectNextMatches(event -> "plan_validator".equals(event.node()))
+			.then(() -> assertThat(runner.stopAndRecord("thread-stop-running").block()).isTrue())
+			.expectNextMatches(event -> event.done() && "__END__".equals(event.node())
+					&& "stopped".equals(event.phase()))
+			.verifyComplete();
+
+		assertThat(runner.stopAndRecord("thread-stop-running").block()).isFalse();
+		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "STOPPED");
+		releaseInformation.tryEmitEmpty();
+	}
+
+	@Test
+	void stopMissingThreadReturnsFalse() {
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
+				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
+				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new RecordingSessionHistoryService(), new RecordingSessionContextService());
+
+		assertThat(runner.stopAndRecord("missing-thread").block()).isFalse();
+		assertThat(runner.stopAndRecord("").block()).isFalse();
+		assertThat(runner.stopAndRecord(null).block()).isFalse();
 	}
 
 	@Test
@@ -430,6 +520,8 @@ class GraphResearchRunnerTest {
 
 		private String lastBackgroundContext;
 
+		private String lastFeedback;
+
 		private int runCount;
 
 		@Override
@@ -447,6 +539,7 @@ class GraphResearchRunnerTest {
 			runCount++;
 			state.recordPlanAttempt();
 			state.plannerError(null);
+			lastFeedback = state.planFeedback();
 			lastBackgroundContext = state.backgroundContext();
 			state.plan(validPlan());
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "planned", state.plan()));
@@ -454,6 +547,10 @@ class GraphResearchRunnerTest {
 
 		String lastBackgroundContext() {
 			return lastBackgroundContext;
+		}
+
+		String lastFeedback() {
+			return lastFeedback;
 		}
 
 		int runCount() {
@@ -587,6 +684,33 @@ class GraphResearchRunnerTest {
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()));
+		}
+
+	}
+
+	private static class BlockingInformationNode implements ResearchNode {
+
+		private final Sinks.Empty<Void> release;
+
+		BlockingInformationNode(Sinks.Empty<Void> release) {
+			this.release = release;
+		}
+
+		@Override
+		public int order() {
+			return 20;
+		}
+
+		@Override
+		public String name() {
+			return "information";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			return release.asMono()
+				.thenReturn(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()))
+				.flux();
 		}
 
 	}
