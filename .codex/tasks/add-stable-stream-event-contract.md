@@ -3,7 +3,7 @@ Updated: 2026-05-23
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
 Base Commit: cae13d8391ea525253188b0babfa43a7848be6b6
-Current Commit: cae13d8391ea525253188b0babfa43a7848be6b6 before final stage commit
+Current Commit: 712e83f46c69358b748670265b2efe2ac930b56a
 
 ## Project Mainline
 
@@ -94,7 +94,7 @@ Implement the first advanced execution stage: a stable streaming event contract 
 - Branch is `main`.
 - No upstream branch is configured.
 - Older unrelated untracked `.codex` planning/task files still exist and were not modified or staged.
-- Final stage commit is pending at the time this handoff text is written; the intended Chinese commit message means "stabilize graph orchestration streaming event protocol".
+- Completed stage is committed as `712e83f46c69358b748670265b2efe2ac930b56a`.
 
 ## Completed
 
@@ -165,6 +165,8 @@ Implement the first advanced execution stage: a stable streaming event contract 
 - `curl.exe -sS http://localhost:18080/api/sessions/stable-manual-session/threads/stable-manual-thread`
 - `Stop-Process` for the verification backend PID.
 - `Get-NetTCPConnection -LocalPort 18080`
+- `git add .codex/tasks/add-stable-stream-event-contract.md src/main/java/top/lanshan/manmu/api/ChatController.java src/main/java/top/lanshan/manmu/api/ResearchController.java src/main/java/top/lanshan/manmu/model/ChatStreamResponse.java src/main/java/top/lanshan/manmu/model/ResearchEvent.java src/main/java/top/lanshan/manmu/model/ResearchNodeMetadata.java src/main/java/top/lanshan/manmu/model/ResearchStreamEventType.java src/main/java/top/lanshan/manmu/runner/GraphResearchRunner.java src/test/java/top/lanshan/manmu/api/ChatControllerTest.java src/test/java/top/lanshan/manmu/api/ResearchControllerLlmWorkflowTest.java src/test/java/top/lanshan/manmu/runner/GraphResearchRunnerTest.java`
+- `git commit -m <Chinese message meaning "stabilize graph orchestration streaming event protocol">`
 
 ## Verification
 
@@ -195,9 +197,9 @@ Implement the first advanced execution stage: a stable streaming event contract 
 
 ## Next Actions
 
-1. Commit this completed stage with a Chinese message meaning "stabilize graph orchestration streaming event protocol".
-2. Start the next stage `add-step-execution-state-model` by extending `ResearchStep` with stable ids and execution status metadata.
-3. Reuse the stable event contract for future `step_id`, executor assignment, and dynamic node timeline events instead of adding controller-local mapping.
+1. Resume the next stage `add-step-execution-state-model` from `.codex/tasks/add-step-execution-state-model.md`.
+2. Reuse `ResearchEvent`, `ResearchStreamEventType`, `ResearchNodeMetadata`, and `ChatStreamResponse` for future `step_id`, executor assignment, and dynamic node timeline events.
+3. Keep older unrelated untracked `.codex` planning/task files untouched unless the user explicitly asks to curate or commit them.
 
 ## Open Questions
 
