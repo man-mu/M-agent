@@ -30,6 +30,7 @@ public class PlannerOutputMapper {
 			.map(this::toResearchStep)
 			.toList());
 		normalizeStepTypes(steps, maxSteps);
+		assignMissingStepIds(steps);
 
 		boolean hasEnoughContext = response.hasEnoughContext() == null || response.hasEnoughContext();
 		String thought = response.thought() == null ? "" : response.thought();
@@ -62,6 +63,15 @@ public class PlannerOutputMapper {
 			return "Research plan for: " + query.strip();
 		}
 		return "Research plan";
+	}
+
+	private void assignMissingStepIds(List<ResearchStep> steps) {
+		for (int index = 0; index < steps.size(); index++) {
+			ResearchStep step = steps.get(index);
+			if (step.id() == null || step.id().isBlank()) {
+				step.id("step-" + (index + 1));
+			}
+		}
 	}
 
 	private ResearchStep toResearchStep(PlannerResponse.Step step) {

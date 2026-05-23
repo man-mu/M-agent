@@ -26,6 +26,7 @@ class PlannerOutputMapperTest {
 		assertThat(plan.hasEnoughContext()).isTrue();
 		assertThat(plan.thought()).isEqualTo("Split the work into research and processing.");
 		assertThat(plan.steps()).hasSize(2);
+		assertThat(plan.steps()).extracting("id").containsExactly("step-1", "step-2");
 		assertThat(plan.steps().get(0).needWebSearch()).isTrue();
 		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.RESEARCH);
 		assertThat(plan.steps().get(0).executionStatus()).isEqualTo("pending");
@@ -85,6 +86,7 @@ class PlannerOutputMapperTest {
 		var plan = mapper.toResearchPlan(response, 2);
 
 		assertThat(plan.steps()).hasSize(2);
+		assertThat(plan.steps()).extracting("id").containsExactly("step-1", "step-2");
 		assertThat(plan.steps().get(0).stepType()).isEqualTo(StepType.RESEARCH);
 		assertThat(plan.steps().get(1).title()).isEqualTo("Synthesize findings");
 		assertThat(plan.steps().get(1).stepType()).isEqualTo(StepType.PROCESSING);

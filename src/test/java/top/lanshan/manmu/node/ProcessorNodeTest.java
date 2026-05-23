@@ -54,6 +54,13 @@ class ProcessorNodeTest {
 			.containsExactly("https://example.test/source");
 		assertThat(processingStep.executionRes()).isEqualTo("Processed result grounded in prior context.");
 		assertThat(processingStep.executionStatus()).isEqualTo(ResearchStep.STATUS_COMPLETED);
+		assertThat(processingStep.assignedNode()).isEqualTo("processor");
+		assertThat(processingStep.attempt()).isEqualTo(1);
+		assertThat(processingStep.error()).isNull();
+		assertThat(processingStep.startedAt()).isNotNull();
+		assertThat(processingStep.completedAt()).isNotNull();
+		assertThat(state.runningNodes()).isEmpty();
+		assertThat(state.completedNodes()).containsExactly("processor");
 	}
 
 	@Test
@@ -72,6 +79,10 @@ class ProcessorNodeTest {
 			.verify();
 
 		assertThat(processingStep.executionStatus()).isEqualTo("error: RuntimeException");
+		assertThat(processingStep.assignedNode()).isEqualTo("processor");
+		assertThat(processingStep.attempt()).isEqualTo(1);
+		assertThat(processingStep.error()).isEqualTo("RuntimeException");
+		assertThat(state.failedNodes()).containsExactly("processor");
 	}
 
 	private ResearchState stateWithPlan(List<ResearchStep> steps) {

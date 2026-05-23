@@ -1,8 +1,12 @@
 package top.lanshan.manmu.model;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class ResearchState {
 
@@ -59,6 +63,14 @@ public class ResearchState {
 	private List<BackgroundInvestigationSearchResult> backgroundInvestigationResults = List.of();
 
 	private final List<SiteInformation> siteInformation = new ArrayList<>();
+
+	private final Set<String> runningNodes = new LinkedHashSet<>();
+
+	private final Set<String> completedNodes = new LinkedHashSet<>();
+
+	private final Set<String> failedNodes = new LinkedHashSet<>();
+
+	private final Map<String, String> lastAssignedNodes = new LinkedHashMap<>();
 
 	private String report;
 
@@ -294,6 +306,52 @@ public class ResearchState {
 
 	public List<SiteInformation> siteInformation() {
 		return siteInformation;
+	}
+
+	public Set<String> runningNodes() {
+		return runningNodes;
+	}
+
+	public Set<String> completedNodes() {
+		return completedNodes;
+	}
+
+	public Set<String> failedNodes() {
+		return failedNodes;
+	}
+
+	public Map<String, String> lastAssignedNodes() {
+		return lastAssignedNodes;
+	}
+
+	public void recordNodeStarted(String nodeName, ResearchStep step) {
+		if (nodeName == null || nodeName.isBlank()) {
+			return;
+		}
+		String normalizedNodeName = nodeName.strip();
+		runningNodes.add(normalizedNodeName);
+		failedNodes.remove(normalizedNodeName);
+		if (step != null && step.id() != null && !step.id().isBlank()) {
+			lastAssignedNodes.put(normalizedNodeName, step.id());
+		}
+	}
+
+	public void recordNodeCompleted(String nodeName) {
+		if (nodeName == null || nodeName.isBlank()) {
+			return;
+		}
+		String normalizedNodeName = nodeName.strip();
+		runningNodes.remove(normalizedNodeName);
+		completedNodes.add(normalizedNodeName);
+	}
+
+	public void recordNodeFailed(String nodeName) {
+		if (nodeName == null || nodeName.isBlank()) {
+			return;
+		}
+		String normalizedNodeName = nodeName.strip();
+		runningNodes.remove(normalizedNodeName);
+		failedNodes.add(normalizedNodeName);
 	}
 
 	public String report() {

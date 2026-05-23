@@ -32,6 +32,12 @@ class ResearcherNodeTest {
 			.verify();
 
 		assertThat(researchStep.executionStatus()).isEqualTo("error: RuntimeException");
+		assertThat(researchStep.assignedNode()).isEqualTo("researcher");
+		assertThat(researchStep.attempt()).isEqualTo(1);
+		assertThat(researchStep.error()).isEqualTo("RuntimeException");
+		assertThat(researchStep.startedAt()).isNotNull();
+		assertThat(researchStep.completedAt()).isNotNull();
+		assertThat(state.failedNodes()).containsExactly("researcher");
 	}
 
 	private ResearchState stateWithPlan(List<ResearchStep> steps) {

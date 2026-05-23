@@ -6,9 +6,11 @@ import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.StepSearchContext;
+import top.lanshan.manmu.model.StepExecutionStatus;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,12 +61,12 @@ public class ResearcherNode implements ResearchNode {
 					"Executing " + decision.nextStepType().name().toLowerCase() + " steps", decision));
 
 			for (ResearchStep step : steps) {
-				step.executionStatus(ResearchStep.STATUS_PROCESSING);
+				markStepStarted(state, step);
 				try {
 					StepSearchContext searchContext = state.searchContextFor(step).orElse(step.searchContext());
 					String observation = researcherAgent.research(state.query(), step, searchContext);
 					step.executionRes(observation);
-					step.executionStatus(ResearchStep.STATUS_COMPLETED);
+					markStepCompleted(state, step);
 					state.addObservation(observation);
 
 					events.add(ResearchEvent.message(state.threadId(), name(), "step_completed",
@@ -72,7 +74,7 @@ public class ResearcherNode implements ResearchNode {
 				}
 				catch (RuntimeException ex) {
 					String errorMessage = errorMessage(ex);
-					step.executionStatus(ResearchStep.STATUS_ERROR + ": " + errorMessage);
+					markStepFailed(state, step, errorMessage);
 					events.add(ResearchEvent.message(state.threadId(), name(), "step_error",
 							"Failed: " + step.title(), Map.of("step", step, "error", errorMessage)));
 					throw ex;
@@ -86,12 +88,31 @@ public class ResearcherNode implements ResearchNode {
 	}
 
 	private boolean isTerminal(ResearchStep step) {
-		return hasStatusPrefix(step, ResearchStep.STATUS_COMPLETED)
-				|| hasStatusPrefix(step, ResearchStep.STATUS_ERROR);
+		return StepExecutionStatus.isTerminal(step);
 	}
 
-	private boolean hasStatusPrefix(ResearchStep step, String statusPrefix) {
-		return step.executionStatus() != null && step.executionStatus().startsWith(statusPrefix);
+	private void markStepStarted(ResearchState state, ResearchStep step) {
+		step.assignedNode(name());
+		step.incrementAttempt();
+		step.startedAt(Instant.now());
+		step.completedAt(null);
+		step.error(null);
+		step.executionStatus(ResearchStep.STATUS_PROCESSING);
+		state.recordNodeStarted(name(), step);
+	}
+
+	private void markStepCompleted(ResearchState state, ResearchStep step) {
+		step.completedAt(Instant.now());
+		step.error(null);
+		step.executionStatus(ResearchStep.STATUS_COMPLETED);
+		state.recordNodeCompleted(name());
+	}
+
+	private void markStepFailed(ResearchState state, ResearchStep step, String errorMessage) {
+		step.completedAt(Instant.now());
+		step.error(errorMessage);
+		step.executionStatus(StepExecutionStatus.legacyError(errorMessage));
+		state.recordNodeFailed(name());
 	}
 
 	private String errorMessage(RuntimeException ex) {

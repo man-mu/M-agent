@@ -3,6 +3,7 @@ package top.lanshan.manmu.node;
 import org.junit.jupiter.api.Test;
 import top.lanshan.manmu.agent.PlannerAgent;
 import top.lanshan.manmu.model.ResearchPlan;
+import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
@@ -35,6 +36,20 @@ class PlannerNodeTest {
 		assertThat(plannerAgent.lastOptimizedQueries)
 			.containsExactly("Continue research.", "Continue research implementation risks");
 		assertThat(state.plan()).isNotNull();
+	}
+
+	@Test
+	void emitsPlannerPlanSnapshotWithoutSharingMutableStepState() {
+		PlannerNode plannerNode = new PlannerNode(new RecordingPlannerAgent());
+		ResearchState state = ResearchState.from(new ResearchRequest("Continue research.", "thread-1", 2),
+				"session-1");
+
+		List<ResearchEvent> events = plannerNode.run(state).collectList().block();
+		ResearchPlan emittedPlan = (ResearchPlan) events.get(1).payload();
+
+		state.plan().steps().get(0).executionStatus(ResearchStep.STATUS_COMPLETED);
+
+		assertThat(emittedPlan.steps().get(0).executionStatus()).isEqualTo(ResearchStep.STATUS_PENDING);
 	}
 
 	private static class RecordingPlannerAgent implements PlannerAgent {

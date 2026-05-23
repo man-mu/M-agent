@@ -8,6 +8,7 @@ import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.ResearchTeamRoute;
+import top.lanshan.manmu.model.StepExecutionStatus;
 import top.lanshan.manmu.model.StepType;
 
 import java.util.List;
@@ -44,8 +45,8 @@ public class ResearchTeamNode implements ResearchNode {
 		}
 
 		List<ResearchStep> steps = plan.steps();
-		int completedSteps = countByStatus(steps, ResearchStep.STATUS_COMPLETED);
-		int errorSteps = countByStatus(steps, ResearchStep.STATUS_ERROR);
+		int completedSteps = countCompleted(steps);
+		int errorSteps = countErrors(steps);
 		int terminalSteps = completedSteps + errorSteps;
 		int remainingSteps = steps.size() - terminalSteps;
 
@@ -66,17 +67,16 @@ public class ResearchTeamNode implements ResearchNode {
 				errorSteps, remainingSteps);
 	}
 
-	private int countByStatus(List<ResearchStep> steps, String statusPrefix) {
-		return (int) steps.stream().filter(step -> hasStatusPrefix(step, statusPrefix)).count();
+	private int countCompleted(List<ResearchStep> steps) {
+		return (int) steps.stream().filter(StepExecutionStatus::isCompleted).count();
+	}
+
+	private int countErrors(List<ResearchStep> steps) {
+		return (int) steps.stream().filter(StepExecutionStatus::isError).count();
 	}
 
 	private boolean isTerminal(ResearchStep step) {
-		return hasStatusPrefix(step, ResearchStep.STATUS_COMPLETED)
-				|| hasStatusPrefix(step, ResearchStep.STATUS_ERROR);
-	}
-
-	private boolean hasStatusPrefix(ResearchStep step, String statusPrefix) {
-		return step.executionStatus() != null && step.executionStatus().startsWith(statusPrefix);
+		return StepExecutionStatus.isTerminal(step);
 	}
 
 }
