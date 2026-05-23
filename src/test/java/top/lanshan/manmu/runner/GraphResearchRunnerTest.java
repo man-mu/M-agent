@@ -332,17 +332,23 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void graphRunnerConfigurationIsExplicitAndSimpleRemainsDefault() {
+	void graphRunnerIsDefaultAndSimpleRemainsExplicitFallback() {
 		contextRunner.run(context -> {
 			assertThat(context).hasSingleBean(ResearchRunner.class);
-			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(SimpleResearchRunner.class);
-			assertThat(context).doesNotHaveBean(GraphResearchRunner.class);
+			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(GraphResearchRunner.class);
+			assertThat(context).doesNotHaveBean(SimpleResearchRunner.class);
 		});
 
 		contextRunner.withPropertyValues("mvp.research.runner=graph").run(context -> {
 			assertThat(context).hasSingleBean(ResearchRunner.class);
 			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(GraphResearchRunner.class);
 			assertThat(context).doesNotHaveBean(SimpleResearchRunner.class);
+		});
+
+		contextRunner.withPropertyValues("mvp.research.runner=simple").run(context -> {
+			assertThat(context).hasSingleBean(ResearchRunner.class);
+			assertThat(context.getBean(ResearchRunner.class)).isInstanceOf(SimpleResearchRunner.class);
+			assertThat(context).doesNotHaveBean(GraphResearchRunner.class);
 		});
 	}
 

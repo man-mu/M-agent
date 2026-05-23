@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "simple", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "simple")
 public class SimpleResearchRunner implements ResearchRunner {
 
 	private final List<ResearchNode> nodes;

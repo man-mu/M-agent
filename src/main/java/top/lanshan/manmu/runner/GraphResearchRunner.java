@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "graph")
+@ConditionalOnProperty(prefix = "mvp.research", name = "runner", havingValue = "graph", matchIfMissing = true)
 public class GraphResearchRunner implements ResearchRunner {
 
 	private final CompiledGraph graph;
