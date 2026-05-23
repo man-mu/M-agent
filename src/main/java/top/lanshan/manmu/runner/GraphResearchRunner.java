@@ -18,6 +18,7 @@ import top.lanshan.manmu.sessioncontext.SessionContextService;
 import top.lanshan.manmu.sessionhistory.SessionHistoryService;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,14 +29,22 @@ public class GraphResearchRunner implements ResearchRunner {
 
 	private final CompiledGraph graph;
 
+	private final CompiledGraph planGateGraph;
+
+	private final CompiledGraph acceptedResumeGraph;
+
 	private final ReportService reportService;
 
 	private final SessionHistoryService sessionHistoryService;
 
+	private final Map<String, Map<String, Object>> pausedStates = new java.util.concurrent.ConcurrentHashMap<>();
+
 	public GraphResearchRunner(ResearchGraphBuilder graphBuilder, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
-		this.graph = Objects.requireNonNull(graphBuilder, "graphBuilder must not be null")
-			.buildAutoResearchGraph(sessionContextService);
+		ResearchGraphBuilder requiredGraphBuilder = Objects.requireNonNull(graphBuilder, "graphBuilder must not be null");
+		this.graph = requiredGraphBuilder.buildAutoResearchGraph(sessionContextService);
+		this.planGateGraph = requiredGraphBuilder.buildPlanGateResearchGraph(sessionContextService);
+		this.acceptedResumeGraph = requiredGraphBuilder.buildAcceptedResumeGraph();
 		this.reportService = Objects.requireNonNull(reportService, "reportService must not be null");
 		this.sessionHistoryService = Objects.requireNonNull(sessionHistoryService,
 				"sessionHistoryService must not be null");
@@ -55,14 +64,31 @@ public class GraphResearchRunner implements ResearchRunner {
 	@Override
 	public Flux<ResearchEvent> runUntilPlanGate(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
-		return Flux.just(ResearchEvent.error(state.threadId(), "runner",
-				new UnsupportedOperationException("GraphResearchRunner does not support plan gate yet")));
+		state.autoAcceptedPlan(false);
+		return sessionHistoryService.start(state.threadId(), state.sessionId(), state.query())
+			.thenMany(runPlanGateGraph(state))
+			.onErrorResume(error -> markFailedThenReturnError(state, error));
 	}
 
 	@Override
 	public Flux<ResearchEvent> resume(String threadId, ResumeDecision decision) {
-		return Flux.just(ResearchEvent.error(threadId, "human_feedback",
-				new UnsupportedOperationException("GraphResearchRunner does not support resume yet")));
+		Map<String, Object> graphState = pausedStates.get(threadId);
+		if (graphState == null) {
+			return Flux.just(ResearchEvent.error(threadId, "human_feedback",
+					new IllegalArgumentException("No paused research state found for thread: " + threadId)));
+		}
+		graphState = mutableGraphState(graphState);
+		ResearchState state = ResearchGraphState.researchState(graphState);
+		if (!decision.accepted()) {
+			return Flux.just(ResearchEvent.error(threadId, "human_feedback",
+					new UnsupportedOperationException("GraphResearchRunner does not support rejected feedback yet")));
+		}
+		pausedStates.remove(threadId);
+		state.humanFeedback(true, null);
+		ResearchGraphState.setResearchState(graphState, state);
+		return sessionHistoryService.markRunning(state.threadId())
+			.thenMany(runAcceptedResumeGraph(graphState, state))
+			.onErrorResume(error -> markFailedThenReturnError(state, error));
 	}
 
 	@Override
@@ -85,17 +111,62 @@ public class GraphResearchRunner implements ResearchRunner {
 			.subscribeOn(Schedulers.boundedElastic());
 	}
 
+	private Flux<ResearchEvent> runPlanGateGraph(ResearchState state) {
+		Map<String, Object> graphState = ResearchGraphState.from(state);
+		LatestGraphState latestGraphState = new LatestGraphState(graphState);
+		List<ResearchEvent> emittedEvents = new ArrayList<>();
+		return planGateGraph.fluxStream(graphState)
+			.concatMap(output -> {
+				latestGraphState.update(output);
+				return emitNewEvents(output, emittedEvents);
+			})
+			.concatWith(Flux.defer(() -> handlePlanGateCompletion(latestGraphState.graphState(), state)))
+			.subscribeOn(Schedulers.boundedElastic());
+	}
+
+	private Flux<ResearchEvent> runAcceptedResumeGraph(Map<String, Object> graphState, ResearchState state) {
+		List<ResearchEvent> emittedEvents = new ArrayList<>(ResearchGraphState.events(graphState));
+		return acceptedResumeGraph.fluxStream(graphState)
+			.concatMap(output -> emitNewEvents(output, emittedEvents))
+			.concatWith(Flux.defer(() -> saveCompletedReport(state)))
+			.subscribeOn(Schedulers.boundedElastic());
+	}
+
 	private Flux<ResearchEvent> emitNewEvents(NodeOutput output, List<ResearchEvent> emittedEvents) {
 		if (!output.state().data().containsKey(ResearchGraphStateKeys.EVENTS)) {
 			return Flux.empty();
 		}
 		List<ResearchEvent> currentEvents = ResearchGraphState.events(output.state().data());
-		if (currentEvents.size() < emittedEvents.size()) {
-			throw new IllegalStateException("Graph event state shrank while running node " + output.node());
-		}
-		List<ResearchEvent> newEvents = List.copyOf(currentEvents.subList(emittedEvents.size(), currentEvents.size()));
+		List<ResearchEvent> newEvents = currentEvents.stream()
+			.filter(event -> !emittedEvents.contains(event))
+			.toList();
 		emittedEvents.addAll(newEvents);
 		return Flux.fromIterable(newEvents);
+	}
+
+	private Flux<ResearchEvent> handlePlanGateCompletion(Map<String, Object> graphState, ResearchState state) {
+		if (state.directAnswerRoute()) {
+			return saveCompletedReport(state);
+		}
+		if (ResearchGraphBuilder.HUMAN_FEEDBACK.equals(lastEventNode(graphState))) {
+			pausedStates.put(state.threadId(), mutableGraphState(graphState));
+			return sessionHistoryService.markPaused(state.threadId()).thenMany(Flux.empty());
+		}
+		return saveCompletedReport(state);
+	}
+
+	private Map<String, Object> mutableGraphState(Map<String, Object> graphState) {
+		Map<String, Object> copy = new LinkedHashMap<>(graphState);
+		copy.put(ResearchGraphStateKeys.EVENTS, new ArrayList<>(ResearchGraphState.events(graphState)));
+		return copy;
+	}
+
+	private String lastEventNode(Map<String, Object> graphState) {
+		List<ResearchEvent> events = ResearchGraphState.events(graphState);
+		if (events.isEmpty()) {
+			return null;
+		}
+		return events.get(events.size() - 1).node();
 	}
 
 	private Flux<ResearchEvent> saveCompletedReport(ResearchState state) {
@@ -119,6 +190,24 @@ public class GraphResearchRunner implements ResearchRunner {
 			return error.getMessage();
 		}
 		return error.getClass().getSimpleName();
+	}
+
+	private static final class LatestGraphState {
+
+		private Map<String, Object> graphState;
+
+		private LatestGraphState(Map<String, Object> graphState) {
+			this.graphState = graphState;
+		}
+
+		private void update(NodeOutput output) {
+			this.graphState = output.state().data();
+		}
+
+		private Map<String, Object> graphState() {
+			return graphState;
+		}
+
 	}
 
 }

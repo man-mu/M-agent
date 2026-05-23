@@ -33,6 +33,8 @@ public class ResearchGraphBuilder {
 
 	public static final String PLAN_VALIDATOR = "plan_validator";
 
+	public static final String HUMAN_FEEDBACK = "human_feedback";
+
 	public static final String INFORMATION = "information";
 
 	public static final String RESEARCH_TEAM = "research_team";
@@ -58,9 +60,7 @@ public class ResearchGraphBuilder {
 
 	public CompiledGraph buildAutoResearchGraph(SessionContextService sessionContextService) {
 		try {
-			StateGraph graph = new StateGraph("research-auto",
-					KeyStrategy.builder().defaultStrategy(KeyStrategy.REPLACE).build(),
-					new ResearchGraphStateSerializer());
+			StateGraph graph = newGraph("research-auto");
 			addRequiredNodes(graph, sessionContextService);
 			graph.addEdge(StateGraph.START, COORDINATOR);
 			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
@@ -83,6 +83,63 @@ public class ResearchGraphBuilder {
 		}
 	}
 
+	public CompiledGraph buildPlanGateResearchGraph(SessionContextService sessionContextService) {
+		try {
+			StateGraph graph = newGraph("research-plan-gate");
+			addRequiredNodes(graph, sessionContextService);
+			addHumanFeedbackNode(graph);
+			graph.addEdge(StateGraph.START, COORDINATOR);
+			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
+					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
+			graph.addEdge(REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
+			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);
+			graph.addEdge(PLANNER, PLAN_VALIDATOR);
+			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidatorWithHumanFeedback),
+					Map.of("planner", PLANNER, "research_team", INFORMATION, "human_feedback", HUMAN_FEEDBACK));
+			graph.addEdge(HUMAN_FEEDBACK, StateGraph.END);
+			graph.addEdge(INFORMATION, RESEARCH_TEAM);
+			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
+					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
+			graph.addEdge(RESEARCHER, RESEARCH_TEAM);
+			graph.addEdge(PROCESSOR, RESEARCH_TEAM);
+			graph.addEdge(REPORTER, StateGraph.END);
+			return graph.compile(CompileConfig.builder().build());
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException("Failed to build plan gate research graph", ex);
+		}
+	}
+
+	public CompiledGraph buildAcceptedResumeGraph() {
+		try {
+			StateGraph graph = newGraph("research-accepted-resume");
+			addHumanFeedbackNode(graph);
+			graph.addNode(INFORMATION, ResearchNodeGraphAction.async(requiredNode(INFORMATION)));
+			graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
+			graph.addNode(RESEARCHER, ResearchNodeGraphAction.async(requiredNode(RESEARCHER)));
+			graph.addNode(PROCESSOR, ResearchNodeGraphAction.async(requiredNode(PROCESSOR)));
+			graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
+			graph.addEdge(StateGraph.START, HUMAN_FEEDBACK);
+			graph.addConditionalEdges(HUMAN_FEEDBACK, edge(this::routeAcceptedHumanFeedback),
+					Map.of("research_team", INFORMATION));
+			graph.addEdge(INFORMATION, RESEARCH_TEAM);
+			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
+					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
+			graph.addEdge(RESEARCHER, RESEARCH_TEAM);
+			graph.addEdge(PROCESSOR, RESEARCH_TEAM);
+			graph.addEdge(REPORTER, StateGraph.END);
+			return graph.compile(CompileConfig.builder().build());
+		}
+		catch (Exception ex) {
+			throw new IllegalStateException("Failed to build accepted resume research graph", ex);
+		}
+	}
+
+	private StateGraph newGraph(String name) {
+		return new StateGraph(name, KeyStrategy.builder().defaultStrategy(KeyStrategy.REPLACE).build(),
+				new ResearchGraphStateSerializer());
+	}
+
 	private void addRequiredNodes(StateGraph graph, SessionContextService sessionContextService) throws Exception {
 		graph.addNode(COORDINATOR, ResearchNodeGraphAction.async(requiredNode(COORDINATOR)));
 		graph.addNode(REWRITE_MULTI_QUERY, ResearchNodeGraphAction.async(requiredNode(REWRITE_MULTI_QUERY)));
@@ -94,6 +151,10 @@ public class ResearchGraphBuilder {
 		graph.addNode(RESEARCHER, ResearchNodeGraphAction.async(requiredNode(RESEARCHER)));
 		graph.addNode(PROCESSOR, ResearchNodeGraphAction.async(requiredNode(PROCESSOR)));
 		graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
+	}
+
+	private void addHumanFeedbackNode(StateGraph graph) throws Exception {
+		graph.addNode(HUMAN_FEEDBACK, ResearchNodeGraphAction.async(requiredNode(HUMAN_FEEDBACK)));
 	}
 
 	private ResearchNode requiredNode(String name) {
@@ -146,6 +207,29 @@ public class ResearchGraphBuilder {
 					+ ResearchGraphState.researchState(state.data()).planValidatorDecision().reason());
 			case HUMAN_FEEDBACK -> throw new IllegalStateException(
 					"GraphResearchRunner does not support human feedback in auto-complete mode");
+		};
+	}
+
+	private String routePlanValidatorWithHumanFeedback(com.alibaba.cloud.ai.graph.OverAllState state) {
+		PlanValidatorRoute route = ResearchGraphState.planValidatorRoute(state.data())
+			.orElseThrow(() -> new IllegalStateException("Plan validator did not produce a route"));
+		return switch (route) {
+			case PLANNER -> "planner";
+			case RESEARCH_TEAM -> "research_team";
+			case HUMAN_FEEDBACK -> "human_feedback";
+			case FAILED -> throw new IllegalStateException("Planner did not produce a valid plan after "
+					+ ResearchGraphState.researchState(state.data()).planIterations() + " attempt(s): "
+					+ ResearchGraphState.researchState(state.data()).planValidatorDecision().reason());
+		};
+	}
+
+	private String routeAcceptedHumanFeedback(com.alibaba.cloud.ai.graph.OverAllState state) {
+		return switch (ResearchGraphState.humanFeedbackRoute(state.data())
+			.orElseThrow(() -> new IllegalStateException("Human feedback did not produce a route"))) {
+			case RESEARCH_TEAM -> "research_team";
+			case PLANNER -> throw new UnsupportedOperationException(
+					"GraphResearchRunner does not support rejected feedback yet");
+			case WAITING -> throw new IllegalStateException("Accepted resume did not receive human feedback input");
 		};
 	}
 
