@@ -8,6 +8,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
+import top.lanshan.manmu.config.AdvancedExecutionProperties;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
@@ -23,10 +24,15 @@ import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchStreamEventType;
 import top.lanshan.manmu.model.ResearchTeamDecision;
 import top.lanshan.manmu.model.ResearchTeamRoute;
+import top.lanshan.manmu.model.StepExecutionStatus;
 import top.lanshan.manmu.model.StepType;
+import top.lanshan.manmu.node.CoderNode;
 import top.lanshan.manmu.node.HumanFeedbackNode;
+import top.lanshan.manmu.node.ParallelExecutorNode;
 import top.lanshan.manmu.node.PlanValidatorNode;
 import top.lanshan.manmu.node.ResearchNode;
+import top.lanshan.manmu.node.ResearchTeamNode;
+import top.lanshan.manmu.node.ResearcherNode;
 import top.lanshan.manmu.report.ReportService;
 import top.lanshan.manmu.report.ResearchReport;
 import top.lanshan.manmu.sessioncontext.SessionContextReport;
@@ -111,6 +117,56 @@ class GraphResearchRunnerTest {
 		assertThat(planningNode.lastBackgroundContext()).isEqualTo("Prior report context");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-graph");
+			assertThat(report.report()).isEqualTo("done");
+		});
+		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
+	}
+
+	@Test
+	void advancedExecutionRoutesThroughParallelExecutorAndNamedExecutors() {
+		AdvancedExecutionProperties properties = advancedProperties();
+		RecordingReportService reportService = new RecordingReportService();
+		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
+				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(properties),
+				new ParallelExecutorNode(properties), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
+				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
+				sessionHistoryService, new RecordingSessionContextService(), properties);
+
+		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-advanced", 1))
+			.collectList()
+			.block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).as("events: %s", events)
+			.extracting(ResearchEvent::node)
+			.containsSubsequence("research_team", "parallel_executor", "researcher_0", "research_team",
+					"parallel_executor", "coder_0", "research_team", "reporter", "__END__");
+		assertThat(events).extracting(ResearchEvent::node).doesNotContain("researcher", "processor");
+		assertThat(events).anySatisfy(event -> {
+			assertThat(event.node()).isEqualTo("parallel_executor");
+			assertThat(event.status()).isEqualTo(StepExecutionStatus.assigned("researcher_0"));
+		});
+		assertThat(events).anySatisfy(event -> {
+			assertThat(event.node()).isEqualTo("parallel_executor");
+			assertThat(event.status()).isEqualTo(StepExecutionStatus.assigned("coder_0"));
+		});
+		assertThat(events).anySatisfy(event -> {
+			assertThat(event.nodeName()).isEqualTo("researcher_0");
+			assertThat(event.nodeType()).isEqualTo("researcher");
+			assertThat(event.executorId()).isEqualTo(0);
+			assertThat(event.status()).isEqualTo(StepExecutionStatus.completed("researcher_0"));
+		});
+		assertThat(events).anySatisfy(event -> {
+			assertThat(event.nodeName()).isEqualTo("coder_0");
+			assertThat(event.nodeType()).isEqualTo("coder");
+			assertThat(event.executorId()).isEqualTo(0);
+			assertThat(event.status()).isEqualTo(StepExecutionStatus.completed("coder_0"));
+		});
+		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
+			assertThat(report.threadId()).isEqualTo("thread-advanced");
 			assertThat(report.report()).isEqualTo("done");
 		});
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
@@ -361,6 +417,21 @@ class GraphResearchRunnerTest {
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
 		return new GraphResearchRunner(new ResearchGraphBuilder(nodes), reportService, sessionHistoryService,
 				sessionContextService);
+	}
+
+	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
+			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService,
+			AdvancedExecutionProperties properties) {
+		return new GraphResearchRunner(new ResearchGraphBuilder(nodes, properties, null, null), reportService,
+				sessionHistoryService, sessionContextService);
+	}
+
+	private static AdvancedExecutionProperties advancedProperties() {
+		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
+		properties.setEnabled(true);
+		properties.getParallelNodeCount().setResearcher(1);
+		properties.getParallelNodeCount().setCoder(1);
+		return properties;
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -822,11 +893,13 @@ class GraphResearchRunnerTest {
 	}
 
 	private static ResearchPlan validPlan() {
-		return new ResearchPlan("Plan", true, "Think",
-				List.of(new ResearchStep("Step", "Do work", false, StepType.RESEARCH, null,
-						ResearchStep.STATUS_PENDING),
-						new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
-								ResearchStep.STATUS_PENDING)));
+		ResearchStep research = new ResearchStep("Step", "Do work", false, StepType.RESEARCH, null,
+				ResearchStep.STATUS_PENDING);
+		research.id("step-1");
+		ResearchStep processing = new ResearchStep("Summarize", "Process findings", false, StepType.PROCESSING, null,
+				ResearchStep.STATUS_PENDING);
+		processing.id("step-2");
+		return new ResearchPlan("Plan", true, "Think", List.of(research, processing));
 	}
 
 	private static class RecordingReportService implements ReportService {

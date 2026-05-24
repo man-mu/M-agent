@@ -2,6 +2,7 @@ package top.lanshan.manmu.node;
 
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
+import top.lanshan.manmu.config.AdvancedExecutionProperties;
 import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchState;
@@ -52,6 +53,22 @@ class ResearchTeamNodeTest {
 		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.PROCESSING);
 		assertThat(state.researchTeamDecision().completedSteps()).isEqualTo(1);
 		assertThat(state.researchTeamDecision().remainingSteps()).isEqualTo(1);
+	}
+
+	@Test
+	void routesToParallelExecutorWhenAdvancedExecutionIsEnabled() {
+		ResearchTeamNode advancedNode = new ResearchTeamNode(advancedProperties());
+		ResearchState state = stateWithPlan(List.of(
+				new ResearchStep("Inspect workflow", "Read the current workflow.", false, StepType.RESEARCH, null,
+						ResearchStep.STATUS_PENDING),
+				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING, null,
+						ResearchStep.STATUS_PENDING)));
+
+		StepVerifier.create(advancedNode.run(state)).expectNextCount(1).verifyComplete();
+
+		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.PARALLEL_EXECUTOR);
+		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.RESEARCH);
+		assertThat(state.researchTeamDecision().remainingSteps()).isEqualTo(2);
 	}
 
 	@Test
@@ -106,6 +123,12 @@ class ResearchTeamNodeTest {
 		ResearchState state = ResearchState.from(new ResearchRequest("Explain the workflow.", "thread-1", 3));
 		state.plan(new ResearchPlan("Workflow plan", true, "Keep the work small.", steps));
 		return state;
+	}
+
+	private AdvancedExecutionProperties advancedProperties() {
+		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
+		properties.setEnabled(true);
+		return properties;
 	}
 
 }
