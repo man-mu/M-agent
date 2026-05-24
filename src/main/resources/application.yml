@@ -45,6 +45,10 @@ mvp:
     enabled: false
     top-k: 5
     similarity-threshold: 0.7
+    embedding:
+      provider-id: dashscope
+      model: text-embedding-v1
+      dimensions: 1536
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search

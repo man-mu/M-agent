@@ -14,6 +14,8 @@ public class RagProperties {
 
     private double similarityThreshold = 0.7;
 
+    private final Embedding embedding = new Embedding();
+
     private final ProfessionalKnowledgeBases professionalKnowledgeBases = new ProfessionalKnowledgeBases();
 
     public boolean isEnabled() {
@@ -40,8 +42,25 @@ public class RagProperties {
         this.similarityThreshold = similarityThreshold;
     }
 
+    public Embedding getEmbedding() {
+        return embedding;
+    }
+
     public ProfessionalKnowledgeBases getProfessionalKnowledgeBases() {
         return professionalKnowledgeBases;
+    }
+
+    public static class Embedding {
+        private String providerId = "dashscope";
+        private String model = "text-embedding-v1";
+        private int dimensions = 1536;
+
+        public String getProviderId() { return providerId; }
+        public void setProviderId(String providerId) { this.providerId = providerId; }
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public int getDimensions() { return dimensions; }
+        public void setDimensions(int dimensions) { this.dimensions = dimensions; }
     }
 
     public static class ProfessionalKnowledgeBases {
