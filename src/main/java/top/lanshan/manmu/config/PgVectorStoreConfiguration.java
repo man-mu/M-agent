@@ -42,10 +42,10 @@ public class PgVectorStoreConfiguration {
     }
 
     @Bean
-    PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
+    PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel, RagProperties ragProperties) {
         return PgVectorStore.builder(jdbcTemplate, embeddingModel)
             .vectorTableName("rag_vectors")
-            .dimensions(1536)
+            .dimensions(ragProperties.getEmbedding().getDimensions())
             .distanceType(PgVectorStore.PgDistanceType.COSINE_DISTANCE)
             .build();
     }
