@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import top.lanshan.manmu.agent.ProcessorAgent;
 import top.lanshan.manmu.agent.ResearcherAgent;
 import top.lanshan.manmu.config.AdvancedExecutionProperties;
+import top.lanshan.manmu.config.RagProperties;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
 import top.lanshan.manmu.node.ResearchNode;
 
@@ -18,9 +19,11 @@ public class ResearchRunnerConfiguration {
 	ResearchGraphBuilder researchGraphBuilder(List<ResearchNode> nodes,
 			ObjectProvider<AdvancedExecutionProperties> properties,
 			ObjectProvider<ResearcherAgent> researcherAgent,
-			ObjectProvider<ProcessorAgent> processorAgent) {
+			ObjectProvider<ProcessorAgent> processorAgent,
+			ObjectProvider<RagProperties> ragProperties) {
 		return new ResearchGraphBuilder(nodes, properties.getIfAvailable(AdvancedExecutionProperties::new),
-				researcherAgent.getIfAvailable(), processorAgent.getIfAvailable());
+				researcherAgent.getIfAvailable(), processorAgent.getIfAvailable(),
+				ragProperties.getIfAvailable(RagProperties::new));
 	}
 
 }
