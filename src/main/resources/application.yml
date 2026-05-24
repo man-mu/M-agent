@@ -37,6 +37,10 @@ mvp:
       parallel-node-count:
         researcher: 2
         coder: 1
+  rag:
+    enabled: false
+    top-k: 5
+    similarity-threshold: 0.7
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search
