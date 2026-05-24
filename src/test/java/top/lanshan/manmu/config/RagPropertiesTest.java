@@ -31,4 +31,11 @@ class RagPropertiesTest {
         assertThat(properties.getSimilarityThreshold()).isEqualTo(0.85);
     }
 
+    @Test
+    void professionalKnowledgeBasesDefaultEmpty() {
+        RagProperties properties = new RagProperties();
+        assertThat(properties.getProfessionalKnowledgeBases().getKnowledgeBases()).isEmpty();
+        assertThat(properties.getProfessionalKnowledgeBases().isDecisionEnabled()).isTrue();
+    }
+
 }

@@ -1,6 +1,7 @@
 package top.lanshan.manmu.model;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -71,6 +72,7 @@ public class ResearchState {
 	private final Set<String> failedNodes = new LinkedHashSet<>();
 
 	private final Map<String, String> lastAssignedNodes = new LinkedHashMap<>();
+    private List<String> selectedKnowledgeBases = Collections.emptyList();
 
 	private String report;
 
@@ -353,6 +355,11 @@ public class ResearchState {
 		runningNodes.remove(normalizedNodeName);
 		failedNodes.add(normalizedNodeName);
 	}
+
+    public List<String> selectedKnowledgeBases() { return selectedKnowledgeBases; }
+    public void selectedKnowledgeBases(List<String> selectedKnowledgeBases) {
+        this.selectedKnowledgeBases = selectedKnowledgeBases == null ? Collections.emptyList() : selectedKnowledgeBases;
+    }
 
 	public String report() {
 		return report;
