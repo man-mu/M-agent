@@ -3,7 +3,7 @@ Updated: 2026-05-24T12:38:43+08:00
 Workspace: C:/MainData/code/Codex_project/M-agent
 Branch: main
 Base Commit: fa52ebf4eeaf57f77683d4dc33295bf5eb25748e
-Current Commit: fa52ebf4eeaf57f77683d4dc33295bf5eb25748e
+Current Commit: 916d6cd73f6f191278c19939c294fd56f2cf399b
 
 ## Project Mainline
 
@@ -25,7 +25,7 @@ Current Commit: fa52ebf4eeaf57f77683d4dc33295bf5eb25748e
 - Stage 2, `add-step-execution-state-model`, introduced deterministic step ids, execution metadata on `ResearchStep`, `StepExecutionStatus`, and lightweight execution node state on `ResearchState`.
 - Stage 3, `add-parallel-executor-assignment`, added disabled-by-default advanced execution config and assignment-only `ParallelExecutorNode`.
 - Stage 4, `add-multi-researcher-executors`, added dynamic `researcher_n` execution behavior while preserving the legacy `researcher` compatibility path.
-- This stage added dynamic `coder_n` behavior as a minimal named processor for `PROCESSING` steps. After it, a future graph wiring stage can connect `parallel_executor -> researcher_n/coder_n -> research_team`.
+- This stage added dynamic `coder_n` behavior as a minimal named processor for `PROCESSING` steps. The next session will open stage 6, `wire-advanced-execution-graph`, to connect `parallel_executor -> researcher_n/coder_n -> research_team` behind an explicit advanced-execution switch.
 
 ## Related Stage Handoffs
 
@@ -33,7 +33,7 @@ Current Commit: fa52ebf4eeaf57f77683d4dc33295bf5eb25748e
 - Earlier upstream stages: `.codex/tasks/add-parallel-executor-assignment.md`, `.codex/tasks/add-step-execution-state-model.md`, and `.codex/tasks/add-stable-stream-event-contract.md`.
 - Planning reference: `.codex/graph-advanced-execution-plan.md`.
 - Historical Graph migration references only: `.codex/graph-dynamic-orchestration-plan.md` and older Graph task handoffs under `.codex/tasks/`.
-- Likely next stage after this one: `wire-advanced-execution-graph`.
+- Next stage after this one: `wire-advanced-execution-graph`.
 
 ## Goal
 
@@ -106,6 +106,7 @@ Add a minimal executor-aware coder node so `coder_0`, `coder_1`, and future code
 ## Current State
 
 - The upstream stage `add-multi-researcher-executors` is committed at `fa52ebf4eeaf57f77683d4dc33295bf5eb25748e`.
+- This completed stage is committed at `916d6cd73f6f191278c19939c294fd56f2cf399b` with message `添加最小动态 coder 节点`.
 - This stage now has an additive `CoderNode` implementation plus focused tests.
 - `CoderNode` intentionally is not a Spring `@Component`, so the existing `ResearchGraphBuilder(List<ResearchNode>)` default node collection does not add it to the current linear graph route before a later wiring stage.
 - `main` has no upstream branch configured.
@@ -121,6 +122,7 @@ Add a minimal executor-aware coder node so `coder_0`, `coder_1`, and future code
 - Added `src/main/java/top/lanshan/manmu/node/CoderNode.java`.
 - Added `src/test/java/top/lanshan/manmu/node/CoderNodeTest.java`.
 - Verified focused node behavior, full Maven tests, and real HTTP/SSE default-route regression against Docker PostgreSQL and DeepSeek.
+- Committed this stage as `916d6cd 添加最小动态 coder 节点`.
 
 ## Decisions
 
@@ -193,9 +195,9 @@ Add a minimal executor-aware coder node so `coder_0`, `coder_1`, and future code
 
 ## Next Actions
 
-1. Commit this completed stage with only `CoderNode`, `CoderNodeTest`, and this handoff staged.
-2. Start the next stage, likely `wire-advanced-execution-graph`, by deciding how to instantiate/register `researcher_n` and `coder_n` without changing the default route unless advanced execution is enabled.
-3. In the next wiring stage, preserve the verified default-route regression: no `coder_0`, `researcher_0`, or `parallel_executor` events unless the advanced graph is explicitly selected.
+1. In a new session, create or resume `.codex/tasks/wire-advanced-execution-graph.md` and restore the mainline from this handoff plus `.codex/graph-advanced-execution-plan.md`.
+2. Implement stage 6 by deciding how to instantiate/register `researcher_n` and `coder_n` and wire `parallel_executor -> executor -> research_team` only when `advanced-execution.enabled=true`.
+3. Preserve the verified default-route regression: no `coder_0`, `researcher_0`, or `parallel_executor` events unless the advanced graph is explicitly selected.
 
 ## Open Questions
 
@@ -203,6 +205,7 @@ Add a minimal executor-aware coder node so `coder_0`, `coder_1`, and future code
 - Resolved: do not introduce a `CoderAgent` interface yet.
 - Resolved: do not add `src/main/resources/prompts/coder.md` yet; use the existing processor prompt through `ProcessorAgent`.
 - Open for next stage: how to instantiate and register dynamic executor nodes for advanced graph routing without disturbing the current default route.
+- The user explicitly plans to start stage 6 in a new conversation.
 
 ## Avoid / Do Not Redo
 
