@@ -46,9 +46,10 @@ public class VectorStoreDataIngestionService {
             metadata.put("session_id", sessionId);
             metadata.put("user_id", userId);
             metadata.put("chunk_id", i);
-            metadata.put("original_filename", resource.getFilename());
+            metadata.put("original_filename", resource.getFilename() != null ? resource.getFilename() : "unknown");
             metadata.put("upload_timestamp", timestamp.toString());
             metadata.put("file_size", contentLengthSafe(resource));
+            metadata.values().removeIf(v -> v == null);
             chunk.getMetadata().putAll(metadata);
         }
 

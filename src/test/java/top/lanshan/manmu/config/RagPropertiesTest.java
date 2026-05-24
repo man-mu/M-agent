@@ -16,7 +16,7 @@ class RagPropertiesTest {
     void defaultTopKIsFive() {
         RagProperties properties = new RagProperties();
         assertThat(properties.getTopK()).isEqualTo(5);
-        assertThat(properties.getSimilarityThreshold()).isEqualTo(0.7);
+        assertThat(properties.getSimilarityThreshold()).isEqualTo(0.3);
     }
 
     @Test
