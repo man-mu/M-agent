@@ -11,6 +11,7 @@ import com.alibaba.cloud.ai.graph.action.EdgeAction;
 import top.lanshan.manmu.agent.ProcessorAgent;
 import top.lanshan.manmu.agent.ResearcherAgent;
 import top.lanshan.manmu.config.AdvancedExecutionProperties;
+import top.lanshan.manmu.config.RagProperties;
 import top.lanshan.manmu.model.CoordinatorRoute;
 import top.lanshan.manmu.model.HumanFeedbackRoute;
 import top.lanshan.manmu.model.PlanValidatorRoute;
@@ -65,6 +66,8 @@ public class ResearchGraphBuilder {
 
 	public static final String REPORTER = "reporter";
 
+	public static final String USER_FILE_RAG = "user_file_rag";
+
 	private final Map<String, ResearchNode> nodes;
 
 	private final AdvancedExecutionProperties advancedExecutionProperties;
@@ -73,12 +76,19 @@ public class ResearchGraphBuilder {
 
 	private final ProcessorAgent processorAgent;
 
+	private final RagProperties ragProperties;
+
 	public ResearchGraphBuilder(List<ResearchNode> nodes) {
-		this(nodes, new AdvancedExecutionProperties(), null, null);
+		this(nodes, new AdvancedExecutionProperties(), null, null, new RagProperties());
 	}
 
 	public ResearchGraphBuilder(List<ResearchNode> nodes, AdvancedExecutionProperties advancedExecutionProperties,
 			ResearcherAgent researcherAgent, ProcessorAgent processorAgent) {
+		this(nodes, advancedExecutionProperties, researcherAgent, processorAgent, new RagProperties());
+	}
+
+	public ResearchGraphBuilder(List<ResearchNode> nodes, AdvancedExecutionProperties advancedExecutionProperties,
+			ResearcherAgent researcherAgent, ProcessorAgent processorAgent, RagProperties ragProperties) {
 		Objects.requireNonNull(nodes, "nodes must not be null");
 		this.nodes = nodes.stream()
 			.sorted(Comparator.comparingInt(ResearchNode::order))
@@ -87,6 +97,7 @@ public class ResearchGraphBuilder {
 				advancedExecutionProperties == null ? new AdvancedExecutionProperties() : advancedExecutionProperties;
 		this.researcherAgent = researcherAgent;
 		this.processorAgent = processorAgent;
+		this.ragProperties = ragProperties == null ? new RagProperties() : ragProperties;
 	}
 
 	public CompiledGraph buildAutoResearchGraph() {
@@ -118,7 +129,7 @@ public class ResearchGraphBuilder {
 			graph.addEdge(StateGraph.START, COORDINATOR);
 			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
 					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
-			graph.addEdge(REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
+			addRagConditionalEdge(graph, REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
 			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);
 			graph.addEdge(PLANNER, PLAN_VALIDATOR);
 			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidator),
@@ -142,7 +153,7 @@ public class ResearchGraphBuilder {
 			graph.addEdge(StateGraph.START, COORDINATOR);
 			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
 					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
-			graph.addEdge(REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
+			addRagConditionalEdge(graph, REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
 			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);
 			graph.addEdge(PLANNER, PLAN_VALIDATOR);
 			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidatorWithHumanFeedback),
@@ -199,6 +210,9 @@ public class ResearchGraphBuilder {
 		graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
 		graph.addNode(PARALLEL_EXECUTOR, ResearchNodeGraphAction.async(requiredNode(PARALLEL_EXECUTOR)));
 		graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
+		if (ragProperties.isEnabled() && nodes.containsKey(USER_FILE_RAG)) {
+			graph.addNode(USER_FILE_RAG, ResearchNodeGraphAction.async(requiredNode(USER_FILE_RAG)));
+		}
 	}
 
 	private void addExecutorNodes(StateGraph graph, Map<String, ResearchNode> executorNodes) throws Exception {
@@ -285,6 +299,15 @@ public class ResearchGraphBuilder {
 		String context = sessionContextService.formatRecentCompletedReports(researchState.sessionId(),
 				researchState.threadId()).block();
 		researchState.backgroundContext(context);
+	}
+
+	private void addRagConditionalEdge(StateGraph graph, String from, String defaultTo) throws Exception {
+		if (ragProperties.isEnabled() && nodes.containsKey(USER_FILE_RAG)) {
+			graph.addEdge(from, USER_FILE_RAG);
+			graph.addEdge(USER_FILE_RAG, defaultTo);
+		} else {
+			graph.addEdge(from, defaultTo);
+		}
 	}
 
 	private AsyncEdgeAction edge(EdgeAction action) {
