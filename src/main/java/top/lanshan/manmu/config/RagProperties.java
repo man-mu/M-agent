@@ -12,7 +12,7 @@ public class RagProperties {
 
     private int topK = 5;
 
-    private double similarityThreshold = 0.7;
+    private double similarityThreshold = 0.3;
 
     private final Embedding embedding = new Embedding();
 

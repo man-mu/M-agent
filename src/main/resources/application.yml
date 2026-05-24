@@ -40,7 +40,7 @@ mvp:
   rag:
     enabled: false
     top-k: 5
-    similarity-threshold: 0.7
+    similarity-threshold: 0.3
     embedding:
       provider-id: dashscope
       model: text-embedding-v1

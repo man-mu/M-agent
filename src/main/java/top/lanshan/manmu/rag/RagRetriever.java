@@ -37,7 +37,8 @@ public class RagRetriever {
             .filter(doc -> filterMetadata.entrySet().stream()
                 .allMatch(e -> e.getValue().equals(doc.getMetadata().get(e.getKey()))))
             .toList();
-        logger.info("Retrieved {} documents (filtered to {}) for query: {}", results.size(), filtered.size(),
+        logger.info("Retrieved {} docs (filtered to {}) [threshold={}, topK={}] for query: {}",
+                results.size(), filtered.size(), similarityThreshold, topK,
                 query.length() > 100 ? query.substring(0, 100) + "..." : query);
         return filtered;
     }
