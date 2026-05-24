@@ -19,6 +19,11 @@
 - 不要把 `.local/model-providers.json` 中的 API Key 写入源码、测试断言或提交记录。
 - 不用管 `.claude/` 文件夹；不要修改、删除或提交它，除非用户明确要求。
 
+## 计划执行偏好
+
+- 执行实现计划时统一使用 **Inline Execution**（`superpowers:executing-plans`），不使用 Subagent-Driven Development。
+- 计划保存在 `docs/superpowers/plans/` 目录下。
+
 ## 语言偏好
 
 - 思考、分析和内部推理过程使用英文。
