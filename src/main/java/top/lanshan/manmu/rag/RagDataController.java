@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import top.lanshan.manmu.report.ReportResponse;
 
 import java.util.Map;
@@ -53,7 +54,7 @@ public class RagDataController {
                     });
                 return new org.springframework.core.io.ByteArrayResource(bytes, file.filename());
             })
-            .map(resource -> {
+            .flatMap(resource -> Mono.fromCallable(() -> {
                 int chunks = ingestionService.ingest(resource, finalSessionId, finalUserId);
                 Map<String, Object> data = Map.of(
                     "file_name", file.filename(),
@@ -61,7 +62,7 @@ public class RagDataController {
                     "session_id", finalSessionId);
                 return ResponseEntity.ok(ReportResponse.success(finalSessionId,
                         "File ingested successfully", data));
-            });
+            }).subscribeOn(Schedulers.boundedElastic()));
     }
 
 }

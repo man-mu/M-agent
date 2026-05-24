@@ -5,8 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
-import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder.Op;
 
 import java.util.List;
 import java.util.Map;
@@ -29,23 +27,19 @@ public class RagRetriever {
     }
 
     public List<Document> retrieve(String query, Map<String, Object> filterMetadata) {
-        FilterExpressionBuilder builder = new FilterExpressionBuilder();
-        Op filter = null;
-        for (Map.Entry<String, Object> entry : filterMetadata.entrySet()) {
-            Op expr = builder.eq(entry.getKey(), entry.getValue());
-            filter = filter == null ? expr : builder.and(filter, expr);
-        }
         SearchRequest request = SearchRequest.builder()
             .query(query)
             .topK(topK)
             .similarityThreshold(similarityThreshold)
-            .filterExpression(filter != null
-                    ? filter.build() : new FilterExpressionBuilder().eq("source_type", "user_upload").build())
             .build();
         List<Document> results = vectorStore.similaritySearch(request);
-        logger.info("Retrieved {} documents for query: {}", results.size(),
+        List<Document> filtered = results.stream()
+            .filter(doc -> filterMetadata.entrySet().stream()
+                .allMatch(e -> e.getValue().equals(doc.getMetadata().get(e.getKey()))))
+            .toList();
+        logger.info("Retrieved {} documents (filtered to {}) for query: {}", results.size(), filtered.size(),
                 query.length() > 100 ? query.substring(0, 100) + "..." : query);
-        return results;
+        return filtered;
     }
 
     public String buildContext(List<Document> documents) {

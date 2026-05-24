@@ -11,10 +11,16 @@ import top.lanshan.manmu.node.ProfessionalKbDecisionNode;
 import top.lanshan.manmu.node.ProfessionalKbRagNode;
 import top.lanshan.manmu.node.UserFileRagNode;
 import top.lanshan.manmu.rag.RagRetriever;
+import top.lanshan.manmu.rag.VectorStoreDataIngestionService;
 
 @Configuration
 @ConditionalOnProperty(prefix = "mvp.rag", name = "enabled", havingValue = "true")
 public class RagNodeConfiguration {
+
+    @Bean
+    VectorStoreDataIngestionService vectorStoreDataIngestionService(VectorStore vectorStore) {
+        return new VectorStoreDataIngestionService(vectorStore);
+    }
 
     @Bean
     RagRetriever ragRetriever(VectorStore vectorStore, RagProperties ragProperties) {
