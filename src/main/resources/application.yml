@@ -26,10 +26,6 @@ spring:
       enabled: false
       chat:
         enabled: false
-      embedding:
-        enabled: false
-        options:
-          model: text-embedding-v1
 
 logging:
   level:
