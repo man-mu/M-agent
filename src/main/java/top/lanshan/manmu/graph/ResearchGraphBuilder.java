@@ -30,6 +30,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Builds the advanced execution Graph. Extension points:
+ * <ul>
+ *   <li>RAG: insert a new node (e.g. {@code rag_retrieval}) between
+ *       {@code BACKGROUND_INVESTIGATOR} and {@code PLANNER}.</li>
+ *   <li>MCP: inject {@code McpToolRegistry} into {@code ResearcherNode} /
+ *       {@code CoderNode} through their agents.</li>
+ *   <li>Docker coder: replace {@code CoderNode}'s {@code ProcessorAgent}
+ *       with a {@code DockerCoderAgent} that spawns a sandbox container.</li>
+ *   <li>Frontend: the stable SSE event envelope from Stage 1 already
+ *       supports a node-timeline debug console.</li>
+ * </ul>
+ */
 public class ResearchGraphBuilder {
 
 	public static final String COORDINATOR = "coordinator";
@@ -49,10 +62,6 @@ public class ResearchGraphBuilder {
 	public static final String RESEARCH_TEAM = "research_team";
 
 	public static final String PARALLEL_EXECUTOR = "parallel_executor";
-
-	public static final String RESEARCHER = "researcher";
-
-	public static final String PROCESSOR = "processor";
 
 	public static final String REPORTER = "reporter";
 
@@ -85,61 +94,11 @@ public class ResearchGraphBuilder {
 	}
 
 	public CompiledGraph buildAutoResearchGraph(SessionContextService sessionContextService) {
-		if (advancedExecutionProperties.isEnabled()) {
-			return buildAdvancedAutoResearchGraph(sessionContextService);
-		}
-		try {
-			StateGraph graph = newGraph("research-auto");
-			addRequiredNodes(graph, sessionContextService);
-			graph.addEdge(StateGraph.START, COORDINATOR);
-			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
-					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
-			graph.addEdge(REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
-			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);
-			graph.addEdge(PLANNER, PLAN_VALIDATOR);
-			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidator),
-					Map.of("planner", PLANNER, "research_team", INFORMATION));
-			graph.addEdge(INFORMATION, RESEARCH_TEAM);
-			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
-					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
-			graph.addEdge(RESEARCHER, RESEARCH_TEAM);
-			graph.addEdge(PROCESSOR, RESEARCH_TEAM);
-			graph.addEdge(REPORTER, StateGraph.END);
-			return graph.compile(CompileConfig.builder().build());
-		}
-		catch (Exception ex) {
-			throw new IllegalStateException("Failed to build research graph", ex);
-		}
+		return buildAdvancedAutoResearchGraph(sessionContextService);
 	}
 
 	public CompiledGraph buildPlanGateResearchGraph(SessionContextService sessionContextService) {
-		if (advancedExecutionProperties.isEnabled()) {
-			return buildAdvancedPlanGateResearchGraph(sessionContextService);
-		}
-		try {
-			StateGraph graph = newGraph("research-plan-gate");
-			addRequiredNodes(graph, sessionContextService);
-			addHumanFeedbackNode(graph);
-			graph.addEdge(StateGraph.START, COORDINATOR);
-			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
-					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
-			graph.addEdge(REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
-			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);
-			graph.addEdge(PLANNER, PLAN_VALIDATOR);
-			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidatorWithHumanFeedback),
-					Map.of("planner", PLANNER, "research_team", INFORMATION, "human_feedback", HUMAN_FEEDBACK));
-			graph.addEdge(HUMAN_FEEDBACK, StateGraph.END);
-			graph.addEdge(INFORMATION, RESEARCH_TEAM);
-			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
-					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
-			graph.addEdge(RESEARCHER, RESEARCH_TEAM);
-			graph.addEdge(PROCESSOR, RESEARCH_TEAM);
-			graph.addEdge(REPORTER, StateGraph.END);
-			return graph.compile(CompileConfig.builder().build());
-		}
-		catch (Exception ex) {
-			throw new IllegalStateException("Failed to build plan gate research graph", ex);
-		}
+		return buildAdvancedPlanGateResearchGraph(sessionContextService);
 	}
 
 	public CompiledGraph buildAcceptedResumeGraph() {
@@ -147,36 +106,7 @@ public class ResearchGraphBuilder {
 	}
 
 	public CompiledGraph buildResumeGraph(SessionContextService sessionContextService) {
-		if (advancedExecutionProperties.isEnabled()) {
-			return buildAdvancedResumeGraph(sessionContextService);
-		}
-		try {
-			StateGraph graph = newGraph("research-resume");
-			addHumanFeedbackNode(graph);
-			graph.addNode(PLANNER, plannerAction(requiredNode(PLANNER), sessionContextService));
-			graph.addNode(PLAN_VALIDATOR, ResearchNodeGraphAction.async(requiredNode(PLAN_VALIDATOR)));
-			graph.addNode(INFORMATION, ResearchNodeGraphAction.async(requiredNode(INFORMATION)));
-			graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
-			graph.addNode(RESEARCHER, ResearchNodeGraphAction.async(requiredNode(RESEARCHER)));
-			graph.addNode(PROCESSOR, ResearchNodeGraphAction.async(requiredNode(PROCESSOR)));
-			graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
-			graph.addEdge(StateGraph.START, HUMAN_FEEDBACK);
-			graph.addConditionalEdges(HUMAN_FEEDBACK, edge(this::routeHumanFeedback),
-					Map.of("planner", PLANNER, "research_team", INFORMATION, "waiting", StateGraph.END));
-			graph.addEdge(PLANNER, PLAN_VALIDATOR);
-			graph.addConditionalEdges(PLAN_VALIDATOR, edge(this::routePlanValidatorWithHumanFeedback),
-					Map.of("planner", PLANNER, "research_team", INFORMATION, "human_feedback", HUMAN_FEEDBACK));
-			graph.addEdge(INFORMATION, RESEARCH_TEAM);
-			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
-					Map.of("researcher", RESEARCHER, "processor", PROCESSOR, "reporter", REPORTER));
-			graph.addEdge(RESEARCHER, RESEARCH_TEAM);
-			graph.addEdge(PROCESSOR, RESEARCH_TEAM);
-			graph.addEdge(REPORTER, StateGraph.END);
-			return graph.compile(CompileConfig.builder().build());
-		}
-		catch (Exception ex) {
-			throw new IllegalStateException("Failed to build resume research graph", ex);
-		}
+		return buildAdvancedResumeGraph(sessionContextService);
 	}
 
 	private CompiledGraph buildAdvancedAutoResearchGraph(SessionContextService sessionContextService) {
@@ -267,11 +197,7 @@ public class ResearchGraphBuilder {
 		graph.addNode(PLAN_VALIDATOR, ResearchNodeGraphAction.async(requiredNode(PLAN_VALIDATOR)));
 		graph.addNode(INFORMATION, ResearchNodeGraphAction.async(requiredNode(INFORMATION)));
 		graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
-		if (advancedExecutionProperties.isEnabled()) {
-			graph.addNode(PARALLEL_EXECUTOR, ResearchNodeGraphAction.async(requiredNode(PARALLEL_EXECUTOR)));
-		}
-		graph.addNode(RESEARCHER, ResearchNodeGraphAction.async(requiredNode(RESEARCHER)));
-		graph.addNode(PROCESSOR, ResearchNodeGraphAction.async(requiredNode(PROCESSOR)));
+		graph.addNode(PARALLEL_EXECUTOR, ResearchNodeGraphAction.async(requiredNode(PARALLEL_EXECUTOR)));
 		graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
 	}
 
@@ -282,7 +208,7 @@ public class ResearchGraphBuilder {
 	}
 
 	private void addAdvancedExecutionEdges(StateGraph graph, Map<String, ResearchNode> executorNodes) throws Exception {
-		graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeamAdvanced),
+		graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
 				Map.of("parallel_executor", PARALLEL_EXECUTOR, "reporter", REPORTER));
 		graph.addConditionalEdges(PARALLEL_EXECUTOR, edge(this::routeParallelExecutor),
 				executorRouteTargets(executorNodes));
@@ -415,19 +341,7 @@ public class ResearchGraphBuilder {
 		ResearchTeamRoute route = ResearchGraphState.researchTeamRoute(state.data())
 			.orElseThrow(() -> new IllegalStateException("Research team did not produce a route"));
 		return switch (route) {
-			case PARALLEL_EXECUTOR ->
-				throw new IllegalStateException("Advanced research team route requires the advanced graph");
-			case RESEARCHER -> "researcher";
-			case PROCESSOR -> "processor";
-			case REPORTER -> "reporter";
-		};
-	}
-
-	private String routeResearchTeamAdvanced(com.alibaba.cloud.ai.graph.OverAllState state) {
-		ResearchTeamRoute route = ResearchGraphState.researchTeamRoute(state.data())
-			.orElseThrow(() -> new IllegalStateException("Research team did not produce a route"));
-		return switch (route) {
-			case PARALLEL_EXECUTOR, RESEARCHER, PROCESSOR -> "parallel_executor";
+			case PARALLEL_EXECUTOR -> "parallel_executor";
 			case REPORTER -> "reporter";
 		};
 	}

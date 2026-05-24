@@ -60,10 +60,10 @@ class GraphResearchRunnerTest {
 	void directAnswerRouteSkipsResearchNodesAndSavesReport() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
 				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
-				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
 				new RecordingSessionContextService());
 
 		var events = runner.run(new ResearchRequest("Say hello.", "thread-direct", 2, null, false))
@@ -91,47 +91,13 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void explicitDisabledAdvancedExecutionUsesLegacyResearchTeamLoop() {
-		RecordingReportService reportService = new RecordingReportService();
-		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
-		sessionContextService.context("thread-graph", "Prior report context");
-		PlanningNode planningNode = new PlanningNode();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
-				new BackgroundInvestigatorNodeStub(), planningNode, new PlanValidatorNodeStub(),
-				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				sessionContextService);
-
-		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-graph", 1)).collectList().block();
-
-		assertThat(events).isNotNull();
-		assertThat(events).as("events: %s", events)
-			.extracting(ResearchEvent::node)
-			.containsExactly("coordinator", "rewrite_multi_query", "background_investigator", "planner",
-					"plan_validator", "information", "research_team", "researcher", "research_team", "processor",
-					"research_team", "reporter", "__END__");
-		assertThat(events).extracting(ResearchEvent::sequence)
-			.containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L, 11L, 12L, 13L);
-		assertThat(events.get(3).eventType()).isEqualTo(ResearchStreamEventType.PLAN_GENERATED);
-		assertThat(events.get(11).eventType()).isEqualTo(ResearchStreamEventType.REPORT_COMPLETED);
-		assertThat(events.get(12).eventType()).isEqualTo(ResearchStreamEventType.GRAPH_COMPLETED);
-		assertThat(planningNode.lastBackgroundContext()).isEqualTo("Prior report context");
-		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
-			assertThat(report.threadId()).isEqualTo("thread-graph");
-			assertThat(report.report()).isEqualTo("done");
-		});
-		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
-	}
-
-	@Test
 	void defaultAdvancedExecutionRoutesThroughParallelExecutorAndNamedExecutors() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
 				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(),
-				new ParallelExecutorNode(new AdvancedExecutionProperties()), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new ParallelExecutorNode(new AdvancedExecutionProperties()),
 				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
 				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "1"),
 				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
@@ -179,11 +145,13 @@ class GraphResearchRunnerTest {
 		RetryingPlanningNode planningNode = new RetryingPlanningNode(1);
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
-				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				new RecordingSessionContextService());
+				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNode(new AdvancedExecutionProperties()),
+				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
+				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
+				sessionHistoryService, new RecordingSessionContextService());
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-retry", 1))
 			.collectList()
@@ -206,10 +174,10 @@ class GraphResearchRunnerTest {
 	void manualPlanGatePausesAtHumanFeedbackWithoutSavingReport() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
-				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
 				new RecordingSessionContextService());
 
 		var events = runner
@@ -233,15 +201,17 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void acceptedResumeContinuesFromHumanFeedbackAndSavesReport() {
+	void acceptedResumeContinuesThroughParallelExecutorAndSavesReport() {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
-				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				new RecordingSessionContextService());
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNode(new AdvancedExecutionProperties()),
+				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
+				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
+				sessionHistoryService, new RecordingSessionContextService());
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume", 1),
 				"session-resume")
@@ -253,9 +223,11 @@ class GraphResearchRunnerTest {
 		assertThat(planningNode.runCount()).isEqualTo(1);
 		assertThat(events).as("events: %s", events)
 			.extracting(ResearchEvent::node)
-			.containsExactly("human_feedback", "information", "research_team", "researcher", "research_team",
-					"processor", "research_team", "reporter", "__END__");
-		assertThat(events.get(0).phase()).isEqualTo("decision");
+			.containsSubsequence("human_feedback", "information", "research_team", "parallel_executor",
+					"researcher_0", "research_team", "parallel_executor", "coder_0", "research_team",
+					"reporter", "__END__");
+		assertThat(events).extracting(ResearchEvent::node).doesNotContain("researcher", "processor");
+		assertThat(events.get(0).eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_ACCEPTED);
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-resume");
 			assertThat(report.sessionId()).isEqualTo("session-resume");
@@ -269,10 +241,10 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
-				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
 				new RecordingSessionContextService());
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-reject", 1),
@@ -288,8 +260,10 @@ class GraphResearchRunnerTest {
 		assertThat(planningNode.lastFeedback()).isEqualTo("Focus on risks.");
 		assertThat(rejectedEvents).extracting(ResearchEvent::node).containsExactly("human_feedback", "planner",
 				"plan_validator", "human_feedback");
-		assertThat(rejectedEvents.get(0).phase()).isEqualTo("decision");
-		assertThat(rejectedEvents.get(3).phase()).isEqualTo("waiting");
+		assertThat(rejectedEvents).extracting(ResearchEvent::node)
+			.doesNotContain("parallel_executor", "researcher_0", "coder_0");
+		assertThat(rejectedEvents.get(0).eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_REJECTED);
+		assertThat(rejectedEvents.get(3).eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_WAITING);
 		assertThat(reportService.savedReports()).isEmpty();
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "PAUSED");
 	}
@@ -299,11 +273,13 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
-				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				new RecordingSessionContextService());
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNode(new AdvancedExecutionProperties()),
+				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
+				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
+				sessionHistoryService, new RecordingSessionContextService());
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-limit", 1,
 				null, true, false, 1), "session-limit").collectList().block();
@@ -311,8 +287,10 @@ class GraphResearchRunnerTest {
 
 		assertThat(events).isNotNull();
 		assertThat(planningNode.runCount()).isEqualTo(1);
-		assertThat(events).extracting(ResearchEvent::node).containsExactly("human_feedback", "information",
-				"research_team", "researcher", "research_team", "processor", "research_team", "reporter", "__END__");
+		assertThat(events).extracting(ResearchEvent::node)
+			.containsSubsequence("human_feedback", "information", "research_team", "parallel_executor",
+					"researcher_0", "research_team", "parallel_executor", "coder_0", "research_team",
+					"reporter", "__END__");
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-limit");
 			assertThat(report.sessionId()).isEqualTo("session-limit");
@@ -322,10 +300,10 @@ class GraphResearchRunnerTest {
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
-				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
 				new RecordingSessionHistoryService(), new RecordingSessionContextService());
 
 		var events = runner.resume("missing-thread", new ResumeDecision(true, null)).collectList().block();
@@ -342,10 +320,10 @@ class GraphResearchRunnerTest {
 	@Test
 	void stopRemovesPausedGraphState() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
-				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(), sessionHistoryService,
+				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(), sessionHistoryService,
 				new RecordingSessionContextService());
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-stop-paused", 1),
@@ -369,10 +347,10 @@ class GraphResearchRunnerTest {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
-				new HumanFeedbackNodeStub(), new BlockingInformationNode(releaseInformation), new TeamNode(),
-				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
+				new HumanFeedbackNodeStub(), new BlockingInformationNode(releaseInformation), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), reportService,
 				sessionHistoryService, new RecordingSessionContextService());
 
 		StepVerifier.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-stop-running", 1),
@@ -396,10 +374,10 @@ class GraphResearchRunnerTest {
 
 	@Test
 	void stopMissingThreadReturnsFalse() {
-		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
-				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
-				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
 				new RecordingSessionHistoryService(), new RecordingSessionContextService());
 
 		assertThat(runner.stopAndRecord("missing-thread").block()).isFalse();
@@ -417,26 +395,11 @@ class GraphResearchRunnerTest {
 
 	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
-		return new GraphResearchRunner(new ResearchGraphBuilder(nodes), reportService, sessionHistoryService,
-				sessionContextService);
-	}
-
-	private static GraphResearchRunner newLegacyRunner(List<ResearchNode> nodes, ReportService reportService,
-			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
-		return newRunner(nodes, reportService, sessionHistoryService, sessionContextService, disabledProperties());
-	}
-
-	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
-			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService,
-			AdvancedExecutionProperties properties) {
-		return new GraphResearchRunner(new ResearchGraphBuilder(nodes, properties, null, null), reportService,
-				sessionHistoryService, sessionContextService);
-	}
-
-	private static AdvancedExecutionProperties disabledProperties() {
-		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
-		properties.setEnabled(false);
-		return properties;
+		ResearcherAgent researcherAgent = (query, step, searchContext) -> "Researched " + step.id();
+		ProcessorAgent processorAgent = (state, step) -> "Processed " + step.id();
+		return new GraphResearchRunner(
+				new ResearchGraphBuilder(nodes, new AdvancedExecutionProperties(), researcherAgent, processorAgent),
+				reportService, sessionHistoryService, sessionContextService);
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -499,17 +462,7 @@ class GraphResearchRunnerTest {
 
 		@Bean
 		ResearchNode researchTeamNode() {
-			return new TeamNode();
-		}
-
-		@Bean
-		ResearchNode researcherNode() {
-			return new ResearchNodeStub();
-		}
-
-		@Bean
-		ResearchNode processorNode() {
-			return new ProcessorNodeStub();
+			return new ResearchTeamNode();
 		}
 
 		@Bean
@@ -835,13 +788,9 @@ class GraphResearchRunnerTest {
 				.equals(state.plan().steps().get(0).executionStatus());
 			boolean processingCompleted = ResearchStep.STATUS_COMPLETED
 				.equals(state.plan().steps().get(1).executionStatus());
-			if (!researchCompleted) {
-				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 2,
-						0, 0, 2));
-			}
-			else if (!processingCompleted) {
-				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING,
-						2, 1, 0, 1));
+			if (!researchCompleted || !processingCompleted) {
+				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH,
+						2, researchCompleted ? 1 : 0, 0, researchCompleted ? 1 : 2));
 			}
 			else {
 				state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.REPORTER, null, 2, 2, 0, 0));
@@ -852,42 +801,21 @@ class GraphResearchRunnerTest {
 
 	}
 
-	private static class ResearchNodeStub implements ResearchNode {
+	private static class ParallelExecutorNodeStub implements ResearchNode {
 
 		@Override
 		public int order() {
-			return 40;
+			return 35;
 		}
 
 		@Override
 		public String name() {
-			return "researcher";
+			return "parallel_executor";
 		}
 
 		@Override
 		public Flux<ResearchEvent> run(ResearchState state) {
-			state.plan().steps().get(0).executionStatus(ResearchStep.STATUS_COMPLETED);
-			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "researched", "ok"));
-		}
-
-	}
-
-	private static class ProcessorNodeStub implements ResearchNode {
-
-		@Override
-		public int order() {
-			return 45;
-		}
-
-		@Override
-		public String name() {
-			return "processor";
-		}
-
-		@Override
-		public Flux<ResearchEvent> run(ResearchState state) {
-			state.plan().steps().get(1).executionStatus(ResearchStep.STATUS_COMPLETED);
-			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "processed", "ok"));
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "stubbed", null));
 		}
 
 	}

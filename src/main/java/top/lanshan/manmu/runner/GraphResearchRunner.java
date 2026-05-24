@@ -227,9 +227,14 @@ public class GraphResearchRunner implements ResearchRunner {
 	}
 
 	private Flux<ResearchEvent> saveCompletedReport(ResearchState state) {
-		return reportService.saveCompletedReport(state.threadId(), state.sessionId(), state.query(), state.report())
-			.flatMap(report -> sessionHistoryService.markCompleted(state.threadId(), report.threadId()))
-			.thenReturn(ResearchEvent.done(state.threadId(), "Research workflow completed", state.report()))
+		String report = state.report();
+		if (report == null || report.isBlank()) {
+			return Flux.just(ResearchEvent.error(state.threadId(), "runner",
+					new IllegalStateException("Research completed without a report")));
+		}
+		return reportService.saveCompletedReport(state.threadId(), state.sessionId(), state.query(), report)
+			.flatMap(r -> sessionHistoryService.markCompleted(state.threadId(), r.threadId()))
+			.thenReturn(ResearchEvent.done(state.threadId(), "Research workflow completed", report))
 			.flux();
 	}
 

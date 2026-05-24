@@ -36,7 +36,7 @@ class CoderNodeTest {
 		ResearchStep research = step("step-3", StepType.RESEARCH, StepExecutionStatus.assigned("coder_0"));
 		research.assignedNode("coder_0");
 		ResearchState state = stateWithPlan(List.of(own, otherCoder, research));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING, 3, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.PROCESSING, 3, 0, 0,
 				3));
 
 		List<ResearchEvent> events = node.run(state).collectList().block();
@@ -77,7 +77,7 @@ class CoderNodeTest {
 		ResearchStep step = step("step-1", StepType.PROCESSING, StepExecutionStatus.assigned("coder_0"));
 		step.assignedNode("coder_0");
 		ResearchState state = stateWithPlan(List.of(step));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.PROCESSING, 1, 0, 0,
 				1));
 
 		StepVerifier.create(node.run(state)).verifyComplete();
@@ -92,7 +92,7 @@ class CoderNodeTest {
 		ResearchStep step = step("step-1", StepType.RESEARCH, StepExecutionStatus.assigned("coder_0"));
 		step.assignedNode("coder_0");
 		ResearchState state = stateWithPlan(List.of(step));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.PROCESSING, 1, 0, 0,
 				1));
 
 		StepVerifier.create(node.run(state)).verifyComplete();
@@ -110,7 +110,7 @@ class CoderNodeTest {
 		ResearchStep step = step("step-1", StepType.PROCESSING, StepExecutionStatus.assigned("coder_0"));
 		step.assignedNode("coder_0");
 		ResearchState state = stateWithPlan(List.of(step));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PROCESSOR, StepType.PROCESSING, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.PROCESSING, 1, 0, 0,
 				1));
 		List<ResearchEvent> events = new ArrayList<>();
 

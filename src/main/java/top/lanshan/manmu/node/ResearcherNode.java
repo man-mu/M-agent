@@ -24,17 +24,14 @@ public class ResearcherNode implements ResearchNode {
 
 	private final String nodeName;
 
-	private final boolean executorNode;
-
 	@Autowired
 	public ResearcherNode(ResearcherAgent researcherAgent) {
-		this(researcherAgent, null);
+		this(researcherAgent, "0");
 	}
 
 	public ResearcherNode(ResearcherAgent researcherAgent, String executorId) {
 		this.researcherAgent = researcherAgent;
-		this.executorNode = executorId != null && !executorId.isBlank();
-		this.nodeName = executorNode ? "researcher_" + executorId.strip() : "researcher";
+		this.nodeName = "researcher_" + executorId.strip();
 	}
 
 	@Override
@@ -61,11 +58,7 @@ public class ResearcherNode implements ResearchNode {
 			List<ResearchEvent> events = new ArrayList<>();
 			List<ResearchStep> steps = runnableSteps(state, decision);
 			if (steps.isEmpty()) {
-				if (executorNode) {
-					return Flux.empty();
-				}
-				return Flux.error(new IllegalStateException(
-						"No pending " + decision.nextStepType().name().toLowerCase() + " steps are available"));
+				return Flux.empty();
 			}
 
 			events.add(ResearchEvent.message(state.threadId(), name(), "started",
@@ -99,17 +92,11 @@ public class ResearcherNode implements ResearchNode {
 	}
 
 	private List<ResearchStep> runnableSteps(ResearchState state, ResearchTeamDecision decision) {
-		StepType stepType = executorNode ? StepType.RESEARCH : decision.nextStepType();
-		List<ResearchStep> steps = state.plan()
+		return state.plan()
 			.steps()
 			.stream()
-			.filter(step -> stepType.equals(step.stepType()))
+			.filter(step -> StepType.RESEARCH.equals(step.stepType()))
 			.filter(step -> !isTerminal(step))
-			.toList();
-		if (!executorNode) {
-			return steps;
-		}
-		return steps.stream()
 			.filter(step -> StepExecutionStatus.isAssignedTo(step.executionStatus(), name()))
 			.findFirst()
 			.map(List::of)
@@ -122,28 +109,27 @@ public class ResearcherNode implements ResearchNode {
 
 	private void markStepStarted(ResearchState state, ResearchStep step) {
 		step.assignedNode(name());
-		if (!executorNode || step.attempt() == 0) {
+		if (step.attempt() == 0) {
 			step.incrementAttempt();
 		}
 		step.startedAt(Instant.now());
 		step.completedAt(null);
 		step.error(null);
-		step.executionStatus(executorNode ? StepExecutionStatus.processing(name()) : ResearchStep.STATUS_PROCESSING);
+		step.executionStatus(StepExecutionStatus.processing(name()));
 		state.recordNodeStarted(name(), step);
 	}
 
 	private void markStepCompleted(ResearchState state, ResearchStep step) {
 		step.completedAt(Instant.now());
 		step.error(null);
-		step.executionStatus(executorNode ? StepExecutionStatus.completed(name()) : ResearchStep.STATUS_COMPLETED);
+		step.executionStatus(StepExecutionStatus.completed(name()));
 		state.recordNodeCompleted(name());
 	}
 
 	private void markStepFailed(ResearchState state, ResearchStep step, String errorMessage) {
 		step.completedAt(Instant.now());
 		step.error(errorMessage);
-		step.executionStatus(
-				executorNode ? StepExecutionStatus.error(name()) : StepExecutionStatus.legacyError(errorMessage));
+		step.executionStatus(StepExecutionStatus.error(name()));
 		state.recordNodeFailed(name());
 	}
 

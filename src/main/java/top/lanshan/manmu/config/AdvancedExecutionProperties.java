@@ -5,17 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "mvp.research.advanced-execution")
 public class AdvancedExecutionProperties {
 
-	private boolean enabled = true;
-
 	private ParallelNodeCount parallelNodeCount = new ParallelNodeCount();
-
-	public boolean isEnabled() {
-		return enabled;
-	}
-
-	public void setEnabled(boolean enabled) {
-		this.enabled = enabled;
-	}
 
 	public ParallelNodeCount getParallelNodeCount() {
 		return parallelNodeCount;

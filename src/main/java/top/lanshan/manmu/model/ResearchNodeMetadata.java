@@ -22,9 +22,6 @@ public record ResearchNodeMetadata(String nodeName, String nodeType, Integer exe
 			Map.entry("information", metadata("information", "information", "\u4fe1\u606f\u68c0\u7d22")),
 			Map.entry("research_team", metadata("research_team", "research_team", "\u7814\u7a76\u56e2\u961f")),
 			Map.entry("parallel_executor", metadata("parallel_executor", "parallel_executor", "Parallel Executor")),
-			Map.entry("researcher", metadata("researcher", "researcher", "\u7814\u7a76\u6267\u884c")),
-			Map.entry("processor", metadata("processor", "processor", "\u4fe1\u606f\u6574\u7406")),
-			Map.entry("coder", metadata("coder", "coder", "Coder")),
 			Map.entry("reporter", metadata("reporter", "reporter", "\u62a5\u544a\u751f\u6210")));
 
 	public static ResearchNodeMetadata from(String nodeName) {

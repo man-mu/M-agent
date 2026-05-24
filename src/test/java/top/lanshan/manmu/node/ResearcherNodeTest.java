@@ -38,7 +38,7 @@ class ResearcherNodeTest {
 				StepExecutionStatus.assigned("researcher_0"));
 		processing.assignedNode("researcher_0");
 		ResearchState state = stateWithPlan(List.of(own, otherResearcher, processing));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 2, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH, 2, 0, 0,
 				2));
 
 		List<ResearchEvent> events = node.run(state).collectList().block();
@@ -79,7 +79,7 @@ class ResearcherNodeTest {
 		ResearchStep step = step("step-1", StepType.RESEARCH, StepExecutionStatus.assigned("researcher_0"));
 		step.assignedNode("researcher_0");
 		ResearchState state = stateWithPlan(List.of(step));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH, 1, 0, 0,
 				1));
 
 		StepVerifier.create(node.run(state)).verifyComplete();
@@ -96,7 +96,7 @@ class ResearcherNodeTest {
 		ResearchStep step = step("step-1", StepType.RESEARCH, StepExecutionStatus.assigned("researcher_0"));
 		step.assignedNode("researcher_0");
 		ResearchState state = stateWithPlan(List.of(step));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH, 1, 0, 0,
 				1));
 		List<ResearchEvent> events = new ArrayList<>();
 
@@ -125,38 +125,36 @@ class ResearcherNodeTest {
 	}
 
 	@Test
-	void compatibilityResearcherKeepsLegacyStatusesAndProcessesAllMatchingSteps() {
+	void defaultResearcherProcessesAssignedResearchStep() {
 		ResearcherNode node = new ResearcherNode((query, step, searchContext) -> "Observation for " + step.id());
-		ResearchStep first = step("step-1", StepType.RESEARCH, ResearchStep.STATUS_PENDING);
-		ResearchStep second = step("step-2", StepType.RESEARCH, StepExecutionStatus.assigned("researcher_0"));
-		ResearchState state = stateWithPlan(List.of(first, second));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 2, 0, 0,
-				2));
+		ResearchStep step = step("step-1", StepType.RESEARCH, StepExecutionStatus.assigned("researcher_0"));
+		step.assignedNode("researcher_0");
+		ResearchState state = stateWithPlan(List.of(step));
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH, 1, 0, 0,
+				1));
 
 		List<ResearchEvent> events = node.run(state).collectList().block();
 
-		assertThat(events).hasSize(4);
-		assertThat(first.assignedNode()).isEqualTo("researcher");
-		assertThat(second.assignedNode()).isEqualTo("researcher");
-		assertThat(first.executionStatus()).isEqualTo(ResearchStep.STATUS_COMPLETED);
-		assertThat(second.executionStatus()).isEqualTo(ResearchStep.STATUS_COMPLETED);
-		assertThat(first.executionRes()).isEqualTo("Observation for step-1");
-		assertThat(second.executionRes()).isEqualTo("Observation for step-2");
-		assertThat(first.attempt()).isEqualTo(1);
-		assertThat(second.attempt()).isEqualTo(1);
-		assertThat(state.observations()).containsExactly("Observation for step-1", "Observation for step-2");
-		assertThat(events).extracting(ResearchEvent::node).containsOnly("researcher");
+		assertThat(node.name()).isEqualTo("researcher_0");
+		assertThat(events).hasSize(3);
+		assertThat(step.assignedNode()).isEqualTo("researcher_0");
+		assertThat(step.executionStatus()).isEqualTo(StepExecutionStatus.completed("researcher_0"));
+		assertThat(step.executionRes()).isEqualTo("Observation for step-1");
+		assertThat(step.attempt()).isEqualTo(1);
+		assertThat(state.observations()).containsExactly("Observation for step-1");
+		assertThat(events).extracting(ResearchEvent::node).containsOnly("researcher_0", "researcher_0", "researcher_0");
 	}
 
 	@Test
-	void failedResearchStepWithBlankExceptionMessageRecordsFallbackError() {
+	void failedResearchStepWithBlankExceptionMessageRecordsDynamicErrorStatus() {
 		ResearcherNode node = new ResearcherNode((query, step, searchContext) -> {
 			throw new RuntimeException();
 		});
 		ResearchStep researchStep = new ResearchStep("Research source", "Collect evidence.", true,
-				StepType.RESEARCH, null, ResearchStep.STATUS_PENDING);
+				StepType.RESEARCH, null, StepExecutionStatus.assigned("researcher_0"));
+		researchStep.assignedNode("researcher_0");
 		ResearchState state = stateWithPlan(List.of(researchStep));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER, StepType.RESEARCH, 1, 0, 0,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR, StepType.RESEARCH, 1, 0, 0,
 				1));
 		List<ResearchEvent> events = new ArrayList<>();
 
@@ -165,17 +163,17 @@ class ResearcherNodeTest {
 			.expectError(RuntimeException.class)
 			.verify();
 
-		assertThat(researchStep.executionStatus()).isEqualTo("error: RuntimeException");
-		assertThat(researchStep.assignedNode()).isEqualTo("researcher");
+		assertThat(researchStep.executionStatus()).isEqualTo(StepExecutionStatus.error("researcher_0"));
+		assertThat(researchStep.assignedNode()).isEqualTo("researcher_0");
 		assertThat(researchStep.attempt()).isEqualTo(1);
 		assertThat(researchStep.error()).isEqualTo("RuntimeException");
 		assertThat(researchStep.startedAt()).isNotNull();
 		assertThat(researchStep.completedAt()).isNotNull();
-		assertThat(state.failedNodes()).containsExactly("researcher");
+		assertThat(state.failedNodes()).containsExactly("researcher_0");
 		assertThat(events).hasSize(2);
-		assertThat(events.get(1).node()).isEqualTo("researcher");
+		assertThat(events.get(1).node()).isEqualTo("researcher_0");
 		assertThat(events.get(1).phase()).isEqualTo("failed");
-		assertThat(events.get(1).status()).isEqualTo("error: RuntimeException");
+		assertThat(events.get(1).status()).isEqualTo(StepExecutionStatus.error("researcher_0"));
 		assertThat(events.get(1).stepId()).isEqualTo(researchStep.id());
 	}
 

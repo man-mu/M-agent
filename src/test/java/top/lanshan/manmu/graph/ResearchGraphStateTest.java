@@ -139,13 +139,13 @@ class ResearchGraphStateTest {
 				1, 3, "valid"));
 		state.humanFeedbackDecision(new HumanFeedbackDecision(HumanFeedbackRoute.PLANNER, false,
 				"Add risks.", 1, 3, "feedback"));
-		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.RESEARCHER,
+		state.researchTeamDecision(new ResearchTeamDecision(ResearchTeamRoute.PARALLEL_EXECUTOR,
 				StepType.RESEARCH, 2, 0, 0, 2));
 
 		assertThat(ResearchGraphState.coordinatorRoute(graphState)).contains(CoordinatorRoute.DEEP_RESEARCH);
 		assertThat(ResearchGraphState.planValidatorRoute(graphState)).contains(PlanValidatorRoute.HUMAN_FEEDBACK);
 		assertThat(ResearchGraphState.humanFeedbackRoute(graphState)).contains(HumanFeedbackRoute.PLANNER);
-		assertThat(ResearchGraphState.researchTeamRoute(graphState)).contains(ResearchTeamRoute.RESEARCHER);
+		assertThat(ResearchGraphState.researchTeamRoute(graphState)).contains(ResearchTeamRoute.PARALLEL_EXECUTOR);
 	}
 
 	@Test

@@ -4,10 +4,6 @@ public enum ResearchTeamRoute {
 
 	PARALLEL_EXECUTOR,
 
-	RESEARCHER,
-
-	PROCESSOR,
-
 	REPORTER
 
 }

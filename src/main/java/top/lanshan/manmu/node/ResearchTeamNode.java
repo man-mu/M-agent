@@ -1,9 +1,7 @@
 package top.lanshan.manmu.node;
 
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.annotation.Autowired;
 import reactor.core.publisher.Flux;
-import top.lanshan.manmu.config.AdvancedExecutionProperties;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.model.ResearchState;
@@ -17,17 +15,6 @@ import java.util.List;
 
 @Component
 public class ResearchTeamNode implements ResearchNode {
-
-	private final boolean advancedExecutionEnabled;
-
-	public ResearchTeamNode() {
-		this(new AdvancedExecutionProperties());
-	}
-
-	@Autowired
-	public ResearchTeamNode(AdvancedExecutionProperties properties) {
-		this.advancedExecutionEnabled = properties != null && properties.isEnabled();
-	}
 
 	@Override
 	public int order() {
@@ -80,10 +67,7 @@ public class ResearchTeamNode implements ResearchNode {
 	}
 
 	private ResearchTeamRoute nextRoute(StepType nextStepType) {
-		if (advancedExecutionEnabled) {
-			return ResearchTeamRoute.PARALLEL_EXECUTOR;
-		}
-		return StepType.PROCESSING.equals(nextStepType) ? ResearchTeamRoute.PROCESSOR : ResearchTeamRoute.RESEARCHER;
+		return ResearchTeamRoute.PARALLEL_EXECUTOR;
 	}
 
 	private int countCompleted(List<ResearchStep> steps) {
