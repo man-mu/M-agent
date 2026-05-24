@@ -71,6 +71,13 @@ public final class StepExecutionStatus {
 		return normalize(status).startsWith(ASSIGNED_PREFIX);
 	}
 
+	public static boolean isAssignedTo(String status, String nodeName) {
+		if (nodeName == null || nodeName.isBlank()) {
+			return false;
+		}
+		return normalize(status).equals(ASSIGNED_PREFIX + nodeName.strip());
+	}
+
 	public static boolean isProcessing(String status) {
 		String normalized = normalize(status);
 		return ResearchStep.STATUS_PROCESSING.equals(normalized) || normalized.startsWith(PROCESSING_PREFIX);

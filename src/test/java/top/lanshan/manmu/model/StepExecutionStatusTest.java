@@ -17,6 +17,16 @@ class StepExecutionStatusTest {
 	}
 
 	@Test
+	void checksDynamicAssignedOwnershipByNodeName() {
+		assertThat(StepExecutionStatus.isAssignedTo(StepExecutionStatus.assigned("researcher_0"), "researcher_0"))
+			.isTrue();
+		assertThat(StepExecutionStatus.isAssignedTo(StepExecutionStatus.assigned("researcher_0"), "researcher_1"))
+			.isFalse();
+		assertThat(StepExecutionStatus.isAssignedTo(StepExecutionStatus.processing("researcher_0"), "researcher_0"))
+			.isFalse();
+	}
+
+	@Test
 	void recognizesDynamicCompletedAndErrorStatusesAsTerminal() {
 		assertThat(StepExecutionStatus.isTerminal(StepExecutionStatus.completed("researcher_0"))).isTrue();
 		assertThat(StepExecutionStatus.isCompleted(StepExecutionStatus.completed("researcher_0"))).isTrue();
