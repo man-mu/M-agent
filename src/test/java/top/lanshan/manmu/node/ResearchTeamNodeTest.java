@@ -17,6 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ResearchTeamNodeTest {
 
+	private final ResearchTeamNode legacyNode = new ResearchTeamNode(disabledProperties());
+
 	private final ResearchTeamNode node = new ResearchTeamNode();
 
 	@Test
@@ -27,7 +29,7 @@ class ResearchTeamNodeTest {
 				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING, null,
 						ResearchStep.STATUS_PENDING)));
 
-		StepVerifier.create(node.run(state))
+		StepVerifier.create(legacyNode.run(state))
 			.assertNext(event -> {
 				assertThat(event.node()).isEqualTo("research_team");
 				assertThat(event.phase()).isEqualTo("decision");
@@ -47,7 +49,7 @@ class ResearchTeamNodeTest {
 				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING, null,
 						ResearchStep.STATUS_PENDING)));
 
-		StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
+		StepVerifier.create(legacyNode.run(state)).expectNextCount(1).verifyComplete();
 
 		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.PROCESSOR);
 		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.PROCESSING);
@@ -56,15 +58,14 @@ class ResearchTeamNodeTest {
 	}
 
 	@Test
-	void routesToParallelExecutorWhenAdvancedExecutionIsEnabled() {
-		ResearchTeamNode advancedNode = new ResearchTeamNode(advancedProperties());
+	void routesToParallelExecutorByDefault() {
 		ResearchState state = stateWithPlan(List.of(
 				new ResearchStep("Inspect workflow", "Read the current workflow.", false, StepType.RESEARCH, null,
 						ResearchStep.STATUS_PENDING),
 				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING, null,
 						ResearchStep.STATUS_PENDING)));
 
-		StepVerifier.create(advancedNode.run(state)).expectNextCount(1).verifyComplete();
+		StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
 
 		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.PARALLEL_EXECUTOR);
 		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.RESEARCH);
@@ -79,7 +80,7 @@ class ResearchTeamNodeTest {
 				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING,
 						"Agent failed", ResearchStep.STATUS_ERROR + ": provider rejected request")));
 
-		StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
+		StepVerifier.create(legacyNode.run(state)).expectNextCount(1).verifyComplete();
 
 		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.REPORTER);
 		assertThat(state.researchTeamDecision().nextStepType()).isNull();
@@ -96,7 +97,7 @@ class ResearchTeamNodeTest {
 				new ResearchStep("Summarize", "Turn findings into a report section.", false, StepType.PROCESSING,
 						null, StepExecutionStatus.processing("coder_0"))));
 
-		StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
+		StepVerifier.create(legacyNode.run(state)).expectNextCount(1).verifyComplete();
 
 		assertThat(state.researchTeamDecision().nextRoute()).isEqualTo(ResearchTeamRoute.RESEARCHER);
 		assertThat(state.researchTeamDecision().nextStepType()).isEqualTo(StepType.RESEARCH);
@@ -125,9 +126,9 @@ class ResearchTeamNodeTest {
 		return state;
 	}
 
-	private AdvancedExecutionProperties advancedProperties() {
+	private static AdvancedExecutionProperties disabledProperties() {
 		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
-		properties.setEnabled(true);
+		properties.setEnabled(false);
 		return properties;
 	}
 

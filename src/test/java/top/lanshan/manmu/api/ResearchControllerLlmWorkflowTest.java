@@ -78,9 +78,9 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ChatStreamResponse::nodeName)
-			.containsSubsequence("planner", "planner", "information", "research_team", "researcher",
-					"researcher", "researcher", "research_team", "processor", "processor", "processor",
-					"research_team", "reporter", "reporter", "__END__");
+			.containsSubsequence("planner", "planner", "information", "research_team", "parallel_executor",
+					"researcher_0", "researcher_0", "researcher_0", "research_team", "parallel_executor",
+					"coder_0", "coder_0", "coder_0", "research_team", "reporter", "reporter", "__END__");
 		assertThat(events.get(0).graphId().sessionId()).isEqualTo("test-session");
 		assertThat(events.get(0).graphId().threadId()).isEqualTo("test-session-1");
 		assertThat(events).allSatisfy(event -> {
@@ -100,8 +100,10 @@ class ResearchControllerLlmWorkflowTest {
 			assertThat(event.content()).isNotNull();
 		});
 		assertThat(events).anySatisfy(event -> {
-			assertThat(event.nodeName()).isEqualTo("processor");
-			assertThat(event.displayTitle()).isEqualTo("\u4fe1\u606f\u6574\u7406");
+			assertThat(event.nodeName()).isEqualTo("coder_0");
+			assertThat(event.displayTitle()).isEqualTo("Coder 0");
+			assertThat(event.nodeType()).isEqualTo("coder");
+			assertThat(event.executorId()).isEqualTo(0);
 		});
 		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("\u7ed3\u675f");
 		assertThat(String.valueOf(events.get(events.size() - 1).content())).contains("done=true");
@@ -152,9 +154,10 @@ class ResearchControllerLlmWorkflowTest {
 
 		assertThat(events).isNotNull();
 		assertThat(events).extracting(ResearchEvent::node)
-			.containsSubsequence("planner", "planner", "information", "research_team", "researcher",
-					"researcher", "researcher", "research_team", "processor", "processor", "processor",
-					"research_team", "reporter", "reporter", "__END__");
+			.containsSubsequence("planner", "planner", "information", "research_team", "parallel_executor",
+					"researcher_0", "researcher_0", "researcher_0", "research_team", "parallel_executor",
+					"coder_0", "coder_0", "coder_0", "research_team", "reporter", "reporter", "__END__");
+		assertThat(events).extracting(ResearchEvent::node).doesNotContain("researcher", "processor");
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.node()).isEqualTo("reporter");
 			assertThat(event.phase()).isEqualTo("completed");

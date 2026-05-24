@@ -31,7 +31,7 @@ logging:
 mvp:
   research:
     advanced-execution:
-      enabled: false
+      enabled: true
       parallel-node-count:
         researcher: 2
         coder: 1

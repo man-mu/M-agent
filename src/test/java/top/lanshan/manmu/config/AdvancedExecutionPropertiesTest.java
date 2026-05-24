@@ -7,12 +7,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AdvancedExecutionPropertiesTest {
 
 	@Test
-	void defaultsKeepAdvancedExecutionDisabled() {
+	void defaultsEnableAdvancedExecution() {
 		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
 
-		assertThat(properties.isEnabled()).isFalse();
+		assertThat(properties.isEnabled()).isTrue();
 		assertThat(properties.getParallelNodeCount().getResearcher()).isEqualTo(2);
 		assertThat(properties.getParallelNodeCount().getCoder()).isEqualTo(1);
+	}
+
+	@Test
+	void advancedExecutionCanBeDisabledForCompatibilityFallback() {
+		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
+
+		properties.setEnabled(false);
+
+		assertThat(properties.isEnabled()).isFalse();
 	}
 
 	@Test

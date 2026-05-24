@@ -8,6 +8,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
+import top.lanshan.manmu.agent.ProcessorAgent;
+import top.lanshan.manmu.agent.ResearcherAgent;
 import top.lanshan.manmu.config.AdvancedExecutionProperties;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
 import top.lanshan.manmu.model.CoordinatorDecision;
@@ -58,7 +60,7 @@ class GraphResearchRunnerTest {
 	void directAnswerRouteSkipsResearchNodesAndSavesReport() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
 				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -89,13 +91,13 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void autoAcceptedResearchCompletesThroughResearchTeamLoop() {
+	void explicitDisabledAdvancedExecutionUsesLegacyResearchTeamLoop() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		RecordingSessionContextService sessionContextService = new RecordingSessionContextService();
 		sessionContextService.context("thread-graph", "Prior report context");
 		PlanningNode planningNode = new PlanningNode();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new PlanValidatorNodeStub(),
 				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -123,17 +125,17 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
-	void advancedExecutionRoutesThroughParallelExecutorAndNamedExecutors() {
-		AdvancedExecutionProperties properties = advancedProperties();
+	void defaultAdvancedExecutionRoutesThroughParallelExecutorAndNamedExecutors() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
-				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(properties),
-				new ParallelExecutorNode(properties), new ResearchNodeStub(), new ProcessorNodeStub(),
+				new HumanFeedbackNodeStub(), new InformationNode(), new ResearchTeamNode(),
+				new ParallelExecutorNode(new AdvancedExecutionProperties()), new ResearchNodeStub(), new ProcessorNodeStub(),
 				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "0"),
+				new ResearcherNode((query, step, searchContext) -> "Researched " + step.id(), "1"),
 				new CoderNode((state, step) -> "Processed " + step.id(), "0"), new ReporterNode()), reportService,
-				sessionHistoryService, new RecordingSessionContextService(), properties);
+				sessionHistoryService, new RecordingSessionContextService());
 
 		var events = runner.run(new ResearchRequest("Explain workflow.", "thread-advanced", 1))
 			.collectList()
@@ -177,7 +179,7 @@ class GraphResearchRunnerTest {
 		RetryingPlanningNode planningNode = new RetryingPlanningNode(1);
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -204,7 +206,7 @@ class GraphResearchRunnerTest {
 	void manualPlanGatePausesAtHumanFeedbackWithoutSavingReport() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -235,7 +237,7 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -267,7 +269,7 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -297,7 +299,7 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
@@ -320,7 +322,7 @@ class GraphResearchRunnerTest {
 
 	@Test
 	void missingPausedStateReturnsHumanFeedbackError() {
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
 				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
@@ -340,7 +342,7 @@ class GraphResearchRunnerTest {
 	@Test
 	void stopRemovesPausedGraphState() {
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(), sessionHistoryService,
@@ -367,7 +369,7 @@ class GraphResearchRunnerTest {
 		Sinks.Empty<Void> releaseInformation = Sinks.empty();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
 				new HumanFeedbackNodeStub(), new BlockingInformationNode(releaseInformation), new TeamNode(),
 				new ResearchNodeStub(), new ProcessorNodeStub(), new ReporterNode()), reportService,
@@ -394,7 +396,7 @@ class GraphResearchRunnerTest {
 
 	@Test
 	void stopMissingThreadReturnsFalse() {
-		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+		GraphResearchRunner runner = newLegacyRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
 				new HumanFeedbackNodeStub(), new InformationNode(), new TeamNode(), new ResearchNodeStub(),
 				new ProcessorNodeStub(), new ReporterNode()), new RecordingReportService(),
@@ -419,6 +421,11 @@ class GraphResearchRunnerTest {
 				sessionContextService);
 	}
 
+	private static GraphResearchRunner newLegacyRunner(List<ResearchNode> nodes, ReportService reportService,
+			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
+		return newRunner(nodes, reportService, sessionHistoryService, sessionContextService, disabledProperties());
+	}
+
 	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService,
 			AdvancedExecutionProperties properties) {
@@ -426,11 +433,9 @@ class GraphResearchRunnerTest {
 				sessionHistoryService, sessionContextService);
 	}
 
-	private static AdvancedExecutionProperties advancedProperties() {
+	private static AdvancedExecutionProperties disabledProperties() {
 		AdvancedExecutionProperties properties = new AdvancedExecutionProperties();
-		properties.setEnabled(true);
-		properties.getParallelNodeCount().setResearcher(1);
-		properties.getParallelNodeCount().setCoder(1);
+		properties.setEnabled(false);
 		return properties;
 	}
 
@@ -488,6 +493,11 @@ class GraphResearchRunnerTest {
 		}
 
 		@Bean
+		ResearchNode parallelExecutorNode() {
+			return new ParallelExecutorNode(new AdvancedExecutionProperties());
+		}
+
+		@Bean
 		ResearchNode researchTeamNode() {
 			return new TeamNode();
 		}
@@ -505,6 +515,16 @@ class GraphResearchRunnerTest {
 		@Bean
 		ResearchNode reporterNode() {
 			return new ReporterNode();
+		}
+
+		@Bean
+		ResearcherAgent researcherAgent() {
+			return (query, step, searchContext) -> "Researched " + step.id();
+		}
+
+		@Bean
+		ProcessorAgent processorAgent() {
+			return (state, step) -> "Processed " + step.id();
 		}
 
 	}
