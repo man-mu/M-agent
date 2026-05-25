@@ -58,6 +58,10 @@ mvp:
       enabled: true
       max-messages: 20
       max-message-characters: 800
+    user-profile:
+      enabled: true
+      max-messages-for-extraction: 10
+      cache-minutes: 60
   model:
     current:
       provider-id: dashscope
