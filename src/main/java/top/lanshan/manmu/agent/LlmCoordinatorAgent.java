@@ -26,18 +26,22 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 	}
 
 	@Override
-	public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled) {
+	public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled, String userProfileContext) {
 		if (deepResearchEnabled && outputMapper.isSubstantiveResearchRequest(query)) {
 			return new CoordinatorDecision(top.lanshan.manmu.model.CoordinatorRoute.DEEP_RESEARCH, true, null,
 					"Substantive request routed to the research workflow.");
 		}
 
+		String profileSection = (userProfileContext != null && !userProfileContext.isBlank())
+				? "\nUser background: " + userProfileContext + "\n"
+				: "";
+
 		String userPrompt = """
 				User question:
 				%s
 
-				Deep research is enabled: %s
-				""".formatted(query, deepResearchEnabled);
+				Deep research is enabled: %s%s
+				""".formatted(query, deepResearchEnabled, profileSection);
 		String modelOutput = agentClient.call(promptService.load("coordinator") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
 		CoordinatorResponse response = outputConverter.convert(modelOutput);

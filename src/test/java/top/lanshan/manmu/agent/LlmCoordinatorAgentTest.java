@@ -23,7 +23,7 @@ class LlmCoordinatorAgentTest {
 		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
 				new CoordinatorOutputMapper());
 
-		CoordinatorDecision decision = agent.coordinate("Tell me more.", true);
+		CoordinatorDecision decision = agent.coordinate("Tell me more.", true, "");
 
 		assertThat(agentClient.systemPrompt).contains("DEEP_RESEARCH").contains("DIRECT_ANSWER");
 		assertThat(agentClient.userPrompt).contains("Tell me more.")
@@ -44,7 +44,7 @@ class LlmCoordinatorAgentTest {
 		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
 				new CoordinatorOutputMapper());
 
-		CoordinatorDecision decision = agent.coordinate("Say hi.", false);
+		CoordinatorDecision decision = agent.coordinate("Say hi.", false, "");
 
 		assertThat(agentClient.userPrompt).contains("Deep research is enabled: false");
 		assertThat(decision.nextRoute()).isEqualTo(CoordinatorRoute.DIRECT_ANSWER);
@@ -57,7 +57,7 @@ class LlmCoordinatorAgentTest {
 		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
 				new CoordinatorOutputMapper());
 
-		CoordinatorDecision decision = agent.coordinate("Use three sentences to explain agent workflow routing.", true);
+		CoordinatorDecision decision = agent.coordinate("Use three sentences to explain agent workflow routing.", true, "");
 
 		assertThat(agentClient.calls).isZero();
 		assertThat(decision.nextRoute()).isEqualTo(CoordinatorRoute.DEEP_RESEARCH);

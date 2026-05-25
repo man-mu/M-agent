@@ -3,6 +3,7 @@ package top.lanshan.manmu.node;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import top.lanshan.manmu.agent.CoordinatorAgent;
+import top.lanshan.manmu.memory.UserProfileService;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
@@ -12,8 +13,11 @@ public class CoordinatorNode implements ResearchNode {
 
 	private final CoordinatorAgent coordinatorAgent;
 
-	public CoordinatorNode(CoordinatorAgent coordinatorAgent) {
+	private final UserProfileService userProfileService;
+
+	public CoordinatorNode(CoordinatorAgent coordinatorAgent, UserProfileService userProfileService) {
 		this.coordinatorAgent = coordinatorAgent;
+		this.userProfileService = userProfileService;
 	}
 
 	@Override
@@ -29,7 +33,9 @@ public class CoordinatorNode implements ResearchNode {
 	@Override
 	public Flux<ResearchEvent> run(ResearchState state) {
 		return Flux.defer(() -> {
-			CoordinatorDecision decision = coordinatorAgent.coordinate(state.query(), state.deepResearchEnabled());
+			String userProfileContext = userProfileService.getOrCreateProfile(state.sessionId());
+			CoordinatorDecision decision = coordinatorAgent.coordinate(
+					state.query(), state.deepResearchEnabled(), userProfileContext);
 			state.coordinatorDecision(decision);
 			if (decision.directAnswerRoute()) {
 				state.report(decision.directAnswer());
