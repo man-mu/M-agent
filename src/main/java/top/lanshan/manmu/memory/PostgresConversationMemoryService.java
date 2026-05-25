@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import top.lanshan.manmu.config.MemoryProperties;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -17,8 +18,11 @@ public class PostgresConversationMemoryService implements ConversationMemoryServ
 
     private final ConversationMessageRepository repository;
 
-    public PostgresConversationMemoryService(ConversationMessageRepository repository) {
+    private final MemoryProperties properties;
+
+    public PostgresConversationMemoryService(ConversationMessageRepository repository, MemoryProperties properties) {
         this.repository = repository;
+        this.properties = properties;
     }
 
     @Override
@@ -33,7 +37,7 @@ public class PostgresConversationMemoryService implements ConversationMemoryServ
     @Override
     public Flux<ConversationMessageRecord> findBySessionId(String sessionId) {
         return repository.findBySessionIdOrderByCreatedAtAsc(sessionId)
-                .takeLast(20)
+                .takeLast(properties.getMaxMessages())
                 .map(ConversationMessageEntity::toRecord);
     }
 
@@ -44,7 +48,7 @@ public class PostgresConversationMemoryService implements ConversationMemoryServ
                 return "";
             }
             return messages.stream()
-                    .map(m -> m.role() + ": " + truncate(m.content(), 800))
+                    .map(m -> m.role() + ": " + truncate(m.content(), properties.getMaxMessageCharacters()))
                     .collect(Collectors.joining("\n",
                             "Previous conversation in this session:\n", ""));
         });

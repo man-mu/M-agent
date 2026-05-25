@@ -53,6 +53,11 @@ mvp:
       summary: true
       count: 5
       timeout-seconds: 30
+  memory:
+    conversation:
+      enabled: true
+      max-messages: 20
+      max-message-characters: 800
   model:
     current:
       provider-id: dashscope
