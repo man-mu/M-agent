@@ -6,7 +6,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SkillService {
 
@@ -65,6 +68,40 @@ public class SkillService {
         fileRepository.deleteSkill(name);
         registry.unregister(name);
         logger.info("Skill deleted: {}", name);
+    }
+
+    private static final Pattern TEMPLATE_PATTERN = Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}");
+
+    /**
+     * Renders a skill template with the given parameters for explicit
+     * {@code @skill-name} invocation. Returns {@code null} if the skill is not
+     * found or has no prompt template.
+     */
+    public String renderSkill(String name, Map<String, Object> params) {
+        String template = registry.getPromptTemplate(name).orElse(null);
+        if (template == null || template.isBlank()) {
+            return null;
+        }
+        return renderTemplate(template, params);
+    }
+
+    /**
+     * Shared template rendering: replaces {@code {{param}}} placeholders with
+     * values from the provided map. Missing params are replaced with empty
+     * strings. Used by both {@link SkillToolCallback} (auto-trigger via LLM
+     * tool call) and {@code SpringAiAgentClient} (explicit {@code @skill}
+     * invocation).
+     */
+    public static String renderTemplate(String template, Map<String, Object> params) {
+        Matcher matcher = TEMPLATE_PATTERN.matcher(template);
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            String key = matcher.group(1);
+            Object value = params.getOrDefault(key, "");
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(String.valueOf(value)));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     public SkillDefinition toggle(String name) throws IOException {
