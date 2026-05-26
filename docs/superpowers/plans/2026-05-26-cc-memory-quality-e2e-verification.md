@@ -6,7 +6,7 @@
 
 - 后端以 `real-model` profile 启动在 `18080`。
 - Flyway 连接真实 PostgreSQL，启动日志显示 schema 当前版本为 `6`。
-- 通过 `/api/model/switch` 切换到 `deepseek-chat`，仅确认 `apiKeyConfigured=true`，未读取、打印或提交本地密钥文件。
+- 通过 `/api/model/switch` 切换到 `deepseek-chat`，仅确认 `apiKeyConfigured=true`；未手动打开、打印或提交本地密钥文件，命令输出中不包含密钥。
 - 使用 `curl.exe` 调用两轮同 session 的 `/chat/stream`，覆盖真实 HTTP/SSE、真实模型供应商、PostgreSQL 持久化、conversation memory、user profile、report、session history。
 
 ## 验证数据
