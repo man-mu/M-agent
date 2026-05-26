@@ -25,14 +25,22 @@ class UserProfilePropertiesTest {
     }
 
     @Test
+    void defaultGuideReporterIsTrue() {
+        UserProfileProperties properties = new UserProfileProperties();
+        assertThat(properties.isGuideReporter()).isTrue();
+    }
+
+    @Test
     void settersOverrideDefaults() {
         UserProfileProperties properties = new UserProfileProperties();
         properties.setEnabled(false);
         properties.setMaxMessagesForExtraction(5);
         properties.setCacheMinutes(30);
+        properties.setGuideReporter(false);
 
         assertThat(properties.isEnabled()).isFalse();
         assertThat(properties.getMaxMessagesForExtraction()).isEqualTo(5);
         assertThat(properties.getCacheMinutes()).isEqualTo(30);
+        assertThat(properties.isGuideReporter()).isFalse();
     }
 }
