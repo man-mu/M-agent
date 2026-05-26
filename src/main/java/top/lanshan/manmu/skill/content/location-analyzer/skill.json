@@ -1,0 +1,27 @@
+{
+  "name": "location-analyzer",
+  "description": "分析指定地点的地理信息、周边设施和交通情况，使用高德地图 MCP 工具获取数据",
+  "version": "1.0.0",
+  "enabled": true,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "待分析的地点名称或地址"
+      },
+      "radius": {
+        "type": "string",
+        "description": "周边搜索半径（米）",
+        "default": "1000"
+      },
+      "keywords": {
+        "type": "string",
+        "description": "周边 POI 搜索关键词，如 餐厅、地铁、医院",
+        "default": "地铁,餐厅,商场"
+      }
+    },
+    "required": ["location"]
+  },
+  "dependencies": ["mcp-amap"]
+}
