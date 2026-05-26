@@ -1,0 +1,10 @@
+{
+    "mcp-servers": [
+        {
+            "url": "https://mcp.amap.com",
+            "sse-endpoint": "/sse",
+            "description": "高德地图服务 - 地理编码、逆地理编码、POI 搜索",
+            "enabled": false
+        }
+    ]
+}

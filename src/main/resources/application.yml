@@ -60,6 +60,9 @@ mvp:
           type: api
           enabled: true
           priority: 90
+  mcp:
+    enabled: false
+    config-location: classpath:mcp-config.json
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search
