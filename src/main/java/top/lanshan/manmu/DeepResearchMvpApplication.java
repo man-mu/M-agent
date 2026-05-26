@@ -3,12 +3,13 @@ package top.lanshan.manmu;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import top.lanshan.manmu.config.McpProperties;
 import top.lanshan.manmu.config.MemoryProperties;
 import top.lanshan.manmu.config.RagProperties;
 import top.lanshan.manmu.config.UserProfileProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({RagProperties.class, MemoryProperties.class, UserProfileProperties.class})
+@EnableConfigurationProperties({RagProperties.class, MemoryProperties.class, UserProfileProperties.class, McpProperties.class})
 public class DeepResearchMvpApplication {
 
 	public static void main(String[] args) {
