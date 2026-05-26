@@ -33,6 +33,14 @@ public record ResearchRequest(@NotBlank String query, @JsonProperty("session_id"
 		this(query, null, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, autoAcceptedPlan, null);
 	}
 
+	public ResearchRequest(String query, String threadId, Integer maxSteps,
+			@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
+			@JsonProperty("enable_deepresearch") Boolean enableDeepResearch,
+			@JsonProperty("auto_accepted_plan") Boolean autoAcceptedPlan,
+			@JsonProperty("max_plan_iterations") Integer maxPlanIterations) {
+		this(query, null, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, autoAcceptedPlan, maxPlanIterations);
+	}
+
 	public ResearchRequest {
 		if (threadId == null || threadId.isBlank()) {
 			threadId = UUID.randomUUID().toString();
