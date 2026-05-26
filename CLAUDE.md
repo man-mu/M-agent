@@ -35,6 +35,7 @@
 - 每完成一个小的阶段任务就提交一次，commit 说明使用中文。
 - 开发新功能时禁止使用 mock，必须接入真实生产环境需要的数据。
 - 与 DeepResearch 主项目对齐时，优先做精简版可运行能力，不要一次性搬入 RAG、MCP、Redis、前端等完整复杂模块。
+- 以下模块已确认现有实现足够，不再向 `deepresearch-main` 参考项目对齐：搜索能力（多搜索引擎/智能选择）、智能体系统（问题分类/领域专项 Agent/反思机制）、代码执行（Python 沙箱/Docker 执行）、RAG 增强（混合检索/HyDe/RRF 融合/批量上传）。
 - 保持真实 API 调用路径可测；涉及 DashScope / DeepSeek 的测试依赖本地 `.local/model-providers.json` 中已有 key。
 - 每完成一个阶段任务进行验证时，不能只停留在单元测试或 `mvn test` 成功；必须在本地启动后端服务，使用 `curl` 通过真实 HTTP API、真实数据库/中间件和真实模型供应商路径做生产环境形态的全链路测试，尽早暴露线程、序列化、配置、网络、持久化和流式响应等问题，避免为后续开发埋雷。
 - 每次启动后端服务进行测试后，测试完毕必须关闭该服务。
@@ -51,3 +52,29 @@
 - Graph 执行流的最终输出或状态对象不要默认假设一定非空；收尾保存、暂停恢复等逻辑应尽量从最新 graph state 读取，并对终止输出做空值保护。
 - 启动本地后端做验证时，记录 PID 到 `target/`，测试结束必须停止进程，并用 `Get-NetTCPConnection -LocalPort 18080` 确认端口已经释放。
 - 真实全链路验证完成后，除了检查 SSE `done`，还要通过报告和会话历史接口确认 PostgreSQL 持久化状态，例如报告可读取、线程状态为 `COMPLETED` / `STOPPED`。
+
+## 工程质量守则
+
+以下是从过往实践中总结的通用守则，每次实现新功能时应当遵循，不要依赖事后审计或外部工具来修正。
+
+### 输入防护
+
+- **LLM 输出的结构化字段必须有白名单校验。** 不要假设 LLM 一定会返回 `"beginner"` 而不是 `"expert"` 或其他非规范值。用 `Set` 白名单 + 忽略无效值（而非抛出异常）的方式降级。
+- **所有来自 LLM 的文本都需要长度截断。** 设置 `MAX_*_CHARS` 常量限制 profile summary、conversation context、prompt 注入内容等，防止 LLM 异常输出导致 prompt 膨胀或 DB 溢出。
+- **Throwable.getMessage() 做 null fallback。** 已知此坑但容易遗忘。每个异常日志或事件写入点都应用 `error.getClass().getSimpleName()` 兜底。建议统一封装为 `safeErrorMessage(Throwable)` 工具方法。
+
+### Prompt 护栏
+
+- **用户上下文注入 prompt 时必须附带行为约束。** 注入画像、偏好、会话历史等外部信息时，同时告诉 LLM："Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence." 否则 LLM 可能把画像当成研究结论的来源。
+- **用户角色提示应放在 system prompt 或独立的标记段中**，与 query/plan/research evidence 等事实数据隔离开。
+
+### 测试基础设施
+
+- **涉及数据库的单元测试必须使用嵌入式 DB（H2/Testcontainers），不能默认依赖本地 PostgreSQL。** 如果 `mvn test` 因为连不上本地 PG 而报 12 个 errors，测试的回归保护能力就等于零。参考 `src/test/resources/application-test.yml` 配置 Spring profile 切换数据源。
+- **新增测试类必须聚焦可验证的行为变更。** 例如 phase 3 新增 `LlmReporterAgentTest` 验证 profile guardrail 是否真的写入了 prompt，而不是泛泛的"报告生成了"。
+
+### 功能闭环
+
+- **新增持久化逻辑时必须接入主流程。** 例如实现 conversation memory 写入，不只是定义 `saveMessage()` 方法，而必须在 `GraphResearchRunner.runChat()` / `resume()` 中实际调用它并完成端到端验证。
+- **非关键路径的失败不应该阻断主流程。** conversation memory 写入、用户画像提取等辅助能力使用 `.onErrorResume` 降级，记录日志后静默返回。
+- **实现完成后盘点：新增的代码在哪些调用链中被使用？** 如果写了一个方法但没有任何调用方，那不是完成。
