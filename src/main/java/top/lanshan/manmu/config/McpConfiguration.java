@@ -1,6 +1,5 @@
 package top.lanshan.manmu.config;
 
-import com.alibaba.cloud.ai.graph.OverAllState;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -12,10 +11,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.web.reactive.function.client.WebClient;
 import top.lanshan.manmu.mcp.McpToolProvider;
-
-import java.util.Collections;
-import java.util.Map;
-import java.util.function.Function;
 
 @Configuration
 @ConditionalOnProperty(prefix = "mvp.mcp", name = "enabled", havingValue = "true")
@@ -42,23 +37,12 @@ public class McpConfiguration {
     }
 
     @Bean
-    Function<OverAllState, Map<String, Object>> mcpRuntimeSettingsExtractor() {
-        return state -> {
-            if (state == null) {
-                return Collections.emptyMap();
-            }
-            return state.value("mcp_settings", Map.class).orElse(Collections.emptyMap());
-        };
-    }
-
-    @Bean
     McpToolProvider mcpToolProvider(McpProperties mcpProperties,
             McpProperties.McpServerConfig staticConfig,
             WebClient.Builder webClientBuilder,
-            ObjectMapper objectMapper,
-            Function<OverAllState, Map<String, Object>> runtimeSettingsExtractor) {
+            ObjectMapper objectMapper) {
 
         return new McpToolProvider(mcpProperties, staticConfig, webClientBuilder,
-                objectMapper, "deepresearch-mvp", "0.1.0", runtimeSettingsExtractor);
+                objectMapper, "deepresearch-mvp", "0.1.0");
     }
 }

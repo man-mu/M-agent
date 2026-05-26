@@ -1,6 +1,5 @@
 package top.lanshan.manmu.mcp;
 
-import com.alibaba.cloud.ai.graph.OverAllState;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.client.McpClient;
@@ -16,8 +15,6 @@ import top.lanshan.manmu.config.McpProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 
 public class McpToolProvider {
 
@@ -29,39 +26,47 @@ public class McpToolProvider {
     private final ObjectMapper objectMapper;
     private final String clientName;
     private final String clientVersion;
-    private final Function<OverAllState, Map<String, Object>> runtimeSettingsExtractor;
+
+    private volatile ToolCallback[] cachedCallbacks;
+    private volatile boolean initialized;
 
     public McpToolProvider(McpProperties mcpProperties,
             McpProperties.McpServerConfig staticConfig,
             WebClient.Builder webClientBuilder,
             ObjectMapper objectMapper,
             String clientName,
-            String clientVersion,
-            Function<OverAllState, Map<String, Object>> runtimeSettingsExtractor) {
+            String clientVersion) {
         this.mcpProperties = mcpProperties;
         this.staticConfig = staticConfig;
         this.webClientBuilder = webClientBuilder;
         this.objectMapper = objectMapper;
         this.clientName = clientName;
         this.clientVersion = clientVersion;
-        this.runtimeSettingsExtractor = runtimeSettingsExtractor;
     }
 
-    public ToolCallback[] getToolCallbacks(OverAllState state) {
+    public ToolCallback[] getToolCallbacks() {
         if (!mcpProperties.isEnabled()) {
             return new ToolCallback[0];
         }
+        if (initialized) {
+            return cachedCallbacks;
+        }
+        synchronized (this) {
+            if (initialized) {
+                return cachedCallbacks;
+            }
+            cachedCallbacks = initToolCallbacks();
+            initialized = true;
+        }
+        return cachedCallbacks;
+    }
 
-        Map<String, Object> runtimeSettings = runtimeSettingsExtractor != null
-                ? runtimeSettingsExtractor.apply(state) : null;
-
-        McpProperties.McpServerConfig mergedConfig = McpConfigMergeUtil.merge(
-                staticConfig, runtimeSettings, objectMapper);
-
+    private ToolCallback[] initToolCallbacks() {
         List<WebFluxSseClientTransport> transports = McpConfigMergeUtil.createTransports(
-                mergedConfig, webClientBuilder, objectMapper);
+                staticConfig, webClientBuilder, objectMapper);
 
         if (transports.isEmpty()) {
+            logger.info("No enabled MCP servers configured");
             return new ToolCallback[0];
         }
 
@@ -75,7 +80,7 @@ public class McpToolProvider {
                     .build();
                 client.initialize().block(Duration.ofMinutes(2));
                 clients.add(client);
-                logger.info("MCP client initialized: {}", clientInfo);
+                logger.info("MCP client initialized: {}", clientInfo.name());
             } catch (Exception e) {
                 logger.error("Failed to initialize MCP client: {}", e.getMessage());
             }
@@ -87,7 +92,8 @@ public class McpToolProvider {
 
         AsyncMcpToolCallbackProvider provider = new AsyncMcpToolCallbackProvider(clients);
         ToolCallback[] callbacks = provider.getToolCallbacks();
-        logger.info("MCP tools available: {} tools from {} clients", callbacks.length, clients.size());
+        logger.info("MCP tools ready: {} tools from {} client(s)", callbacks.length, clients.size());
         return callbacks;
     }
+
 }
