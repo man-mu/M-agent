@@ -1,0 +1,22 @@
+{
+  "name": "code-review",
+  "description": "对指定代码片段进行专业审查，输出潜在问题和改进建议列表",
+  "version": "1.0.0",
+  "enabled": true,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "需要审查的代码内容"
+      },
+      "language": {
+        "type": "string",
+        "description": "编程语言，如 java、python、javascript",
+        "default": "java"
+      }
+    },
+    "required": ["code"]
+  },
+  "dependencies": []
+}
