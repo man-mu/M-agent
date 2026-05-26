@@ -5,32 +5,32 @@ import jakarta.validation.constraints.NotBlank;
 
 import java.util.UUID;
 
-public record ResearchRequest(@NotBlank String query, String threadId, Integer maxSteps,
+public record ResearchRequest(@NotBlank String query, @JsonProperty("session_id") String sessionId, String threadId, Integer maxSteps,
 		@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
 		@JsonProperty("enable_deepresearch") Boolean enableDeepResearch,
 		@JsonProperty("auto_accepted_plan") Boolean autoAcceptedPlan,
 		@JsonProperty("max_plan_iterations") Integer maxPlanIterations) {
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps) {
-		this(query, threadId, maxSteps, null);
+		this(query, null, threadId, maxSteps, null, null, null, null);
 	}
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps,
 			@JsonProperty("optimize_query_num") Integer optimizeQueryNum) {
-		this(query, threadId, maxSteps, optimizeQueryNum, null);
+		this(query, null, threadId, maxSteps, optimizeQueryNum, null, null, null);
 	}
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps,
 			@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
 			@JsonProperty("enable_deepresearch") Boolean enableDeepResearch) {
-		this(query, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, null, null);
+		this(query, null, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, null, null);
 	}
 
 	public ResearchRequest(String query, String threadId, Integer maxSteps,
 			@JsonProperty("optimize_query_num") Integer optimizeQueryNum,
 			@JsonProperty("enable_deepresearch") Boolean enableDeepResearch,
 			@JsonProperty("auto_accepted_plan") Boolean autoAcceptedPlan) {
-		this(query, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, autoAcceptedPlan, null);
+		this(query, null, threadId, maxSteps, optimizeQueryNum, enableDeepResearch, autoAcceptedPlan, null);
 	}
 
 	public ResearchRequest {

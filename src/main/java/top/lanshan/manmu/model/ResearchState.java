@@ -89,7 +89,11 @@ public class ResearchState {
 	}
 
 	public static ResearchState from(ResearchRequest request) {
-		return from(request, request.threadId());
+		String sessionId = request.sessionId();
+		if (sessionId == null || sessionId.isBlank()) {
+			sessionId = request.threadId();
+		}
+		return from(request, sessionId);
 	}
 
 	public static ResearchState from(ResearchRequest request, String sessionId) {
