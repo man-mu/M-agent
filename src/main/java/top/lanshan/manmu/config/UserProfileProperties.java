@@ -11,6 +11,8 @@ public class UserProfileProperties {
 
     private int cacheMinutes = 60;
 
+    private boolean guideReporter = true;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -33,5 +35,13 @@ public class UserProfileProperties {
 
     public void setCacheMinutes(int cacheMinutes) {
         this.cacheMinutes = cacheMinutes;
+    }
+
+    public boolean isGuideReporter() {
+        return guideReporter;
+    }
+
+    public void setGuideReporter(boolean guideReporter) {
+        this.guideReporter = guideReporter;
     }
 }
