@@ -24,6 +24,15 @@ public class UserProfileEntity implements Persistable<UUID> {
     @Column("profile_summary")
     private String profileSummary;
 
+    @Column("expertise_level")
+    private String expertiseLevel;
+
+    @Column("detail_preference")
+    private String detailPreference;
+
+    @Column("style_preference")
+    private String stylePreference;
+
     @Column("updated_at")
     private Instant updatedAt;
 
@@ -61,6 +70,30 @@ public class UserProfileEntity implements Persistable<UUID> {
         this.profileSummary = profileSummary;
     }
 
+    public String getExpertiseLevel() {
+        return expertiseLevel;
+    }
+
+    public void setExpertiseLevel(String expertiseLevel) {
+        this.expertiseLevel = expertiseLevel;
+    }
+
+    public String getDetailPreference() {
+        return detailPreference;
+    }
+
+    public void setDetailPreference(String detailPreference) {
+        this.detailPreference = detailPreference;
+    }
+
+    public String getStylePreference() {
+        return stylePreference;
+    }
+
+    public void setStylePreference(String stylePreference) {
+        this.stylePreference = stylePreference;
+    }
+
     public Instant getUpdatedAt() {
         return updatedAt;
     }
@@ -70,6 +103,6 @@ public class UserProfileEntity implements Persistable<UUID> {
     }
 
     UserProfileRecord toRecord() {
-        return new UserProfileRecord(sessionId, profileSummary, updatedAt);
+        return new UserProfileRecord(sessionId, profileSummary, expertiseLevel, detailPreference, stylePreference, updatedAt);
     }
 }
