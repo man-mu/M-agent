@@ -38,13 +38,28 @@ mvp:
         researcher: 2
         coder: 1
   rag:
-    enabled: false
+    enabled: true
     top-k: 5
     similarity-threshold: 0.3
     embedding:
       provider-id: dashscope
       model: text-embedding-v1
       dimensions: 1536
+    professional-knowledge-bases:
+      decision-enabled: true
+      knowledge-bases:
+        - id: java-api
+          name: Java API 参考
+          description: JDK 17 标准库及常用第三方库文档
+          type: api
+          enabled: true
+          priority: 100
+        - id: spring-docs
+          name: Spring Boot 文档
+          description: Spring Boot 3.x 官方参考和常见问题
+          type: api
+          enabled: true
+          priority: 90
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search
