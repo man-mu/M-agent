@@ -224,11 +224,12 @@ class GraphResearchRunnerTest {
 	void manualPlanGatePausesAtHumanFeedbackWithoutSavingReport() {
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		RecordingConversationMemoryService memoryService = new RecordingConversationMemoryService();
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
 				new ParallelExecutorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				new RecordingSessionContextService());
+				new RecordingSessionContextService(), memoryService);
 
 		var events = runner
 			.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-pause", 1), "session-pause")
@@ -247,6 +248,12 @@ class GraphResearchRunnerTest {
 			assertThat(event.eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_WAITING);
 		});
 		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(memoryService.messages()).singleElement().satisfies(message -> {
+			assertThat(message.role()).isEqualTo("USER");
+			assertThat(message.sessionId()).isEqualTo("session-pause");
+			assertThat(message.threadId()).isEqualTo("thread-pause");
+			assertThat(message.content()).isEqualTo("Explain workflow.");
+		});
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED");
 	}
 
@@ -291,11 +298,12 @@ class GraphResearchRunnerTest {
 		PlanningNode planningNode = new PlanningNode();
 		RecordingReportService reportService = new RecordingReportService();
 		RecordingSessionHistoryService sessionHistoryService = new RecordingSessionHistoryService();
+		RecordingConversationMemoryService memoryService = new RecordingConversationMemoryService();
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), planningNode, new RealPlanValidatorNodeAdapter(),
 				new RealHumanFeedbackNodeAdapter(), new InformationNode(), new ResearchTeamNode(),
 				new ParallelExecutorNodeStub(), new ReporterNode()), reportService, sessionHistoryService,
-				new RecordingSessionContextService());
+				new RecordingSessionContextService(), memoryService);
 
 		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-reject", 1),
 				"session-reject")
@@ -315,6 +323,13 @@ class GraphResearchRunnerTest {
 		assertThat(rejectedEvents.get(0).eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_REJECTED);
 		assertThat(rejectedEvents.get(3).eventType()).isEqualTo(ResearchStreamEventType.HUMAN_FEEDBACK_WAITING);
 		assertThat(reportService.savedReports()).isEmpty();
+		assertThat(memoryService.messages()).extracting(ConversationMessageRecord::role)
+			.containsExactly("USER", "USER");
+		assertThat(memoryService.messages()).last().satisfies(message -> {
+			assertThat(message.sessionId()).isEqualTo("session-reject");
+			assertThat(message.threadId()).isEqualTo("thread-reject");
+			assertThat(message.content()).isEqualTo("User feedback: Focus on risks.");
+		});
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "PAUSED", "RUNNING", "PAUSED");
 	}
 

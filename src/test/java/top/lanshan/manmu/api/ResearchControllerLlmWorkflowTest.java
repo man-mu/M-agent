@@ -1,8 +1,7 @@
 package top.lanshan.manmu.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,8 +12,6 @@ import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 
-import java.io.IOException;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 
@@ -22,27 +19,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient(timeout = "180s")
+@EnabledIfEnvironmentVariable(named = "MANMU_RUN_REAL_MODEL_TESTS", matches = "true")
 class ResearchControllerLlmWorkflowTest {
 
 	@Autowired
 	WebTestClient webTestClient;
 
-	@Autowired
-	ObjectMapper objectMapper;
-
 	@Test
-	void dashScopeAndDeepSeekCanDriveTheSameResearchStreamWorkflow() throws IOException {
-		JsonNode keys = objectMapper.readTree(Path.of(".local", "model-providers.json").toFile());
-
-		assertResearchWorkflow("dashscope", "qwen-turbo-2025-04-28", keys.path("dashscope").asText());
-		assertResearchWorkflow("deepseek", "deepseek-chat", keys.path("deepseek").asText());
+	void dashScopeAndDeepSeekCanDriveTheSameResearchStreamWorkflow() {
+		assertResearchWorkflow("dashscope", "qwen-turbo-2025-04-28", requiredApiKey("MANMU_TEST_DASHSCOPE_API_KEY"));
+		assertResearchWorkflow("deepseek", "deepseek-chat", requiredApiKey("MANMU_TEST_DEEPSEEK_API_KEY"));
 	}
 
 	@Test
-	void chatStreamUsesDeepResearchCompatibleEnvelope() throws IOException {
-		JsonNode keys = objectMapper.readTree(Path.of(".local", "model-providers.json").toFile());
-		String apiKey = keys.path("deepseek").asText();
-		assertThat(apiKey).as("API key for deepseek must exist in .local/model-providers.json").isNotBlank();
+	void chatStreamUsesDeepResearchCompatibleEnvelope() {
+		String apiKey = requiredApiKey("MANMU_TEST_DEEPSEEK_API_KEY");
 
 		webTestClient.post()
 			.uri("/api/model/providers/deepseek/key")
@@ -164,6 +155,12 @@ class ResearchControllerLlmWorkflowTest {
 			assertThat(String.valueOf(event.payload())).isNotBlank();
 		});
 		assertThat(events.get(events.size() - 1).done()).isTrue();
+	}
+
+	private String requiredApiKey(String envName) {
+		String apiKey = System.getenv(envName);
+		assertThat(apiKey).as("%s must be set when MANMU_RUN_REAL_MODEL_TESTS=true", envName).isNotBlank();
+		return apiKey;
 	}
 
 }

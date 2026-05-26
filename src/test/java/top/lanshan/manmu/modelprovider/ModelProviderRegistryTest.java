@@ -1,6 +1,7 @@
 package top.lanshan.manmu.modelprovider;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ class ModelProviderRegistryTest {
 	}
 
 	@Test
+	@EnabledIfEnvironmentVariable(named = "MANMU_RUN_REAL_MODEL_TESTS", matches = "true")
 	void routingChatModelUsesRealProvidersAfterSwitch() {
 		registry.switchModel("dashscope", "qwen-turbo-2025-04-28");
 		ChatResponse dashScopeResponse = routingChatModel.call(new Prompt("Say ok."));
