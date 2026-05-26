@@ -68,6 +68,10 @@ public class ResearchGraphBuilder {
 
 	public static final String USER_FILE_RAG = "user_file_rag";
 
+	public static final String PROFESSIONAL_KB_DECISION = "professional_kb_decision";
+
+	public static final String PROFESSIONAL_KB_RAG = "professional_kb_rag";
+
 	private final Map<String, ResearchNode> nodes;
 
 	private final AdvancedExecutionProperties advancedExecutionProperties;
@@ -179,6 +183,7 @@ public class ResearchGraphBuilder {
 			graph.addNode(RESEARCH_TEAM, ResearchNodeGraphAction.async(requiredNode(RESEARCH_TEAM)));
 			graph.addNode(PARALLEL_EXECUTOR, ResearchNodeGraphAction.async(requiredNode(PARALLEL_EXECUTOR)));
 			addExecutorNodes(graph, executorNodes);
+			addProfessionalKbNodes(graph);
 			graph.addNode(REPORTER, ResearchNodeGraphAction.async(requiredNode(REPORTER)));
 			graph.addEdge(StateGraph.START, HUMAN_FEEDBACK);
 			graph.addConditionalEdges(HUMAN_FEEDBACK, edge(this::routeHumanFeedback),
@@ -213,6 +218,18 @@ public class ResearchGraphBuilder {
 		if (ragProperties.isEnabled() && nodes.containsKey(USER_FILE_RAG)) {
 			graph.addNode(USER_FILE_RAG, ResearchNodeGraphAction.async(requiredNode(USER_FILE_RAG)));
 		}
+		addProfessionalKbNodes(graph);
+	}
+
+	private void addProfessionalKbNodes(StateGraph graph) throws Exception {
+		if (ragProperties.isEnabled() && nodes.containsKey(PROFESSIONAL_KB_DECISION)) {
+			graph.addNode(PROFESSIONAL_KB_DECISION,
+					ResearchNodeGraphAction.async(requiredNode(PROFESSIONAL_KB_DECISION)));
+		}
+		if (ragProperties.isEnabled() && nodes.containsKey(PROFESSIONAL_KB_RAG)) {
+			graph.addNode(PROFESSIONAL_KB_RAG,
+					ResearchNodeGraphAction.async(requiredNode(PROFESSIONAL_KB_RAG)));
+		}
 	}
 
 	private void addExecutorNodes(StateGraph graph, Map<String, ResearchNode> executorNodes) throws Exception {
@@ -222,8 +239,20 @@ public class ResearchGraphBuilder {
 	}
 
 	private void addAdvancedExecutionEdges(StateGraph graph, Map<String, ResearchNode> executorNodes) throws Exception {
-		graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
-				Map.of("parallel_executor", PARALLEL_EXECUTOR, "reporter", REPORTER));
+		if (ragProperties.isEnabled() && nodes.containsKey(PROFESSIONAL_KB_DECISION)) {
+			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
+					Map.of("parallel_executor", PARALLEL_EXECUTOR,
+							"reporter", PROFESSIONAL_KB_DECISION));
+			graph.addConditionalEdges(PROFESSIONAL_KB_DECISION, edge(this::routeProfessionalKbDecision),
+					Map.of("professional_kb_rag", PROFESSIONAL_KB_RAG,
+							"reporter", REPORTER));
+			if (nodes.containsKey(PROFESSIONAL_KB_RAG)) {
+				graph.addEdge(PROFESSIONAL_KB_RAG, REPORTER);
+			}
+		} else {
+			graph.addConditionalEdges(RESEARCH_TEAM, edge(this::routeResearchTeam),
+					Map.of("parallel_executor", PARALLEL_EXECUTOR, "reporter", REPORTER));
+		}
 		graph.addConditionalEdges(PARALLEL_EXECUTOR, edge(this::routeParallelExecutor),
 				executorRouteTargets(executorNodes));
 		for (ResearchNode node : executorNodes.values()) {
@@ -367,6 +396,15 @@ public class ResearchGraphBuilder {
 			case PARALLEL_EXECUTOR -> "parallel_executor";
 			case REPORTER -> "reporter";
 		};
+	}
+
+	private String routeProfessionalKbDecision(com.alibaba.cloud.ai.graph.OverAllState state) {
+		ResearchState researchState = ResearchGraphState.researchState(state.data());
+		List<String> selectedKbs = researchState.selectedKnowledgeBases();
+		if (selectedKbs != null && !selectedKbs.isEmpty()) {
+			return "professional_kb_rag";
+		}
+		return "reporter";
 	}
 
 	private String routeParallelExecutor(com.alibaba.cloud.ai.graph.OverAllState state) {
