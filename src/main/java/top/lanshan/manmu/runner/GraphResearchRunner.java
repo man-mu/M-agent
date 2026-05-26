@@ -2,6 +2,8 @@ package top.lanshan.manmu.runner;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.NodeOutput;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -10,6 +12,7 @@ import reactor.core.scheduler.Schedulers;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
 import top.lanshan.manmu.graph.ResearchGraphState;
 import top.lanshan.manmu.graph.ResearchGraphStateKeys;
+import top.lanshan.manmu.memory.ConversationMemoryService;
 import top.lanshan.manmu.model.HumanFeedbackRoute;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
@@ -30,6 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @Component
 public class GraphResearchRunner implements ResearchRunner {
 
+	private static final Logger logger = LoggerFactory.getLogger(GraphResearchRunner.class);
+
 	private final CompiledGraph graph;
 
 	private final CompiledGraph planGateGraph;
@@ -40,6 +45,8 @@ public class GraphResearchRunner implements ResearchRunner {
 
 	private final SessionHistoryService sessionHistoryService;
 
+	private final ConversationMemoryService conversationMemoryService;
+
 	private final Map<String, Map<String, Object>> pausedStates = new ConcurrentHashMap<>();
 
 	private final Map<String, RunningResearch> runningResearch = new ConcurrentHashMap<>();
@@ -47,7 +54,8 @@ public class GraphResearchRunner implements ResearchRunner {
 	private final Map<String, AtomicLong> eventSequences = new ConcurrentHashMap<>();
 
 	public GraphResearchRunner(ResearchGraphBuilder graphBuilder, ReportService reportService,
-			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
+			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService,
+			ConversationMemoryService conversationMemoryService) {
 		ResearchGraphBuilder requiredGraphBuilder = Objects.requireNonNull(graphBuilder, "graphBuilder must not be null");
 		this.graph = requiredGraphBuilder.buildAutoResearchGraph(sessionContextService);
 		this.planGateGraph = requiredGraphBuilder.buildPlanGateResearchGraph(sessionContextService);
@@ -56,6 +64,8 @@ public class GraphResearchRunner implements ResearchRunner {
 		this.sessionHistoryService = Objects.requireNonNull(sessionHistoryService,
 				"sessionHistoryService must not be null");
 		Objects.requireNonNull(sessionContextService, "sessionContextService must not be null");
+		this.conversationMemoryService = Objects.requireNonNull(conversationMemoryService,
+				"conversationMemoryService must not be null");
 	}
 
 	@Override
@@ -67,7 +77,8 @@ public class GraphResearchRunner implements ResearchRunner {
 	@Override
 	public Flux<ResearchEvent> runChat(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
-		return sequenceEvents(state.threadId(), true, withRunningStop(state.threadId(), startHistoryThenRun(state)));
+		return sequenceEvents(state.threadId(), true,
+				withRunningStop(state.threadId(), saveUserMessage(state).thenMany(startHistoryThenRun(state))));
 	}
 
 	@Override
@@ -76,7 +87,8 @@ public class GraphResearchRunner implements ResearchRunner {
 		state.autoAcceptedPlan(false);
 		return sequenceEvents(state.threadId(), true,
 				withRunningStop(state.threadId(),
-						sessionHistoryService.start(state.threadId(), state.sessionId(), state.query())
+						saveUserMessage(state)
+							.then(sessionHistoryService.start(state.threadId(), state.sessionId(), state.query()))
 							.thenMany(runPlanGateGraph(state))
 							.onErrorResume(error -> markFailedThenReturnError(state, error))));
 	}
@@ -95,7 +107,8 @@ public class GraphResearchRunner implements ResearchRunner {
 		state.humanFeedback(decision.accepted(), decision.feedbackContent());
 		ResearchGraphState.setResearchState(graphState, state);
 		return sequenceEvents(state.threadId(), false,
-				withRunningStop(state.threadId(), sessionHistoryService.markRunning(state.threadId())
+				withRunningStop(state.threadId(), saveFeedbackMessage(state, decision)
+					.then(sessionHistoryService.markRunning(state.threadId()))
 					.thenMany(runResumeGraph(graphState))
 					.onErrorResume(error -> markFailedThenReturnError(state, error))));
 	}
@@ -233,9 +246,36 @@ public class GraphResearchRunner implements ResearchRunner {
 					new IllegalStateException("Research completed without a report")));
 		}
 		return reportService.saveCompletedReport(state.threadId(), state.sessionId(), state.query(), report)
+			.flatMap(r -> saveAssistantMessage(state, report).thenReturn(r))
 			.flatMap(r -> sessionHistoryService.markCompleted(state.threadId(), r.threadId()))
 			.thenReturn(ResearchEvent.done(state.threadId(), "Research workflow completed", report))
 			.flux();
+	}
+
+	private Mono<Void> saveUserMessage(ResearchState state) {
+		return saveMemoryMessage(state.sessionId(), state.threadId(), "USER", state.query());
+	}
+
+	private Mono<Void> saveFeedbackMessage(ResearchState state, ResumeDecision decision) {
+		if (decision == null || decision.feedbackContent() == null || decision.feedbackContent().isBlank()) {
+			return Mono.empty();
+		}
+		String content = "User feedback: " + decision.feedbackContent().strip();
+		return saveMemoryMessage(state.sessionId(), state.threadId(), "USER", content);
+	}
+
+	private Mono<Void> saveAssistantMessage(ResearchState state, String report) {
+		return saveMemoryMessage(state.sessionId(), state.threadId(), "ASSISTANT", report);
+	}
+
+	private Mono<Void> saveMemoryMessage(String sessionId, String threadId, String role, String content) {
+		return conversationMemoryService.saveMessage(sessionId, threadId, role, content)
+			.then()
+			.onErrorResume(error -> {
+				logger.warn("Failed to save {} conversation memory for thread {}: {}", role, threadId,
+						errorMessage(error));
+				return Mono.empty();
+			});
 	}
 
 	private Flux<ResearchEvent> markFailedThenReturnError(ResearchState state, Throwable error) {

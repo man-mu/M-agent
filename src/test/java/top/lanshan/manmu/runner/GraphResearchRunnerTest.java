@@ -12,6 +12,8 @@ import top.lanshan.manmu.agent.ProcessorAgent;
 import top.lanshan.manmu.agent.ResearcherAgent;
 import top.lanshan.manmu.config.AdvancedExecutionProperties;
 import top.lanshan.manmu.graph.ResearchGraphBuilder;
+import top.lanshan.manmu.memory.ConversationMemoryService;
+import top.lanshan.manmu.memory.ConversationMessageRecord;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
 import top.lanshan.manmu.model.HumanFeedbackDecision;
@@ -88,6 +90,54 @@ class GraphResearchRunnerTest {
 			assertThat(report.report()).isEqualTo("Direct answer");
 		});
 		assertThat(sessionHistoryService.statuses()).containsExactly("RUNNING", "COMPLETED");
+	}
+
+	@Test
+	void runChatSavesUserAndAssistantConversationMessages() {
+		RecordingConversationMemoryService memoryService = new RecordingConversationMemoryService();
+		GraphResearchRunner runner = newRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
+				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new RecordingSessionHistoryService(), new RecordingSessionContextService(), memoryService);
+
+		var events = runner.runChat(new ResearchRequest("Say hello.", "thread-memory", 2, null, false),
+				"session-memory").collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "__END__");
+		assertThat(memoryService.messages()).extracting(ConversationMessageRecord::role)
+			.containsExactly("USER", "ASSISTANT");
+		assertThat(memoryService.messages()).first().satisfies(message -> {
+			assertThat(message.sessionId()).isEqualTo("session-memory");
+			assertThat(message.threadId()).isEqualTo("thread-memory");
+			assertThat(message.content()).isEqualTo("Say hello.");
+		});
+		assertThat(memoryService.messages()).last().satisfies(message -> {
+			assertThat(message.sessionId()).isEqualTo("session-memory");
+			assertThat(message.threadId()).isEqualTo("thread-memory");
+			assertThat(message.content()).isEqualTo("Direct answer");
+		});
+	}
+
+	@Test
+	void conversationMemoryFailureDoesNotPreventCompletionEvent() {
+		GraphResearchRunner runner = newRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
+				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new RecordingSessionHistoryService(), new RecordingSessionContextService(),
+				new FailingConversationMemoryService());
+
+		var events = runner.runChat(new ResearchRequest("Say hello.", "thread-memory-failure", 2, null, false),
+				"session-memory-failure").collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "__END__");
+		assertThat(events.get(1)).satisfies(event -> {
+			assertThat(event.done()).isTrue();
+			assertThat(event.payload()).isEqualTo("Direct answer");
+		});
 	}
 
 	@Test
@@ -395,11 +445,18 @@ class GraphResearchRunnerTest {
 
 	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
 			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService) {
+		return newRunner(nodes, reportService, sessionHistoryService, sessionContextService,
+				new RecordingConversationMemoryService());
+	}
+
+	private static GraphResearchRunner newRunner(List<ResearchNode> nodes, ReportService reportService,
+			SessionHistoryService sessionHistoryService, SessionContextService sessionContextService,
+			ConversationMemoryService conversationMemoryService) {
 		ResearcherAgent researcherAgent = (query, step, searchContext) -> "Researched " + step.id();
 		ProcessorAgent processorAgent = (state, step) -> "Processed " + step.id();
 		return new GraphResearchRunner(
 				new ResearchGraphBuilder(nodes, new AdvancedExecutionProperties(), researcherAgent, processorAgent),
-				reportService, sessionHistoryService, sessionContextService);
+				reportService, sessionHistoryService, sessionContextService, conversationMemoryService);
 	}
 
 	@Configuration(proxyBeanMethods = false)
@@ -418,6 +475,11 @@ class GraphResearchRunnerTest {
 		@Bean
 		SessionContextService sessionContextService() {
 			return new RecordingSessionContextService();
+		}
+
+		@Bean
+		ConversationMemoryService conversationMemoryService() {
+			return new RecordingConversationMemoryService();
 		}
 
 		@Bean
@@ -985,6 +1047,56 @@ class GraphResearchRunnerTest {
 		@Override
 		public Mono<String> formatRecentCompletedReports(String sessionId, String currentThreadId) {
 			return Mono.just(contexts.getOrDefault(sessionId, ""));
+		}
+
+	}
+
+	private static class RecordingConversationMemoryService implements ConversationMemoryService {
+
+		private final List<ConversationMessageRecord> messages = new ArrayList<>();
+
+		@Override
+		public Mono<ConversationMessageRecord> saveMessage(String sessionId, String threadId, String role,
+				String content) {
+			ConversationMessageRecord message = new ConversationMessageRecord(sessionId, threadId, role, content,
+					Instant.now());
+			messages.add(message);
+			return Mono.just(message);
+		}
+
+		@Override
+		public Flux<ConversationMessageRecord> findBySessionId(String sessionId) {
+			return Flux.fromIterable(messages).filter(message -> sessionId.equals(message.sessionId()));
+		}
+
+		@Override
+		public Mono<String> formatConversationHistory(String sessionId) {
+			return findBySessionId(sessionId).map(ConversationMessageRecord::content).collectList()
+				.map(items -> String.join("\n", items));
+		}
+
+		List<ConversationMessageRecord> messages() {
+			return messages;
+		}
+
+	}
+
+	private static class FailingConversationMemoryService implements ConversationMemoryService {
+
+		@Override
+		public Mono<ConversationMessageRecord> saveMessage(String sessionId, String threadId, String role,
+				String content) {
+			return Mono.error(new IllegalStateException("memory unavailable"));
+		}
+
+		@Override
+		public Flux<ConversationMessageRecord> findBySessionId(String sessionId) {
+			return Flux.empty();
+		}
+
+		@Override
+		public Mono<String> formatConversationHistory(String sessionId) {
+			return Mono.just("");
 		}
 
 	}

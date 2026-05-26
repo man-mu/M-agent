@@ -28,8 +28,11 @@ public class PostgresConversationMemoryService implements ConversationMemoryServ
     @Override
     public Mono<ConversationMessageRecord> saveMessage(String sessionId, String threadId,
             String role, String content) {
+        if (!properties.isEnabled() || isBlank(sessionId) || isBlank(threadId) || isBlank(role) || isBlank(content)) {
+            return Mono.empty();
+        }
         Instant now = Instant.now();
-        ConversationMessageEntity entity = newEntity(sessionId, threadId, role, content, now);
+        ConversationMessageEntity entity = newEntity(sessionId.strip(), threadId.strip(), role.strip(), content.strip(), now);
         return repository.save(entity)
                 .map(ConversationMessageEntity::toRecord);
     }
@@ -59,6 +62,10 @@ public class PostgresConversationMemoryService implements ConversationMemoryServ
             return content;
         }
         return content.substring(0, maxChars) + "...[truncated]";
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private ConversationMessageEntity newEntity(String sessionId, String threadId,
