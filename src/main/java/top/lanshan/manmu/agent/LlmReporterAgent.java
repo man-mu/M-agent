@@ -41,7 +41,11 @@ public class LlmReporterAgent implements ReporterAgent {
 			.collect(Collectors.joining("\n"));
 
 		String profileSection = (userProfileContext != null && !userProfileContext.isBlank())
-				? "Report audience: " + userProfileContext + "\n"
+				? """
+
+				User profile context: %s
+				Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence.
+				""".formatted(userProfileContext)
 				: "";
 
 		String userPrompt = """

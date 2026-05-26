@@ -33,7 +33,11 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 		}
 
 		String profileSection = (userProfileContext != null && !userProfileContext.isBlank())
-				? "\nUser background: " + userProfileContext + "\n"
+				? """
+
+				User profile context: %s
+				Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence.
+				""".formatted(userProfileContext)
 				: "";
 
 		String userPrompt = """

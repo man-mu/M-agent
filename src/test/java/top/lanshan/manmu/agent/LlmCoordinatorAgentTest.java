@@ -52,6 +52,25 @@ class LlmCoordinatorAgentTest {
 	}
 
 	@Test
+	void injectsUserProfileContextWithGuardrail() {
+		RecordingAgentClient agentClient = new RecordingAgentClient("""
+				{
+				  "next_route": "DIRECT_ANSWER",
+				  "direct_answer": "Hello.",
+				  "thought": "Greeting."
+				}
+				""");
+		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new CoordinatorOutputMapper());
+
+		agent.coordinate("Say hi.", false, "summary: backend engineer; detail: concise");
+
+		assertThat(agentClient.userPrompt).contains("User profile context: summary: backend engineer; detail: concise")
+			.contains("Use this only to adapt explanation depth and style")
+			.contains("Do not infer facts not present in research evidence");
+	}
+
+	@Test
 	void keepsSubstantiveRequestsOnDeepResearchWhenEnabled() {
 		RecordingAgentClient agentClient = new RecordingAgentClient(null);
 		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
