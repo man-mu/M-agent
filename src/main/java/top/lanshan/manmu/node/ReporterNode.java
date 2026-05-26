@@ -1,6 +1,8 @@
 package top.lanshan.manmu.node;
 
 import top.lanshan.manmu.agent.ReporterAgent;
+import top.lanshan.manmu.config.UserProfileProperties;
+import top.lanshan.manmu.memory.UserProfileService;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
 import org.springframework.stereotype.Component;
@@ -11,8 +13,15 @@ public class ReporterNode implements ResearchNode {
 
 	private final ReporterAgent reporterAgent;
 
-	public ReporterNode(ReporterAgent reporterAgent) {
+	private final UserProfileService userProfileService;
+
+	private final UserProfileProperties userProfileProperties;
+
+	public ReporterNode(ReporterAgent reporterAgent, UserProfileService userProfileService,
+			UserProfileProperties userProfileProperties) {
 		this.reporterAgent = reporterAgent;
+		this.userProfileService = userProfileService;
+		this.userProfileProperties = userProfileProperties;
 	}
 
 	@Override
@@ -28,7 +37,12 @@ public class ReporterNode implements ResearchNode {
 	@Override
 	public Flux<ResearchEvent> run(ResearchState state) {
 		return Flux.defer(() -> {
-			String report = reporterAgent.report(state);
+			String userProfileContext = "";
+			if (userProfileProperties != null && userProfileProperties.isGuideReporter()
+					&& userProfileService != null) {
+				userProfileContext = userProfileService.getOrCreateProfile(state.sessionId());
+			}
+			String report = reporterAgent.report(state, userProfileContext);
 			state.report(report);
 			return Flux.just(
 					ResearchEvent.message(state.threadId(), name(), "started", "Generating final report", null),
