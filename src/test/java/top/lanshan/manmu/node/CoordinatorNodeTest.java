@@ -2,6 +2,7 @@ package top.lanshan.manmu.node;
 
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import top.lanshan.manmu.memory.UserProfileService;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
@@ -13,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CoordinatorNodeTest {
 
     private static final UserProfileService NOOP_PROFILE_SERVICE = new UserProfileService(
-            null, null, null, null) {
+            null, null, null, null, new ObjectMapper()) {
         @Override
         public String getOrCreateProfile(String sessionId) {
             return "";
