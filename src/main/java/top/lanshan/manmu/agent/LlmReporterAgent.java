@@ -20,7 +20,7 @@ public class LlmReporterAgent implements ReporterAgent {
 	}
 
 	@Override
-	public String report(ResearchState state) {
+	public String report(ResearchState state, String userProfileContext) {
 		String steps = state.plan()
 			.steps()
 			.stream()
@@ -40,6 +40,10 @@ public class LlmReporterAgent implements ReporterAgent {
 			.map(site -> "- %s\n  URL: %s\n  Summary: %s".formatted(site.title(), site.url(), site.summary()))
 			.collect(Collectors.joining("\n"));
 
+		String profileSection = (userProfileContext != null && !userProfileContext.isBlank())
+				? "Report audience: " + userProfileContext + "\n"
+				: "";
+
 		String userPrompt = """
 				Query:
 				%s
@@ -58,13 +62,13 @@ public class LlmReporterAgent implements ReporterAgent {
 
 				Web search sources:
 				%s
-
+				%s
 				Write the final answer as concise Markdown. Include:
 				1. a short conclusion,
 				2. key findings grounded in the observations,
 				3. next implementation steps.
 				""".formatted(state.query(), state.plan().title(), state.plan().thought(), steps, observations,
-				searchSources.isBlank() ? "No web search sources were collected." : searchSources);
+				searchSources.isBlank() ? "No web search sources were collected." : searchSources, profileSection);
 		return agentClient.call(promptService.load("reporter"), userPrompt);
 	}
 

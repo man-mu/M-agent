@@ -62,6 +62,7 @@ mvp:
       enabled: true
       max-messages-for-extraction: 10
       cache-minutes: 60
+      guide-reporter: true
   model:
     current:
       provider-id: dashscope
