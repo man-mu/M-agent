@@ -38,4 +38,30 @@ public class SkillToolProvider {
         logger.info("Skill tools ready: {} tools", callbacks.size());
         return callbacks.toArray(new ToolCallback[0]);
     }
+
+    /**
+     * Returns a human-readable summary of enabled skills for injection into the
+     * LLM system prompt. This improves auto-trigger discoverability — the LLM
+     * sees both the tool definitions (via ToolCallback) and this contextual
+     * prompt telling it <em>when</em> to use each skill.
+     *
+     * @return a prompt fragment, or empty string if no skills are enabled
+     */
+    public String getSkillSummary() {
+        List<SkillDefinition> enabled = registry.listEnabled();
+        if (enabled.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Available Skills\n\n");
+        sb.append("You have access to the following skill tools. ")
+          .append("Use the corresponding tool when a user request matches.\n\n");
+        for (SkillDefinition def : enabled) {
+            String toolName = "skill__" + def.getName().replace('-', '_');
+            sb.append("- **").append(toolName).append("**: ")
+              .append(def.getDescription()).append("\n");
+        }
+        sb.append("\n");
+        return sb.toString();
+    }
 }

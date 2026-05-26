@@ -44,6 +44,7 @@ public class SpringAiAgentClient implements AgentClient {
 	@Override
 	public String call(String systemPrompt, String userPrompt) {
 		String effectiveSystem = resolveExplicitSkillCall(systemPrompt, userPrompt);
+		effectiveSystem = appendSkillSummary(effectiveSystem);
 
 		ChatClient chatClient = ChatClient.builder(routingChatModel).build();
 		ChatClient.ChatClientRequestSpec request = chatClient.prompt()
@@ -77,6 +78,21 @@ public class SpringAiAgentClient implements AgentClient {
 		}
 
 		return request.call().content();
+	}
+
+	/**
+	 * Appends a skill availability summary to the system prompt so the LLM
+	 * knows when to use skill tools (auto-trigger discoverability).
+	 */
+	private String appendSkillSummary(String systemPrompt) {
+		if (skillToolProvider == null) {
+			return systemPrompt;
+		}
+		String summary = skillToolProvider.getSkillSummary();
+		if (summary.isEmpty()) {
+			return systemPrompt;
+		}
+		return systemPrompt + "\n\n" + summary;
 	}
 
 	/**
