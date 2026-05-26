@@ -70,7 +70,6 @@
 
 ### 测试基础设施
 
-- **涉及数据库的单元测试必须使用嵌入式 DB（H2/Testcontainers），不能默认依赖本地 PostgreSQL。** 如果 `mvn test` 因为连不上本地 PG 而报 12 个 errors，测试的回归保护能力就等于零。参考 `src/test/resources/application-test.yml` 配置 Spring profile 切换数据源。
 - **新增测试类必须聚焦可验证的行为变更。** 例如 phase 3 新增 `LlmReporterAgentTest` 验证 profile guardrail 是否真的写入了 prompt，而不是泛泛的"报告生成了"。
 
 ### 功能闭环
