@@ -47,18 +47,18 @@
 
           <a-timeline>
             <a-timeline-item
-              v-for="event in visibleEvents"
-              :key="`${event.sequence}-${event.event_type}-${event.phase}`"
-              :color="eventColor(event)"
+              v-for="node in workflowNodes"
+              :key="node.key"
+              :color="node.color"
             >
               <div class="event-line">
-                <strong>{{ displayTitle(event) }}</strong>
-                <a-tag>{{ event.event_type || event.phase || 'message' }}</a-tag>
+                <strong>{{ node.title }}</strong>
+                <a-tag>{{ node.tag }}</a-tag>
               </div>
-              <p v-if="eventSummary(event)" class="event-summary">{{ eventSummary(event) }}</p>
-              <div v-if="sourceLinks(event).length" class="sources">
+              <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
+              <div v-if="node.sources.length" class="sources">
                 <a
-                  v-for="source in sourceLinks(event)"
+                  v-for="source in node.sources"
                   :key="source.url || source.title"
                   :href="source.url"
                   target="_blank"
@@ -129,6 +129,35 @@ interface SourceLink {
   url?: string
 }
 
+interface WorkflowNode {
+  key: string
+  title: string
+  tag: string
+  color: string
+  summary: string
+  sources: SourceLink[]
+  sequence: number
+}
+
+const nodeTitleMap: Record<string, string> = {
+  coordinator: 'Coordinator',
+  rewrite_multi_query: 'Query Rewrite',
+  background_investigator: 'Background Investigation',
+  user_file_rag: 'User File RAG',
+  professional_kb_decision: 'Professional KB Decision',
+  professional_kb_rag: 'Professional KB RAG',
+  planner: 'Planner',
+  human_feedback: 'Human Feedback',
+  research_team: 'Research Team',
+  parallel_executor: 'Parallel Executor',
+  information: 'Information Search',
+  researcher: 'Researcher',
+  coder: 'Coder',
+  reporter: 'Reporter',
+  runner: 'Runner',
+  __END__: 'Done',
+}
+
 const router = useRouter()
 const route = useRoute()
 const conversationStore = useConversationStore()
@@ -137,7 +166,24 @@ const draft = ref('')
 const reportVisible = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
 
-const visibleEvents = computed(() => messageStore.events.slice(-80))
+const workflowNodes = computed(() => {
+  const nodes = new Map<string, WorkflowNode>()
+  for (const event of messageStore.events) {
+    const key = nodeKey(event)
+    const previous = nodes.get(key)
+    const sources = sourceLinks(event)
+    nodes.set(key, {
+      key,
+      title: displayTitle(event),
+      tag: event.event_type || event.phase || event.status || 'message',
+      color: eventColor(event),
+      summary: eventSummary(event) || previous?.summary || '',
+      sources: sources.length ? sources : previous?.sources || [],
+      sequence: event.sequence ?? previous?.sequence ?? nodes.size,
+    })
+  }
+  return [...nodes.values()].sort((left, right) => left.sequence - right.sequence)
+})
 
 function ensureConversation() {
   const routeId = route.params.convId as string | undefined
@@ -170,6 +216,7 @@ async function submit() {
   draft.value = ''
   reportVisible.value = true
   await scrollToBottom()
+  let streamError = ''
 
   try {
     const events = await chatService.stream(
@@ -183,12 +230,16 @@ async function submit() {
       event => {
         messageStore.addEvent(event.data)
         if (event.event === 'error') {
-          throw new Error(errorReason(event.data))
+          streamError = errorReason(event.data)
         }
       },
     )
 
     const final = [...events].reverse().find(event => event.data.done)?.data
+    const failed = [...events].reverse().find(event => event.event === 'error')?.data
+    if (failed) {
+      throw new Error(streamError || errorReason(failed))
+    }
     const report = extractReport(final) || messageStore.reportContent
     if (report) {
       messageStore.addAssistantMessage(report, messageStore.threadId)
@@ -226,23 +277,53 @@ async function stop() {
 }
 
 function displayTitle(event: ChatStreamResponse) {
-  return event.displayTitle || event.display_title || event.nodeName || event.node_name || '工作流节点'
+  const key = nodeKey(event)
+  return nodeTitleMap[key] || event.displayTitle || event.display_title || event.nodeName || event.node_name || '工作流节点'
 }
 
 function eventColor(event: ChatStreamResponse) {
-  if (event.event_type?.includes('failed') || event.phase === 'error') return 'red'
+  if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') return 'red'
   if (event.done || event.event_type?.includes('completed')) return 'green'
   if (event.event_type?.includes('started')) return 'blue'
   return 'gray'
+}
+
+function nodeKey(event: ChatStreamResponse) {
+  const name = event.node_name || event.nodeName || event.node_type || 'workflow'
+  if (name === 'researcher' || name === 'coder') {
+    return event.executor_id || event.step_id || name
+  }
+  return name
 }
 
 function eventSummary(event: ChatStreamResponse) {
   if (typeof event.content === 'string') {
     return event.content.length > 240 ? `${event.content.slice(0, 240)}...` : event.content
   }
+  if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') {
+    return errorReason(event)
+  }
+  if (Array.isArray(event.payload)) {
+    return arraySummary(event.payload)
+  }
+  if (event.payload && typeof event.payload === 'object') {
+    const payload = event.payload as Record<string, unknown>
+    if (payload.title) return String(payload.title)
+    if (payload.route) return `路由：${payload.route}`
+    if (payload.next_route) return `路由：${payload.next_route}`
+    if (payload.nextRoute) return `路由：${payload.nextRoute}`
+    if (payload.completedSteps != null && payload.totalSteps != null) {
+      return `已完成 ${payload.completedSteps}/${payload.totalSteps} 个步骤。`
+    }
+    if (payload.step && typeof payload.step === 'object') {
+      const step = payload.step as Record<string, unknown>
+      if (step.title) return String(step.title)
+    }
+    if (payload.reason) return String(payload.reason)
+  }
   if (event.phase === 'completed' && event.payload) {
     if (Array.isArray(event.payload)) {
-      return `完成，返回 ${event.payload.length} 条结果。`
+      return event.payload.length ? `完成，返回 ${event.payload.length} 条结果。` : '完成，未返回结果。'
     }
     if (typeof event.payload === 'object') {
       const payload = event.payload as Record<string, unknown>
@@ -254,7 +335,20 @@ function eventSummary(event: ChatStreamResponse) {
   if (event.done) {
     return '研究流程完成。'
   }
+  if (event.phase === 'started') {
+    return '节点已开始执行。'
+  }
   return ''
+}
+
+function arraySummary(items: unknown[]) {
+  if (items.length === 0) {
+    return '未命中可用结果。'
+  }
+  if (items.every(item => typeof item === 'string' || typeof item === 'number')) {
+    return `命中：${items.join('、')}`
+  }
+  return `完成，返回 ${items.length} 条结果。`
 }
 
 function sourceLinks(event: ChatStreamResponse): SourceLink[] {

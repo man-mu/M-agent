@@ -68,7 +68,10 @@ public class ProfessionalKbRagNode implements ResearchNode {
                 "session_id", "professional_kb");
             List<Document> documents = retriever.retrieve(query, filters);
             if (documents.isEmpty()) {
-                return Flux.empty();
+                return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
+                        null, null, null, "completed", "completed",
+                        "专业知识库检索", "No professional KB RAG context matched this query",
+                        "未检索到可用的专业知识库上下文。", null, false, Instant.now()));
             }
             String context = retriever.buildContext(documents);
             String prompt = ragPromptTemplate

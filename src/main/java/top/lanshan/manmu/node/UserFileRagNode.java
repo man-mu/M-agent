@@ -71,7 +71,10 @@ public class UserFileRagNode implements ResearchNode {
                 "session_id", sessionId);
             List<Document> documents = retriever.retrieve(query, filters);
             if (documents.isEmpty()) {
-                return Flux.empty();
+                return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
+                        null, null, null, "completed", "completed",
+                        "用户文件检索", "No user-upload RAG context matched this query",
+                        "未检索到可用的用户文件上下文。", null, false, Instant.now()));
             }
 
             String context = retriever.buildContext(documents);

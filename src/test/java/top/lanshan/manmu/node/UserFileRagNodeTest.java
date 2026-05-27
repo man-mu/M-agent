@@ -31,14 +31,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class UserFileRagNodeTest {
 
     @Test
-    void emitsNoEventsWhenNoDocumentsRetrieved() {
+    void emitsVisibleSkippedEventWhenNoDocumentsRetrieved() {
         VectorStore emptyStore = new StubVectorStore(List.of());
         RagRetriever retriever = new RagRetriever(emptyStore, 5, 0.7);
         UserFileRagNode node = new UserFileRagNode(retriever, ChatClient.builder(new StubChatModel("unused")),
                 new DefaultResourceLoader());
         ResearchState state = stateWithQueryAndSession("What is AI?", "session-test");
 
-        StepVerifier.create(node.run(state)).verifyComplete();
+        StepVerifier.create(node.run(state))
+            .assertNext(event -> {
+                assertThat(event.node()).isEqualTo("user_file_rag");
+                assertThat(event.phase()).isEqualTo("completed");
+                assertThat(event.payload()).isEqualTo("未检索到可用的用户文件上下文。");
+            })
+            .verifyComplete();
     }
 
     private ResearchState stateWithQueryAndSession(String query, String sessionId) {

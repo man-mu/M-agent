@@ -41,6 +41,9 @@ export interface ChatStreamResponse {
   site_information?: unknown
   sequence?: number
   event_type?: string
+  node_type?: string
+  executor_id?: string
+  step_id?: string
   phase?: string
   status?: string
   done?: boolean
