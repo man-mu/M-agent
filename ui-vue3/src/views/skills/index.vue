@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { DeleteOutlined, EditOutlined, PlusOutlined, PoweroffOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { useRouter } from 'vue-router'
+import {
+  ArrowLeftOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  PoweroffOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons-vue'
 import { Modal, message } from 'ant-design-vue'
+import appService from '@/services/api/app'
 import skillService from '@/services/api/skills'
 import type { CreateSkillRequest, SkillDefinition } from '@/services/api/skills'
 
+const router = useRouter()
 const skills = ref<SkillDefinition[]>([])
+const capabilityLoading = ref(true)
+const skillEnabled = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const modalVisible = ref(false)
@@ -29,6 +41,10 @@ const columns = [
 ]
 
 async function loadSkills() {
+  if (!skillEnabled.value) {
+    skills.value = []
+    return
+  }
   loading.value = true
   try {
     skills.value = await skillService.list()
@@ -118,7 +134,23 @@ function confirmDelete(name: string) {
   })
 }
 
-onMounted(loadSkills)
+async function initialize() {
+  capabilityLoading.value = true
+  try {
+    const capabilities = await appService.getCapabilities()
+    skillEnabled.value = capabilities.skillEnabled
+    if (capabilities.skillEnabled) {
+      await loadSkills()
+    }
+  } catch (err: any) {
+    skillEnabled.value = false
+    message.error(err.message || '加载应用能力信息失败')
+  } finally {
+    capabilityLoading.value = false
+  }
+}
+
+onMounted(initialize)
 </script>
 
 <template>
@@ -128,7 +160,7 @@ onMounted(loadSkills)
         <div class="eyebrow">Prompt Skills</div>
         <h1>Skill 管理</h1>
       </div>
-      <a-space>
+      <a-space v-if="skillEnabled">
         <a-button :loading="loading" @click="loadSkills">
           <ReloadOutlined />
           刷新
@@ -140,7 +172,16 @@ onMounted(loadSkills)
       </a-space>
     </div>
 
-    <a-table :columns="columns" :data-source="skills" :loading="loading" row-key="name">
+    <a-spin v-if="capabilityLoading" />
+
+    <a-empty v-else-if="!skillEnabled" description="Skill 模块未启用">
+      <a-button type="primary" @click="router.push('/chat')">
+        <ArrowLeftOutlined />
+        返回对话
+      </a-button>
+    </a-empty>
+
+    <a-table v-else :columns="columns" :data-source="skills" :loading="loading" row-key="name">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'enabled'">
           <a-tag :color="record.enabled ? 'green' : 'default'">

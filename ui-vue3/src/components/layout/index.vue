@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import {
   DeleteOutlined,
@@ -9,6 +9,8 @@ import {
   ToolOutlined,
 } from '@ant-design/icons-vue'
 import { Modal, message } from 'ant-design-vue'
+import appService from '@/services/api/app'
+import { disabledCapabilities, type AppCapabilities } from '@/services/api/app'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 
@@ -16,6 +18,7 @@ const router = useRouter()
 const route = useRoute()
 const conversationStore = useConversationStore()
 const messageStore = useMessageStore()
+const capabilities = ref<AppCapabilities>(disabledCapabilities)
 
 const currentMode = computed(() => {
   if (route.path.startsWith('/skills')) return 'skills'
@@ -23,15 +26,22 @@ const currentMode = computed(() => {
   return 'chat'
 })
 
-const navItems = [
-  { value: 'chat', label: '对话', icon: MessageOutlined },
-  { value: 'skills', label: 'Skills', icon: ToolOutlined },
-  { value: 'settings', label: '模型', icon: SettingOutlined },
-]
+const navItems = computed(() => {
+  const items = [
+    { value: 'chat', label: '对话', icon: MessageOutlined },
+    { value: 'settings', label: '模型', icon: SettingOutlined },
+  ]
+  if (capabilities.value.skillEnabled) {
+    items.splice(1, 0, { value: 'skills', label: 'Skills', icon: ToolOutlined })
+  }
+  return items
+})
 
 function switchMode(mode: string) {
   if (mode === 'chat') {
     router.push(conversationStore.curConvKey ? `/chat/${conversationStore.curConvKey}` : '/chat')
+  } else if (mode === 'skills' && !capabilities.value.skillEnabled) {
+    router.push('/chat')
   } else {
     router.push(`/${mode}`)
   }
@@ -71,8 +81,19 @@ function confirmClearAll() {
   })
 }
 
+async function loadCapabilities() {
+  try {
+    capabilities.value = await appService.getCapabilities()
+  } catch {
+    capabilities.value = disabledCapabilities
+  }
+}
+
 onMounted(async () => {
-  await conversationStore.loadFromBackend()
+  await Promise.all([
+    conversationStore.loadFromBackend(),
+    loadCapabilities(),
+  ])
 })
 </script>
 
