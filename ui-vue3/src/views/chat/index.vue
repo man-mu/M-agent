@@ -167,21 +167,33 @@
               :key="node.key"
               :color="node.color"
             >
-              <div class="event-line">
-                <strong>{{ node.title }}</strong>
-                <a-tag>{{ node.tag }}</a-tag>
-              </div>
-              <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
-              <div v-if="node.sources.length" class="sources">
-                <a
-                  v-for="source in node.sources"
-                  :key="source.url || source.title"
-                  :href="source.url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {{ source.title || source.url }}
-                </a>
+              <div class="workflow-node" :class="node.status">
+                <div class="event-line">
+                  <strong>{{ node.title }}</strong>
+                  <a-tag :color="node.color">{{ node.statusLabel }}</a-tag>
+                  <span v-if="node.eventType || node.phase" class="event-kind">
+                    {{ node.eventType || node.phase }}
+                  </span>
+                  <span v-if="node.sequence" class="event-meta">#{{ node.sequence }}</span>
+                  <span v-if="node.timestamp" class="event-meta">{{ formatEventTime(node.timestamp) }}</span>
+                </div>
+                <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
+                <div v-if="node.sources.length" class="sources">
+                  <template
+                    v-for="source in node.sources"
+                    :key="source.url || source.title"
+                  >
+                    <a
+                      v-if="source.url"
+                      :href="source.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {{ source.title || source.url }}
+                    </a>
+                    <span v-else class="source-label">{{ source.title }}</span>
+                  </template>
+                </div>
               </div>
             </a-timeline-item>
           </a-timeline>
@@ -272,40 +284,6 @@ import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/u
 const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
 const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
 
-interface SourceLink {
-  title?: string
-  url?: string
-}
-
-interface WorkflowNode {
-  key: string
-  title: string
-  tag: string
-  color: string
-  summary: string
-  sources: SourceLink[]
-  sequence: number
-}
-
-const nodeTitleMap: Record<string, string> = {
-  coordinator: 'Coordinator',
-  rewrite_multi_query: 'Query Rewrite',
-  background_investigator: 'Background Investigation',
-  user_file_rag: 'User File RAG',
-  professional_kb_decision: 'Professional KB Decision',
-  professional_kb_rag: 'Professional KB RAG',
-  planner: 'Planner',
-  human_feedback: 'Human Feedback',
-  research_team: 'Research Team',
-  parallel_executor: 'Parallel Executor',
-  information: 'Information Search',
-  researcher: 'Researcher',
-  coder: 'Coder',
-  reporter: 'Reporter',
-  runner: 'Runner',
-  __END__: 'Done',
-}
-
 const router = useRouter()
 const route = useRoute()
 const conversationStore = useConversationStore()
@@ -364,24 +342,7 @@ const sessionStatus = computed(() => {
   return { kind: 'draft', label: '草稿' }
 })
 
-const workflowNodes = computed(() => {
-  const nodes = new Map<string, WorkflowNode>()
-  for (const event of messageStore.events) {
-    const key = nodeKey(event)
-    const previous = nodes.get(key)
-    const sources = sourceLinks(event)
-    nodes.set(key, {
-      key,
-      title: displayTitle(event),
-      tag: event.event_type || event.phase || event.status || 'message',
-      color: eventColor(event),
-      summary: eventSummary(event) || previous?.summary || '',
-      sources: sources.length ? sources : previous?.sources || [],
-      sequence: event.sequence ?? previous?.sequence ?? nodes.size,
-    })
-  }
-  return [...nodes.values()].sort((left, right) => left.sequence - right.sequence)
-})
+const workflowNodes = computed(() => messageStore.workflowNodes)
 
 function ensureConversation(query: string) {
   const routeId = route.params.convId as string | undefined
@@ -572,11 +533,6 @@ async function stop() {
   }
 }
 
-function displayTitle(event: ChatStreamResponse) {
-  const key = nodeKey(event)
-  return nodeTitleMap[key] || event.displayTitle || event.display_title || event.nodeName || event.node_name || '工作流节点'
-}
-
 async function retryLoad() {
   const sessionId = route.params.convId as string | undefined
   if (sessionId) {
@@ -601,14 +557,6 @@ async function loadCurrentModel() {
   }
 }
 
-function eventColor(event: ChatStreamResponse) {
-  if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') return 'red'
-  if (event.event_type === 'human_feedback.waiting' || event.phase === 'waiting') return 'orange'
-  if (event.done || event.event_type?.includes('completed')) return 'green'
-  if (event.event_type?.includes('started')) return 'blue'
-  return 'gray'
-}
-
 function terminalEventKind(event: ChatStreamResponse): 'completed' | 'failed' | 'stopped' | '' {
   const type = event.event_type || ''
   if (type === 'graph.failed' || event.phase === 'failed' || event.phase === 'error') return 'failed'
@@ -621,83 +569,6 @@ function statusView(kind: 'completed' | 'failed' | 'stopped') {
   if (kind === 'failed') return { kind: 'failed', label: '失败' }
   if (kind === 'stopped') return { kind: 'stopped', label: '已停止' }
   return { kind: 'completed', label: '已完成' }
-}
-
-function nodeKey(event: ChatStreamResponse) {
-  const name = event.node_name || event.nodeName || event.node_type || 'workflow'
-  if (name === 'researcher' || name === 'coder') {
-    return event.executor_id || event.step_id || name
-  }
-  return name
-}
-
-function eventSummary(event: ChatStreamResponse) {
-  if (typeof event.content === 'string') {
-    return event.content.length > 240 ? `${event.content.slice(0, 240)}...` : event.content
-  }
-  if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') {
-    return errorReason(event)
-  }
-  if (event.event_type === 'human_feedback.waiting' || event.phase === 'waiting') {
-    return '计划已生成，等待确认或修改意见。'
-  }
-  if (Array.isArray(event.payload)) {
-    return arraySummary(event.payload)
-  }
-  if (event.payload && typeof event.payload === 'object') {
-    const payload = event.payload as Record<string, unknown>
-    if (payload.title) return String(payload.title)
-    if (payload.route) return `路由：${payload.route}`
-    if (payload.next_route) return `路由：${payload.next_route}`
-    if (payload.nextRoute) return `路由：${payload.nextRoute}`
-    if (payload.completedSteps != null && payload.totalSteps != null) {
-      return `已完成 ${payload.completedSteps}/${payload.totalSteps} 个步骤。`
-    }
-    if (payload.step && typeof payload.step === 'object') {
-      const step = payload.step as Record<string, unknown>
-      if (step.title) return String(step.title)
-    }
-    if (payload.reason) return String(payload.reason)
-  }
-  if (event.phase === 'completed' && event.payload) {
-    if (Array.isArray(event.payload)) {
-      return event.payload.length ? `完成，返回 ${event.payload.length} 条结果。` : '完成，未返回结果。'
-    }
-    if (typeof event.payload === 'object') {
-      const payload = event.payload as Record<string, unknown>
-      if (payload.title) return String(payload.title)
-      if (payload.route) return `路由：${payload.route}`
-      if (payload.next_route) return `路由：${payload.next_route}`
-    }
-  }
-  if (event.done) {
-    return '研究流程完成。'
-  }
-  if (event.phase === 'started') {
-    return '节点已开始执行。'
-  }
-  return ''
-}
-
-function arraySummary(items: unknown[]) {
-  if (items.length === 0) {
-    return '未命中可用结果。'
-  }
-  if (items.every(item => typeof item === 'string' || typeof item === 'number')) {
-    return `命中：${items.join('、')}`
-  }
-  return `完成，返回 ${items.length} 条结果。`
-}
-
-function sourceLinks(event: ChatStreamResponse): SourceLink[] {
-  const data = event.siteInformation || event.site_information
-  if (!Array.isArray(data)) {
-    return []
-  }
-  return data
-    .flatMap(item => (Array.isArray(item) ? item : [item]))
-    .filter((item): item is SourceLink => Boolean(item && typeof item === 'object'))
-    .slice(0, 6)
 }
 
 function extractReport(event?: ChatStreamResponse) {
@@ -720,6 +591,14 @@ function errorReason(event: ChatStreamResponse) {
     return content
   }
   return '后端处理出错'
+}
+
+function formatEventTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function createStreamController() {
@@ -968,6 +847,51 @@ onMounted(() => {
   gap: 8px;
 }
 
+.workflow-node {
+  background: #fbfdff;
+  border: 1px solid #e5ecf6;
+  border-left: 3px solid #8ca0bd;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.workflow-node.running {
+  border-left-color: #2356f6;
+}
+
+.workflow-node.waiting {
+  border-left-color: #d98506;
+}
+
+.workflow-node.completed {
+  border-left-color: #2f9e44;
+}
+
+.workflow-node.failed {
+  border-left-color: #d9363e;
+}
+
+.workflow-node.stopped {
+  border-left-color: #667085;
+}
+
+.event-kind,
+.event-meta {
+  color: #7a8798;
+  font-size: 12px;
+}
+
+.event-kind {
+  background: #eef3fa;
+  border-radius: 6px;
+  max-width: 180px;
+  overflow: hidden;
+  padding: 2px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .event-summary {
   color: #607086;
   margin: 4px 0 0;
@@ -985,6 +909,18 @@ onMounted(() => {
   background: #f1f5ff;
   border-radius: 6px;
   color: #2356f6;
+  font-size: 12px;
+  max-width: 240px;
+  overflow: hidden;
+  padding: 4px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-label {
+  background: #f3f6fb;
+  border-radius: 6px;
+  color: #667085;
   font-size: 12px;
   max-width: 240px;
   overflow: hidden;
@@ -1202,6 +1138,14 @@ onMounted(() => {
   .plan-review {
     margin-bottom: 14px;
     padding: 14px 12px 2px;
+  }
+
+  .workflow-node {
+    padding: 10px;
+  }
+
+  .event-kind {
+    max-width: 100%;
   }
 
   .plan-review-header {
