@@ -85,8 +85,8 @@ mvp:
       guide-reporter: true
   model:
     current:
-      provider-id: dashscope
-      model-name: qwen-turbo-2025-04-28
+      provider-id: deepseek
+      model-name: deepseek-chat
     providers:
       - provider-id: dashscope
         display-name: Alibaba DashScope

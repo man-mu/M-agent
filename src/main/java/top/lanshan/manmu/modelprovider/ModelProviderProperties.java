@@ -30,9 +30,9 @@ public class ModelProviderProperties {
 
 	public static class Current {
 
-		private String providerId = "dashscope";
+		private String providerId = "deepseek";
 
-		private String modelName = "qwen-turbo-2025-04-28";
+		private String modelName = "deepseek-chat";
 
 		public String getProviderId() {
 			return providerId;

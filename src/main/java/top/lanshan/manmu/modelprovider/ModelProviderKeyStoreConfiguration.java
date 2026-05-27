@@ -14,4 +14,9 @@ public class ModelProviderKeyStoreConfiguration {
 		return new ModelProviderKeyStore(Path.of(".local", "model-providers.json"), objectMapper);
 	}
 
+	@Bean
+	ModelSelectionStore modelSelectionStore(ObjectMapper objectMapper) {
+		return new ModelSelectionStore(Path.of(".local", "current-model.json"), objectMapper);
+	}
+
 }

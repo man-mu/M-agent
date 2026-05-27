@@ -11,6 +11,10 @@ type ApiEnvelope<T = unknown> = {
   session_history?: T
 }
 
+export type RequestConfig = AxiosRequestConfig & {
+  silentError?: boolean
+}
+
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_BASE_URL || '',
   timeout: 30_000,
@@ -26,7 +30,9 @@ service.interceptors.response.use(
       payload?.error ||
       error.message ||
       '网络请求失败，请确认后端服务已启动'
-    message.error(errorMessage)
+    if (!(error.config as RequestConfig | undefined)?.silentError) {
+      message.error(errorMessage)
+    }
     return Promise.reject(error)
   },
 )
@@ -60,7 +66,7 @@ function unwrap<T>(payload: ApiEnvelope<T> | T): T {
   return payload as T
 }
 
-export async function apiRequest<T = unknown>(config: AxiosRequestConfig): Promise<T> {
+export async function apiRequest<T = unknown>(config: RequestConfig): Promise<T> {
   const response = await service(config)
   return unwrap<T>(response.data)
 }

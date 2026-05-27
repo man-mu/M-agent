@@ -1,4 +1,4 @@
-import { del, get } from '@/utils/request'
+import { apiRequest, del, get } from '@/utils/request'
 
 export interface ResearchReport {
   thread_id: string
@@ -13,7 +13,11 @@ export interface ResearchReport {
 
 class ReportService {
   getReport(threadId: string): Promise<string | ResearchReport> {
-    return get<string | ResearchReport>(`/api/reports/${threadId}`)
+    return apiRequest<string | ResearchReport>({
+      method: 'GET',
+      url: `/api/reports/${threadId}`,
+      silentError: true,
+    })
   }
 
   exists(threadId: string): Promise<boolean> {

@@ -21,14 +21,17 @@ public class ModelProviderRegistry {
 
 	private final ModelProviderKeyStore keyStore;
 
+	private final ModelSelectionStore selectionStore;
+
 	private final AtomicReference<SelectedModel> current;
 
 	@Autowired
-	public ModelProviderRegistry(ModelProviderProperties properties, ModelProviderKeyStore keyStore) {
+	public ModelProviderRegistry(ModelProviderProperties properties, ModelProviderKeyStore keyStore,
+			ModelSelectionStore selectionStore) {
 		this.keyStore = keyStore;
+		this.selectionStore = selectionStore;
 		this.providers = buildProviders(properties);
-		this.current = new AtomicReference<>(validateSelection(
-				new SelectedModel(properties.getCurrent().getProviderId(), properties.getCurrent().getModelName())));
+		this.current = new AtomicReference<>(initialSelection(properties));
 	}
 
 	public List<ProviderSummary> providers() {
@@ -57,6 +60,7 @@ public class ModelProviderRegistry {
 	public CurrentModelSelection switchModel(String providerId, String modelName) {
 		SelectedModel selectedModel = validateSelection(new SelectedModel(providerId, modelName));
 		current.set(selectedModel);
+		selectionStore.save(selectedModel.providerId(), selectedModel.modelName());
 		return current();
 	}
 
@@ -98,6 +102,14 @@ public class ModelProviderRegistry {
 				.formatted(selectedModel.modelName(), selectedModel.providerId(), new ArrayList<>(provider.supportedModels())));
 		}
 		return selectedModel;
+	}
+
+	private SelectedModel initialSelection(ModelProviderProperties properties) {
+		return selectionStore.read()
+			.map(selection -> new SelectedModel(selection.providerId(), selection.modelName()))
+			.map(this::validateSelection)
+			.orElseGet(() -> validateSelection(
+					new SelectedModel(properties.getCurrent().getProviderId(), properties.getCurrent().getModelName())));
 	}
 
 	private ModelProvider providerOrThrow(String providerId) {

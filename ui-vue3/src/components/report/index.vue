@@ -67,6 +67,10 @@ async function loadPersistedReport() {
     const result = await reportService.getReport(props.threadId)
     persistedReport.value = typeof result === 'string' ? result : result.report
   } catch (err: any) {
+    if (err.response?.status === 404) {
+      persistedReport.value = ''
+      return
+    }
     error.value = err.message || '暂时没有可读取的报告。'
   } finally {
     loading.value = false
