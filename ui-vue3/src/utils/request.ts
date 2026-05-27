@@ -33,7 +33,7 @@ service.interceptors.response.use(
   },
 )
 
-function unwrap<T>(payload: ApiEnvelope<T> | T): T {
+export function unwrapApiEnvelope<T>(payload: ApiEnvelope<T> | T): T {
   if (!payload || typeof payload !== 'object') {
     return payload as T
   }
@@ -67,7 +67,7 @@ function unwrap<T>(payload: ApiEnvelope<T> | T): T {
 
 export async function apiRequest<T = unknown>(config: RequestConfig): Promise<T> {
   const response = await service(config)
-  return unwrap<T>(response.data)
+  return unwrapApiEnvelope<T>(response.data)
 }
 
 export function get<T = unknown>(url: string, params?: unknown): Promise<T> {

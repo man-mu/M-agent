@@ -22,7 +22,7 @@ function buildUrl(url: string) {
   return `${baseURL}${url.startsWith('/') ? url : `/${url}`}`
 }
 
-function parseEventBlock(block: string): StreamEvent | null {
+export function parseEventBlock(block: string): StreamEvent | null {
   const lines = block.split(/\r?\n/)
   const dataLines: string[] = []
   let event = 'message'

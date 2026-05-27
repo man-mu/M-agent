@@ -25,7 +25,7 @@ export interface MessageState {
   messages: ChatMessage[]
 }
 
-function initialState(): MessageState {
+export function initialMessageState(): MessageState {
   return {
     convId: '',
     threadId: '',
@@ -93,7 +93,7 @@ function isTerminalEvent(event: ChatStreamResponse) {
 }
 
 export const useMessageStore = defineStore('messageStore', {
-  state: initialState,
+  state: initialMessageState,
   getters: {
     reportContent(state) {
       const done = [...state.events].reverse().find(event => event.done)
