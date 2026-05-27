@@ -86,7 +86,7 @@ public class ModelProviderRegistry {
 			ConfiguredModelProvider config = new ConfiguredModelProvider(providerProperties.getProviderId(),
 					providerProperties.getDisplayName(), providerProperties.getBaseUrl(), providerProperties.getModels());
 			ModelProvider provider = "dashscope".equals(config.providerId()) ? new DashScopeModelProvider(config)
-					: new OpenAiCompatibleModelProvider(config);
+					: new OpenAiCompatibleModelProvider(config, properties.getConnectTimeout(), properties.getReadTimeout());
 			result.put(provider.providerId(), provider);
 		}
 		if (result.isEmpty()) {

@@ -2,6 +2,7 @@ package top.lanshan.manmu.modelprovider;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,6 +10,10 @@ import java.util.List;
 public class ModelProviderProperties {
 
 	private Current current = new Current();
+
+	private Duration connectTimeout = Duration.ofSeconds(20);
+
+	private Duration readTimeout = Duration.ofSeconds(180);
 
 	private List<Provider> providers = new ArrayList<>();
 
@@ -20,12 +25,32 @@ public class ModelProviderProperties {
 		this.current = current;
 	}
 
+	public Duration getConnectTimeout() {
+		return connectTimeout;
+	}
+
+	public void setConnectTimeout(Duration connectTimeout) {
+		this.connectTimeout = positiveOrDefault(connectTimeout, Duration.ofSeconds(20));
+	}
+
+	public Duration getReadTimeout() {
+		return readTimeout;
+	}
+
+	public void setReadTimeout(Duration readTimeout) {
+		this.readTimeout = positiveOrDefault(readTimeout, Duration.ofSeconds(180));
+	}
+
 	public List<Provider> getProviders() {
 		return providers;
 	}
 
 	public void setProviders(List<Provider> providers) {
 		this.providers = providers;
+	}
+
+	private Duration positiveOrDefault(Duration value, Duration defaultValue) {
+		return value == null || value.isZero() || value.isNegative() ? defaultValue : value;
 	}
 
 	public static class Current {

@@ -84,6 +84,8 @@ mvp:
       cache-minutes: 60
       guide-reporter: true
   model:
+    connect-timeout: 20s
+    read-timeout: 180s
     current:
       provider-id: deepseek
       model-name: deepseek-chat

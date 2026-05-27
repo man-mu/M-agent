@@ -77,7 +77,28 @@ public class SpringAiAgentClient implements AgentClient {
 			request = request.toolCallbacks(allCallbacks.toArray(new ToolCallback[0]));
 		}
 
-		return request.call().content();
+		try {
+			return request.call().content();
+		}
+		catch (RuntimeException ex) {
+			if (isReadTimeout(ex)) {
+				logger.warn("Model provider request timed out", ex);
+				throw new IllegalStateException("模型服务响应超时，请稍后重试，或在设置中切换到其他模型。", ex);
+			}
+			throw ex;
+		}
+	}
+
+	private boolean isReadTimeout(Throwable throwable) {
+		Throwable current = throwable;
+		while (current != null) {
+			String simpleName = current.getClass().getSimpleName();
+			if ("ReadTimeoutException".equals(simpleName)) {
+				return true;
+			}
+			current = current.getCause();
+		}
+		return false;
 	}
 
 	/**
