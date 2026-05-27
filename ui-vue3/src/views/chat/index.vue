@@ -86,72 +86,18 @@
           </div>
         </article>
 
-        <div v-if="activePlan" class="plan-review" data-testid="plan-review">
-          <div class="plan-review-header">
-            <div>
-              <span class="plan-label">计划确认</span>
-              <h2>{{ activePlan.title || '研究计划' }}</h2>
-            </div>
-            <a-tag color="orange">等待确认</a-tag>
-          </div>
-
-          <p v-if="activePlan.thought" class="plan-thought">{{ activePlan.thought }}</p>
-
-          <ol v-if="planSteps.length" class="plan-steps">
-            <li
-              v-for="(step, index) in planSteps"
-              :key="step.id || `${step.title}-${index}`"
-            >
-              <div class="step-title">
-                <strong>{{ step.title || `步骤 ${index + 1}` }}</strong>
-                <a-tag v-if="step.need_web_search" color="blue">搜索</a-tag>
-                <a-tag v-if="step.step_type">{{ step.step_type }}</a-tag>
-              </div>
-              <p v-if="step.description">{{ step.description }}</p>
-            </li>
-          </ol>
-
-          <a-textarea
-            v-if="feedbackVisible"
-            v-model:value="feedbackDraft"
-            :auto-size="{ minRows: 2, maxRows: 4 }"
-            :disabled="messageStore.resuming || messageStore.running"
-            class="plan-feedback"
-            data-testid="plan-feedback"
-            placeholder="写下你希望调整的方向..."
-          />
-
-          <div class="plan-actions">
-            <a-button
-              :disabled="messageStore.resuming || messageStore.running"
-              data-testid="modify-plan"
-              @click="feedbackVisible = !feedbackVisible"
-            >
-              <EditOutlined />
-              修改计划
-            </a-button>
-            <a-button
-              v-if="feedbackVisible"
-              :disabled="!feedbackDraft.trim() || messageStore.resuming || messageStore.running"
-              :loading="pendingResumeDecision === 'feedback'"
-              data-testid="submit-plan-feedback"
-              @click="resumePlan(false)"
-            >
-              <SendOutlined />
-              提交修改意见
-            </a-button>
-            <a-button
-              type="primary"
-              :disabled="messageStore.resuming || messageStore.running"
-              :loading="pendingResumeDecision === 'accept'"
-              data-testid="accept-plan"
-              @click="resumePlan(true)"
-            >
-              <CheckCircleOutlined />
-              接受计划
-            </a-button>
-          </div>
-        </div>
+        <PlanReview
+          v-if="activePlan"
+          v-model:feedback="feedbackDraft"
+          :feedback-visible="feedbackVisible"
+          :pending-action="pendingResumeDecision"
+          :plan="activePlan"
+          :resuming="messageStore.resuming"
+          :running="messageStore.running"
+          @accept="resumePlan(true)"
+          @submit-feedback="resumePlan(false)"
+          @toggle-feedback="toggleFeedback"
+        />
 
         <div v-if="messageStore.events.length" class="event-card">
           <div class="event-card-header">
@@ -265,8 +211,6 @@
 import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  CheckCircleOutlined,
-  EditOutlined,
   FileTextOutlined,
   PauseCircleOutlined,
   SendOutlined,
@@ -283,6 +227,7 @@ import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/u
 
 const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
 const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
+const PlanReview = defineAsyncComponent(() => import('@/components/plan-review/index.vue'))
 
 const router = useRouter()
 const route = useRoute()
@@ -301,7 +246,6 @@ const modelLoadError = ref('')
 const localTerminalStatus = ref<'completed' | 'failed' | 'stopped' | ''>('')
 
 const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
-const planSteps = computed(() => activePlan.value?.steps || [])
 const isInteractionLocked = computed(() => messageStore.running || messageStore.planWaiting || messageStore.resuming)
 const canStop = computed(() => Boolean(messageStore.threadId || activeStreamController.value))
 const modeLabel = computed(() => messageStore.deepResearch ? '深度研究' : '快速回答')
@@ -500,6 +444,13 @@ async function resumePlan(accepted: boolean) {
     await scrollToBottom()
     await conversationStore.loadFromBackend()
   }
+}
+
+function toggleFeedback() {
+  if (messageStore.running || messageStore.resuming) {
+    return
+  }
+  feedbackVisible.value = !feedbackVisible.value
 }
 
 function handleComposerKeydown(event: KeyboardEvent) {
@@ -929,104 +880,6 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.plan-review {
-  background: #fff;
-  border: 1px solid #f2c37b;
-  border-radius: 8px;
-  margin: 0 auto 18px;
-  max-width: 880px;
-  padding: 18px;
-}
-
-.plan-review-header {
-  align-items: flex-start;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.plan-label {
-  color: #a15c05;
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.plan-review h2 {
-  color: #1b2638;
-  font-size: 20px;
-  line-height: 1.35;
-  margin: 0;
-}
-
-.plan-thought {
-  color: #55657a;
-  margin: 0 0 14px;
-  white-space: pre-wrap;
-}
-
-.plan-steps {
-  counter-reset: plan-step;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.plan-steps li {
-  border: 1px solid #edf1f7;
-  border-radius: 8px;
-  padding: 12px 12px 10px 44px;
-  position: relative;
-}
-
-.plan-steps li::before {
-  align-items: center;
-  background: #fff6e8;
-  border: 1px solid #f3c27a;
-  border-radius: 8px;
-  color: #9b5a00;
-  content: counter(plan-step);
-  counter-increment: plan-step;
-  display: flex;
-  font-weight: 700;
-  height: 24px;
-  justify-content: center;
-  left: 12px;
-  position: absolute;
-  top: 12px;
-  width: 24px;
-}
-
-.step-title {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.plan-steps p {
-  color: #637087;
-  margin: 6px 0 0;
-  white-space: pre-wrap;
-}
-
-.plan-feedback {
-  margin-top: 14px;
-}
-
-.plan-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
 .composer {
   background: #fff;
   border-top: 1px solid #e8edf4;
@@ -1134,8 +987,7 @@ onMounted(() => {
     padding: 10px 12px;
   }
 
-  .event-card,
-  .plan-review {
+  .event-card {
     margin-bottom: 14px;
     padding: 14px 12px 2px;
   }
@@ -1148,17 +1000,10 @@ onMounted(() => {
     max-width: 100%;
   }
 
-  .plan-review-header {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .plan-actions,
   .composer-actions {
     justify-content: stretch;
   }
 
-  .plan-actions :deep(.ant-btn),
   .composer-actions :deep(.ant-btn) {
     flex: 1;
   }
