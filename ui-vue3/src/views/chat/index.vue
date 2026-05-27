@@ -20,7 +20,20 @@
       </div>
 
       <div ref="scrollRef" class="message-area">
-        <div v-if="messageStore.messages.length === 0 && messageStore.events.length === 0" class="welcome">
+        <div v-if="messageStore.loading" class="welcome">
+          <a-spin />
+        </div>
+
+        <div v-else-if="messageStore.lastError" class="welcome">
+          <h2>会话暂时无法加载。</h2>
+          <p>{{ messageStore.lastError }}</p>
+          <a-space>
+            <a-button @click="retryLoad">重试</a-button>
+            <a-button type="primary" @click="startDraft">新研究</a-button>
+          </a-space>
+        </div>
+
+        <div v-else-if="messageStore.messages.length === 0 && messageStore.events.length === 0" class="welcome">
           <h2>输入一个问题，启动真实模型研究流程。</h2>
           <p>前端会直接消费后端 SSE，展示节点进度、来源信息和最终报告。</p>
         </div>
@@ -185,14 +198,15 @@ const workflowNodes = computed(() => {
   return [...nodes.values()].sort((left, right) => left.sequence - right.sequence)
 })
 
-function ensureConversation() {
+function ensureConversation(query: string) {
   const routeId = route.params.convId as string | undefined
   if (routeId) {
     conversationStore.upsert(routeId)
     conversationStore.activate(routeId)
     return routeId
   }
-  const item = conversationStore.newOne()
+  const item = conversationStore.newOne(query, 1)
+  messageStore.prepareLocalSession(item.key)
   router.replace(`/chat/${item.key}`)
   return item.key
 }
@@ -208,8 +222,9 @@ async function submit() {
     return
   }
 
-  const sessionId = ensureConversation()
+  const sessionId = ensureConversation(query)
   conversationStore.updateTitle(sessionId, query)
+  conversationStore.markLocalMessage(sessionId)
   messageStore.addUserMessage(query)
   messageStore.events = []
   messageStore.running = true
@@ -250,7 +265,7 @@ async function submit() {
   } finally {
     messageStore.running = false
     await scrollToBottom()
-    conversationStore.loadFromBackend()
+    await conversationStore.loadFromBackend()
   }
 }
 
@@ -279,6 +294,19 @@ async function stop() {
 function displayTitle(event: ChatStreamResponse) {
   const key = nodeKey(event)
   return nodeTitleMap[key] || event.displayTitle || event.display_title || event.nodeName || event.node_name || '工作流节点'
+}
+
+async function retryLoad() {
+  const sessionId = route.params.convId as string | undefined
+  if (sessionId) {
+    await loadConversation(sessionId)
+  }
+}
+
+function startDraft() {
+  conversationStore.startDraft()
+  messageStore.reset()
+  router.push('/chat')
 }
 
 function eventColor(event: ChatStreamResponse) {
@@ -396,8 +424,13 @@ watch(
   async value => {
     const sessionId = value as string | undefined
     if (sessionId) {
+      if (messageStore.running && messageStore.convId === sessionId) {
+        conversationStore.activate(sessionId)
+        return
+      }
       await loadConversation(sessionId)
     } else {
+      conversationStore.startDraft()
       messageStore.reset()
     }
   },
@@ -409,9 +442,9 @@ watch(
   () => scrollToBottom(),
 )
 
-onMounted(async () => {
+onMounted(() => {
   if (!route.params.convId) {
-    ensureConversation()
+    conversationStore.startDraft()
   }
 })
 </script>

@@ -22,21 +22,32 @@ export const useConversationStore = defineStore('conversationStore', {
     async loadFromBackend() {
       try {
         const summaries = await conversationService.getConversations()
-        this.conversations = summaries.map(item => ({
+        const backendItems = summaries.map(item => ({
           key: item.session_id,
           title: item.title || '未命名会话',
           messageCount: item.message_count,
           lastMessageAt: item.last_message_at,
         }))
+        const backendKeys = new Set(backendItems.map(item => item.key))
+        const localActiveItems = this.conversations.filter(item =>
+          item.local && !backendKeys.has(item.key) && (item.messageCount || 0) > 0,
+        )
+        this.conversations = [...localActiveItems, ...backendItems]
+        if (this.currentKey && !this.contains(this.currentKey)) {
+          this.currentKey = ''
+        }
       } catch {
         // Keep local persisted sessions when backend is not reachable.
       }
     },
-    newOne(title = '新研究') {
+    startDraft() {
+      this.currentKey = ''
+    },
+    newOne(title = '新研究', messageCount = 0) {
       const item: ConversationItem = {
         key: uuid(),
         title,
-        messageCount: 0,
+        messageCount,
         local: true,
       }
       this.conversations = [item, ...this.conversations]
@@ -72,6 +83,13 @@ export const useConversationStore = defineStore('conversationStore', {
       const item = this.conversations.find(conv => conv.key === key)
       if (item && (!item.title || item.title === '新研究' || item.title === 'Unnamed conversation')) {
         item.title = title.length > 50 ? `${title.slice(0, 50)}...` : title
+      }
+    },
+    markLocalMessage(key: string) {
+      const item = this.conversations.find(conv => conv.key === key)
+      if (item) {
+        item.messageCount = Math.max(item.messageCount || 0, 1)
+        item.local = true
       }
     },
     async delete(key: string) {

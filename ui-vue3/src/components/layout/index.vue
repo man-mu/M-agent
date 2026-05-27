@@ -52,9 +52,9 @@ function handleModeChange(value: string | number) {
 }
 
 function createConversation() {
-  const item = conversationStore.newOne()
-  messageStore.reset(item.key)
-  router.push(`/chat/${item.key}`)
+  conversationStore.startDraft()
+  messageStore.reset()
+  router.push('/chat')
 }
 
 async function deleteConversation(key: string) {
