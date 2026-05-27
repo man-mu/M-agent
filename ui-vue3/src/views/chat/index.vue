@@ -196,6 +196,8 @@
 
     <Suspense v-if="reportVisible || messageStore.threadId">
       <Report
+        :events="messageStore.events"
+        :live-content="messageStore.reportContent"
         :visible="reportVisible"
         :thread-id="messageStore.threadId"
         @close="reportVisible = false"
