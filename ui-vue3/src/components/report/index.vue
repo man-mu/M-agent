@@ -24,7 +24,12 @@
         style="margin-bottom: 12px"
       />
 
-      <MD v-if="content" :content="content" />
+      <Suspense v-if="content">
+        <MD :content="content" />
+        <template #fallback>
+          <p class="report-loading">报告渲染中...</p>
+        </template>
+      </Suspense>
 
       <a-empty
         v-else
@@ -35,12 +40,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { CloseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { reportService } from '@/services'
 import { useMessageStore } from '@/store/MessageStore'
 import { isNotFoundError, userMessageFromError } from '@/utils/errors'
-import MD from '@/components/md/index.vue'
+
+const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
 
 const props = defineProps<{
   visible: boolean
@@ -141,12 +147,32 @@ watch(
   padding: 20px;
 }
 
+.report-loading {
+  color: #6b7688;
+  margin: 0;
+}
+
 @media (max-width: 980px) {
   .report-panel {
     border-left: 0;
     border-top: 1px solid #e7ebf2;
     flex-basis: 50%;
     min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .report-panel {
+    flex: 1 1 auto;
+    max-height: 48vh;
+  }
+
+  .report-header {
+    padding: 14px 16px;
+  }
+
+  .report-body {
+    padding: 16px 12px;
   }
 }
 </style>

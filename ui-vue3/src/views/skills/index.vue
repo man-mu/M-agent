@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { getCurrentInstance, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import Form from 'ant-design-vue/es/form'
 import {
   ArrowLeftOutlined,
   DeleteOutlined,
@@ -9,13 +10,21 @@ import {
   PoweroffOutlined,
   ReloadOutlined,
 } from '@ant-design/icons-vue'
-import { Modal, message } from 'ant-design-vue'
+import Modal from 'ant-design-vue/es/modal'
+import message from 'ant-design-vue/es/message'
+import Table from 'ant-design-vue/es/table'
 import appService from '@/services/api/app'
 import skillService from '@/services/api/skills'
 import type { CreateSkillRequest, SkillDefinition } from '@/services/api/skills'
 import { userMessageFromError } from '@/utils/errors'
 
 const router = useRouter()
+const app = getCurrentInstance()?.appContext.app
+if (app) {
+  if (!app.component('AForm')) app.use(Form)
+  if (!app.component('AModal')) app.use(Modal)
+  if (!app.component('ATable')) app.use(Table)
+}
 const skills = ref<SkillDefinition[]>([])
 const capabilityLoading = ref(true)
 const skillEnabled = ref(false)

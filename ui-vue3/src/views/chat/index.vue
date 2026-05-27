@@ -46,7 +46,12 @@
         >
           <div class="avatar">{{ item.role === 'user' ? '你' : 'AI' }}</div>
           <div class="bubble">
-            <MD v-if="item.role === 'assistant'" :content="item.content" />
+            <Suspense v-if="item.role === 'assistant'">
+              <MD :content="item.content" />
+              <template #fallback>
+                <p>{{ item.content }}</p>
+              </template>
+            </Suspense>
             <p v-else>{{ item.content }}</p>
           </div>
         </article>
@@ -201,16 +206,21 @@
       </div>
     </section>
 
-    <Report
-      :visible="reportVisible"
-      :thread-id="messageStore.threadId"
-      @close="reportVisible = false"
-    />
+    <Suspense v-if="reportVisible || messageStore.threadId">
+      <Report
+        :visible="reportVisible"
+        :thread-id="messageStore.threadId"
+        @close="reportVisible = false"
+      />
+      <template #fallback>
+        <aside v-if="reportVisible" class="report-placeholder">报告加载中...</aside>
+      </template>
+    </Suspense>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   CheckCircleOutlined,
@@ -220,14 +230,15 @@ import {
   SendOutlined,
   SettingOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import message from 'ant-design-vue/es/message'
 import { chatService } from '@/services'
 import type { ChatStreamResponse } from '@/services/api/chat'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
-import Report from '@/components/report/index.vue'
-import MD from '@/components/md/index.vue'
+
+const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
+const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
 
 interface SourceLink {
   title?: string
@@ -742,6 +753,7 @@ onMounted(() => {
   border-radius: 8px;
   max-width: min(760px, 100%);
   padding: 12px 14px;
+  min-width: 0;
 }
 
 .message.user .bubble {
@@ -915,6 +927,8 @@ onMounted(() => {
   font-size: 13px;
   gap: 8px;
   margin-bottom: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .thread {
@@ -930,6 +944,17 @@ onMounted(() => {
   margin-top: 10px;
 }
 
+.report-placeholder {
+  align-items: center;
+  background: #fff;
+  border-left: 1px solid #e7ebf2;
+  color: #6b7688;
+  display: flex;
+  flex: 0 0 46%;
+  justify-content: center;
+  min-width: 420px;
+}
+
 @media (max-width: 980px) {
   .chat-page {
     flex-direction: column;
@@ -937,6 +962,91 @@ onMounted(() => {
 
   .chat-main {
     min-height: 50%;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-page {
+    height: auto;
+    min-height: calc(100vh - 112px);
+    width: 100%;
+  }
+
+  .chat-main {
+    flex: 1 1 auto;
+    min-height: 560px;
+    width: 100%;
+  }
+
+  .chat-header {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .chat-header h1 {
+    font-size: 20px;
+  }
+
+  .message-area {
+    padding: 16px 12px;
+  }
+
+  .welcome {
+    min-height: 260px;
+    padding: 24px 12px;
+  }
+
+  .welcome h2 {
+    font-size: 21px;
+  }
+
+  .message {
+    gap: 8px;
+    margin-bottom: 12px;
+    max-width: 100%;
+  }
+
+  .avatar {
+    flex-basis: 30px;
+    height: 30px;
+  }
+
+  .bubble {
+    padding: 10px 12px;
+  }
+
+  .event-card,
+  .plan-review {
+    margin-bottom: 14px;
+    padding: 14px 12px 2px;
+  }
+
+  .plan-review-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .plan-actions,
+  .composer-actions {
+    justify-content: stretch;
+  }
+
+  .plan-actions :deep(.ant-btn),
+  .composer-actions :deep(.ant-btn) {
+    flex: 1;
+  }
+
+  .composer {
+    padding: 12px;
+  }
+
+  .composer-options {
+    flex-wrap: wrap;
+  }
+
+  .thread {
+    max-width: 100%;
   }
 }
 </style>

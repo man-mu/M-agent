@@ -1,6 +1,6 @@
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 import axios from 'axios'
-import { message } from 'ant-design-vue'
+import message from 'ant-design-vue/es/message'
 import { createAppError, toAppError } from './errors'
 
 type ApiEnvelope<T = unknown> = {

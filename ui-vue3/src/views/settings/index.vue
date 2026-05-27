@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import Card from 'ant-design-vue/es/card'
+import Descriptions from 'ant-design-vue/es/descriptions'
+import Form from 'ant-design-vue/es/form'
+import Modal from 'ant-design-vue/es/modal'
+import Select from 'ant-design-vue/es/select'
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
@@ -8,13 +13,21 @@ import {
   SwapOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import message from 'ant-design-vue/es/message'
 import { useRouter } from 'vue-router'
 import modelService from '@/services/api/model'
 import type { CurrentModelSelection, ProviderSummary } from '@/services/api/model'
 import { userMessageFromError } from '@/utils/errors'
 
 const router = useRouter()
+const app = getCurrentInstance()?.appContext.app
+if (app) {
+  if (!app.component('ACard')) app.use(Card)
+  if (!app.component('ADescriptions')) app.use(Descriptions)
+  if (!app.component('AForm')) app.use(Form)
+  if (!app.component('AModal')) app.use(Modal)
+  if (!app.component('ASelect')) app.use(Select)
+}
 const providers = ref<ProviderSummary[]>([])
 const current = ref<CurrentModelSelection | null>(null)
 const loading = ref(false)

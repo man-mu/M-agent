@@ -11,6 +11,32 @@ export default defineConfig(({ mode }) => {
     base: '/',
     build: {
       outDir: './ui',
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined
+            }
+            if (id.includes('highlight.js')) {
+              return 'highlight'
+            }
+            if (id.includes('markdown-it') || id.includes('katex')) {
+              return 'markdown'
+            }
+            if (id.includes('@ant-design/icons-vue')) {
+              return 'antd-icons'
+            }
+            if (id.includes('ant-design-vue')) {
+              return undefined
+            }
+            if (id.includes('vue') || id.includes('pinia') || id.includes('vue-router') || id.includes('vue-i18n')) {
+              return 'vue'
+            }
+            return 'vendor'
+          },
+        },
+      },
     },
     server: {
       open: true,

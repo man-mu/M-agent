@@ -8,7 +8,7 @@ import {
   SettingOutlined,
   ToolOutlined,
 } from '@ant-design/icons-vue'
-import { Modal, message } from 'ant-design-vue'
+import message from 'ant-design-vue/es/message'
 import appService from '@/services/api/app'
 import { disabledCapabilities, type AppCapabilities } from '@/services/api/app'
 import { useConversationStore } from '@/store/ConversationStore'
@@ -67,7 +67,7 @@ async function deleteConversation(key: string) {
 }
 
 function confirmClearAll() {
-  Modal.confirm({
+  import('ant-design-vue/es/modal').then(({ default: Modal }) => Modal.confirm({
     title: '清空所有会话？',
     content: '这会删除后端已保存的会话消息和本地会话列表。',
     okText: '清空',
@@ -79,7 +79,7 @@ function confirmClearAll() {
       message.success('已清空会话')
       router.push('/chat')
     },
-  })
+  }))
 }
 
 async function loadCapabilities() {
@@ -117,7 +117,7 @@ onMounted(async () => {
       </a-segmented>
     </a-layout-header>
 
-    <a-layout>
+    <a-layout class="main-layout">
       <a-layout-sider v-if="currentMode === 'chat'" class="sidebar" width="288">
         <div class="sidebar-actions">
           <a-button type="primary" block @click="createConversation">
@@ -272,5 +272,89 @@ onMounted(async () => {
 .content {
   min-width: 0;
   overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  .brand {
+    font-size: 16px;
+  }
+
+  .nav-label {
+    gap: 4px;
+  }
+
+  .sidebar {
+    flex: 0 0 220px !important;
+    max-width: 220px !important;
+    min-width: 220px !important;
+    width: 220px !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    height: auto;
+    line-height: 1.2;
+    padding: 10px 12px;
+  }
+
+  .topbar :deep(.ant-segmented-item-label) {
+    padding: 0 8px;
+  }
+
+  .main-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    border-bottom: 1px solid #e0e7f0;
+    border-right: 0;
+    flex: none !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .sidebar-actions {
+    padding: 10px 12px;
+  }
+
+  .conversation-list {
+    display: grid;
+    grid-auto-columns: minmax(180px, 72vw);
+    grid-auto-flow: column;
+    max-height: none;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+  }
+
+  .conversation-item {
+    min-width: 0;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .content {
+    flex: none;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .main-layout.ant-layout-has-sider > .content {
+    min-width: 100%;
+    width: 100% !important;
+  }
 }
 </style>
