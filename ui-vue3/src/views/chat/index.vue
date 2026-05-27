@@ -3,8 +3,8 @@
     <section class="chat-main">
       <div class="chat-header">
         <div>
-          <div class="eyebrow">DeepResearch Workflow</div>
-          <h1>研究对话</h1>
+          <div class="eyebrow">Research Workbench</div>
+          <h1>研究工作台</h1>
         </div>
         <a-space>
           <a-tooltip title="模型设置">
@@ -17,6 +17,36 @@
             报告
           </a-button>
         </a-space>
+      </div>
+
+      <div class="workbench-status" data-testid="research-status-bar">
+        <div class="status-item">
+          <span class="status-label">模式</span>
+          <strong>{{ modeLabel }}</strong>
+        </div>
+        <div class="status-item">
+          <span class="status-label">计划</span>
+          <strong>{{ planGateLabel }}</strong>
+        </div>
+        <button
+          class="status-item status-link"
+          data-testid="current-model-status"
+          type="button"
+          @click="router.push('/settings')"
+        >
+          <span class="status-label">模型</span>
+          <strong>{{ currentModelText }}</strong>
+          <a-tag v-if="currentModel" :color="currentModel.apiKeyConfigured ? 'green' : 'red'">
+            {{ currentModel.apiKeyConfigured ? '可用' : '未配置' }}
+          </a-tag>
+          <a-tag v-else :color="modelLoadError ? 'orange' : 'default'">
+            {{ modelLoadError ? '读取失败' : '读取中' }}
+          </a-tag>
+        </button>
+        <div class="status-item session-status" :class="sessionStatus.kind">
+          <span class="status-label">会话</span>
+          <strong>{{ sessionStatus.label }}</strong>
+        </div>
       </div>
 
       <div ref="scrollRef" class="message-area">
@@ -34,8 +64,8 @@
         </div>
 
         <div v-else-if="messageStore.messages.length === 0 && messageStore.events.length === 0" class="welcome">
-          <h2>输入一个问题，启动真实模型研究流程。</h2>
-          <p>前端会直接消费后端 SSE，展示节点进度、来源信息和最终报告。</p>
+          <h2>输入研究问题，启动真实模型流程。</h2>
+          <p>进度、来源和报告只来自后端返回的数据。</p>
         </div>
 
         <article
@@ -160,13 +190,13 @@
 
       <div class="composer">
         <div class="composer-options">
-          <a-switch v-model:checked="messageStore.deepResearch" />
+          <a-switch v-model:checked="messageStore.deepResearch" :disabled="isInteractionLocked" />
           <span>{{ messageStore.deepResearch ? '深度研究' : '快速回答' }}</span>
           <template v-if="messageStore.deepResearch">
             <a-divider type="vertical" />
             <a-switch
               v-model:checked="autoExecutePlan"
-              :disabled="messageStore.running || messageStore.planWaiting"
+              :disabled="isInteractionLocked"
               size="small"
               data-testid="auto-execute-plan"
             />
@@ -233,6 +263,8 @@ import {
 import message from 'ant-design-vue/es/message'
 import { chatService } from '@/services'
 import type { ChatStreamResponse } from '@/services/api/chat'
+import modelService from '@/services/api/model'
+import type { CurrentModelSelection } from '@/services/api/model'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
@@ -286,11 +318,51 @@ const feedbackVisible = ref(false)
 const feedbackDraft = ref('')
 const pendingResumeDecision = ref<'accept' | 'feedback' | ''>('')
 const activeStreamController = ref<AbortController | null>(null)
+const currentModel = ref<CurrentModelSelection | null>(null)
+const modelLoadError = ref('')
+const localTerminalStatus = ref<'completed' | 'failed' | 'stopped' | ''>('')
 
 const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
 const planSteps = computed(() => activePlan.value?.steps || [])
 const isInteractionLocked = computed(() => messageStore.running || messageStore.planWaiting || messageStore.resuming)
 const canStop = computed(() => Boolean(messageStore.threadId || activeStreamController.value))
+const modeLabel = computed(() => messageStore.deepResearch ? '深度研究' : '快速回答')
+const planGateLabel = computed(() => {
+  if (!messageStore.deepResearch) {
+    return '无需计划'
+  }
+  if (messageStore.planWaiting) {
+    return '等待确认'
+  }
+  return autoExecutePlan.value ? '自动执行' : '先审阅计划'
+})
+const currentModelText = computed(() => {
+  if (currentModel.value) {
+    return `${currentModel.value.providerName || currentModel.value.providerId} / ${currentModel.value.modelName}`
+  }
+  return modelLoadError.value ? '模型状态不可用' : '读取模型状态'
+})
+const eventTerminalStatus = computed(() => {
+  for (const event of [...messageStore.events].reverse()) {
+    const kind = terminalEventKind(event)
+    if (kind) {
+      return kind
+    }
+  }
+  return ''
+})
+const sessionStatus = computed(() => {
+  if (messageStore.loading) return { kind: 'loading', label: '加载中' }
+  if (messageStore.lastError) return { kind: 'failed', label: '失败' }
+  if (messageStore.resuming) return { kind: 'running', label: '恢复中' }
+  if (messageStore.planWaiting) return { kind: 'waiting', label: '等待计划确认' }
+  if (messageStore.running) return { kind: 'running', label: '运行中' }
+  if (localTerminalStatus.value) return statusView(localTerminalStatus.value)
+  if (eventTerminalStatus.value) return statusView(eventTerminalStatus.value)
+  if (messageStore.messages.some(item => item.role === 'assistant')) return { kind: 'completed', label: '已完成' }
+  if (messageStore.messages.length || messageStore.threadId) return { kind: 'saved', label: '已保存' }
+  return { kind: 'draft', label: '草稿' }
+})
 
 const workflowNodes = computed(() => {
   const nodes = new Map<string, WorkflowNode>()
@@ -335,6 +407,7 @@ async function submit() {
     return
   }
 
+  localTerminalStatus.value = ''
   const sessionId = ensureConversation(query)
   conversationStore.updateTitle(sessionId, query)
   conversationStore.markLocalMessage(sessionId)
@@ -374,6 +447,7 @@ async function submit() {
       if (report) {
         messageStore.addAssistantMessage(report, messageStore.threadId)
       }
+      localTerminalStatus.value = 'completed'
     }
   } catch (err: any) {
     if (!isAbortError(err)) {
@@ -381,6 +455,7 @@ async function submit() {
       message.error(errorMessage)
       messageStore.addAssistantMessage(`研究流程执行失败：${errorMessage}`)
       reportVisible.value = false
+      localTerminalStatus.value = 'failed'
     }
     messageStore.clearPlanGate()
   } finally {
@@ -407,6 +482,7 @@ async function resumePlan(accepted: boolean) {
   messageStore.resuming = true
   messageStore.running = true
   messageStore.planWaiting = false
+  localTerminalStatus.value = ''
   pendingResumeDecision.value = accepted ? 'accept' : 'feedback'
   reportVisible.value = true
   await scrollToBottom()
@@ -438,6 +514,7 @@ async function resumePlan(accepted: boolean) {
       }
       feedbackVisible.value = false
       feedbackDraft.value = ''
+      localTerminalStatus.value = 'completed'
     }
   } catch (err: any) {
     if (!isAbortError(err)) {
@@ -445,6 +522,7 @@ async function resumePlan(accepted: boolean) {
       message.error(errorMessage)
       messageStore.addAssistantMessage(`继续研究失败：${errorMessage}`, messageStore.threadId)
       reportVisible.value = false
+      localTerminalStatus.value = 'failed'
     }
     messageStore.clearPlanGate()
   } finally {
@@ -476,6 +554,7 @@ async function stop() {
   messageStore.running = false
   messageStore.resuming = false
   messageStore.clearPlanGate()
+  localTerminalStatus.value = 'stopped'
 
   if (!messageStore.threadId) {
     message.success('已停止当前请求')
@@ -506,9 +585,20 @@ async function retryLoad() {
 }
 
 function startDraft() {
+  localTerminalStatus.value = ''
   conversationStore.startDraft()
   messageStore.reset()
   router.push('/chat')
+}
+
+async function loadCurrentModel() {
+  modelLoadError.value = ''
+  try {
+    currentModel.value = await modelService.getCurrent()
+  } catch (error) {
+    currentModel.value = null
+    modelLoadError.value = userMessageFromError(error, '模型状态读取失败')
+  }
 }
 
 function eventColor(event: ChatStreamResponse) {
@@ -517,6 +607,20 @@ function eventColor(event: ChatStreamResponse) {
   if (event.done || event.event_type?.includes('completed')) return 'green'
   if (event.event_type?.includes('started')) return 'blue'
   return 'gray'
+}
+
+function terminalEventKind(event: ChatStreamResponse): 'completed' | 'failed' | 'stopped' | '' {
+  const type = event.event_type || ''
+  if (type === 'graph.failed' || event.phase === 'failed' || event.phase === 'error') return 'failed'
+  if (type === 'graph.stopped' || event.phase === 'stopped') return 'stopped'
+  if (event.done || type === 'graph.completed') return 'completed'
+  return ''
+}
+
+function statusView(kind: 'completed' | 'failed' | 'stopped') {
+  if (kind === 'failed') return { kind: 'failed', label: '失败' }
+  if (kind === 'stopped') return { kind: 'stopped', label: '已停止' }
+  return { kind: 'completed', label: '已完成' }
 }
 
 function nodeKey(event: ChatStreamResponse) {
@@ -635,6 +739,7 @@ async function scrollToBottom() {
 watch(
   () => route.params.convId,
   async value => {
+    localTerminalStatus.value = ''
     const sessionId = value as string | undefined
     if (sessionId) {
       if (messageStore.running && messageStore.convId === sessionId) {
@@ -656,6 +761,7 @@ watch(
 )
 
 onMounted(() => {
+  loadCurrentModel()
   if (!route.params.convId) {
     conversationStore.startDraft()
   }
@@ -701,6 +807,77 @@ onMounted(() => {
   flex: 1;
   overflow: auto;
   padding: 24px;
+}
+
+.workbench-status {
+  align-items: center;
+  background: #f8fbff;
+  border-bottom: 1px solid #e2e9f3;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 10px 24px;
+}
+
+.status-item {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e3eaf4;
+  border-radius: 8px;
+  color: #1d2b42;
+  display: flex;
+  gap: 8px;
+  min-height: 40px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.status-item strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-label {
+  color: #738096;
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.status-link {
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.status-link:hover {
+  border-color: #9db7f8;
+}
+
+.session-status {
+  border-left: 3px solid #cbd5e1;
+}
+
+.session-status.running {
+  border-left-color: #2356f6;
+}
+
+.session-status.waiting {
+  border-left-color: #d98506;
+}
+
+.session-status.completed {
+  border-left-color: #2f9e44;
+}
+
+.session-status.failed {
+  border-left-color: #d9363e;
+}
+
+.session-status.stopped,
+.session-status.saved {
+  border-left-color: #667085;
 }
 
 .welcome {
@@ -982,6 +1159,11 @@ onMounted(() => {
     align-items: flex-start;
     gap: 12px;
     padding: 14px 16px;
+  }
+
+  .workbench-status {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
   }
 
   .chat-header h1 {
