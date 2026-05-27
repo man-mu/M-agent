@@ -13,6 +13,7 @@ import appService from '@/services/api/app'
 import { disabledCapabilities, type AppCapabilities } from '@/services/api/app'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
+import { userMessageFromError } from '@/utils/errors'
 
 const router = useRouter()
 const route = useRoute()
@@ -84,7 +85,8 @@ function confirmClearAll() {
 async function loadCapabilities() {
   try {
     capabilities.value = await appService.getCapabilities()
-  } catch {
+  } catch (error) {
+    message.warning(userMessageFromError(error, '应用能力信息加载失败，已按可选模块关闭处理。'))
     capabilities.value = disabledCapabilities
   }
 }
@@ -125,6 +127,14 @@ onMounted(async () => {
         </div>
 
         <div class="conversation-list">
+          <a-alert
+            v-if="conversationStore.lastError"
+            class="sidebar-alert"
+            show-icon
+            type="warning"
+            :message="conversationStore.lastError"
+          />
+
           <button
             v-for="item in conversationStore.conversations"
             :key="item.key"
@@ -207,6 +217,10 @@ onMounted(async () => {
   max-height: calc(100vh - 156px);
   overflow: auto;
   padding: 0 10px;
+}
+
+.sidebar-alert {
+  margin-bottom: 8px;
 }
 
 .conversation-item {

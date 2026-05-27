@@ -70,25 +70,27 @@ export interface ChatStreamResponse {
 export type ChatStreamEvent = StreamEvent<ChatStreamResponse>
 
 class ChatService {
-  stream(data: ChatStreamRequest, onEvent: (event: ChatStreamEvent) => void) {
+  stream(data: ChatStreamRequest, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
     return readSseStream<ChatStreamResponse>(
       '/chat/stream',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: data,
+        signal,
       },
       onEvent,
     )
   }
 
-  resume(data: ChatResumeRequest, onEvent: (event: ChatStreamEvent) => void) {
+  resume(data: ChatResumeRequest, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
     return readSseStream<ChatStreamResponse>(
       '/chat/resume',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: data,
+        signal,
       },
       onEvent,
     )

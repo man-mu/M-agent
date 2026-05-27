@@ -1,4 +1,4 @@
-import { del, get } from '@/utils/request'
+import { apiRequest, del } from '@/utils/request'
 
 export interface ConversationSummary {
   session_id: string
@@ -24,11 +24,19 @@ export interface ConversationDetail {
 
 class ConversationService {
   getConversations(): Promise<ConversationSummary[]> {
-    return get<ConversationSummary[]>('/api/conversations')
+    return apiRequest<ConversationSummary[]>({
+      method: 'GET',
+      url: '/api/conversations',
+      silentError: true,
+    })
   }
 
   getMessages(sessionId: string): Promise<ConversationDetail> {
-    return get<ConversationDetail>(`/api/conversations/${sessionId}`)
+    return apiRequest<ConversationDetail>({
+      method: 'GET',
+      url: `/api/conversations/${sessionId}`,
+      silentError: true,
+    })
   }
 
   deleteConversation(sessionId: string): Promise<void> {

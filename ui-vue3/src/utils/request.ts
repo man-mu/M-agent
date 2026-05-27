@@ -1,6 +1,7 @@
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 import axios from 'axios'
 import { message } from 'ant-design-vue'
+import { createAppError, toAppError } from './errors'
 
 type ApiEnvelope<T = unknown> = {
   code?: number
@@ -24,16 +25,11 @@ const service: AxiosInstance = axios.create({
 service.interceptors.response.use(
   response => response,
   error => {
-    const payload = error.response?.data
-    const errorMessage =
-      payload?.message ||
-      payload?.error ||
-      error.message ||
-      '网络请求失败，请确认后端服务已启动'
+    const appError = toAppError(error)
     if (!(error.config as RequestConfig | undefined)?.silentError) {
-      message.error(errorMessage)
+      message.error(appError.message)
     }
-    return Promise.reject(error)
+    return Promise.reject(appError)
   },
 )
 
@@ -47,7 +43,7 @@ function unwrap<T>(payload: ApiEnvelope<T> | T): T {
     if (envelope.code >= 200 && envelope.code < 300) {
       return envelope.data as T
     }
-    throw new Error(envelope.message || '请求失败')
+    throw createAppError({ kind: 'server', message: envelope.message || '请求失败' })
   }
 
   if (envelope.status === 'success') {
@@ -60,7 +56,10 @@ function unwrap<T>(payload: ApiEnvelope<T> | T): T {
   }
 
   if (envelope.status === 'error' || envelope.status === 'notfound') {
-    throw new Error(envelope.message || '请求失败')
+    throw createAppError({
+      kind: envelope.status === 'notfound' ? 'notFound' : 'server',
+      message: envelope.message || '请求失败',
+    })
   }
 
   return payload as T

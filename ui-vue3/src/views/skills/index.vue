@@ -13,6 +13,7 @@ import { Modal, message } from 'ant-design-vue'
 import appService from '@/services/api/app'
 import skillService from '@/services/api/skills'
 import type { CreateSkillRequest, SkillDefinition } from '@/services/api/skills'
+import { userMessageFromError } from '@/utils/errors'
 
 const router = useRouter()
 const skills = ref<SkillDefinition[]>([])
@@ -20,6 +21,7 @@ const capabilityLoading = ref(true)
 const skillEnabled = ref(false)
 const loading = ref(false)
 const saving = ref(false)
+const loadError = ref('')
 const modalVisible = ref(false)
 const editingName = ref('')
 const form = reactive<CreateSkillRequest>({
@@ -46,10 +48,12 @@ async function loadSkills() {
     return
   }
   loading.value = true
+  loadError.value = ''
   try {
     skills.value = await skillService.list()
   } catch (err: any) {
-    message.error(err.message || '加载 Skill 列表失败')
+    loadError.value = userMessageFromError(err, '加载 Skill 列表失败')
+    message.error(loadError.value)
   } finally {
     loading.value = false
   }
@@ -79,7 +83,7 @@ async function openEdit(name: string) {
     form.promptTemplate = detail.promptTemplate
     modalVisible.value = true
   } catch (err: any) {
-    message.error(err.message || '读取 Skill 详情失败')
+    message.error(userMessageFromError(err, '读取 Skill 详情失败'))
   }
 }
 
@@ -100,7 +104,7 @@ async function saveSkill() {
     modalVisible.value = false
     await loadSkills()
   } catch (err: any) {
-    message.error(err.response?.data?.error || err.message || '保存失败')
+    message.error(userMessageFromError(err, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -111,7 +115,7 @@ async function toggleSkill(name: string) {
     await skillService.toggle(name)
     await loadSkills()
   } catch (err: any) {
-    message.error(err.message || '切换失败')
+    message.error(userMessageFromError(err, '切换失败'))
   }
 }
 
@@ -128,7 +132,7 @@ function confirmDelete(name: string) {
         message.success('Skill 已删除')
         await loadSkills()
       } catch (err: any) {
-        message.error(err.message || '删除失败')
+        message.error(userMessageFromError(err, '删除失败'))
       }
     },
   })
@@ -136,6 +140,7 @@ function confirmDelete(name: string) {
 
 async function initialize() {
   capabilityLoading.value = true
+  loadError.value = ''
   try {
     const capabilities = await appService.getCapabilities()
     skillEnabled.value = capabilities.skillEnabled
@@ -144,7 +149,8 @@ async function initialize() {
     }
   } catch (err: any) {
     skillEnabled.value = false
-    message.error(err.message || '加载应用能力信息失败')
+    loadError.value = userMessageFromError(err, '加载应用能力信息失败')
+    message.error(loadError.value)
   } finally {
     capabilityLoading.value = false
   }
@@ -173,6 +179,18 @@ onMounted(initialize)
     </div>
 
     <a-spin v-if="capabilityLoading" />
+
+    <a-alert
+      v-else-if="loadError"
+      class="page-alert"
+      show-icon
+      type="warning"
+      :message="loadError"
+    >
+      <template #action>
+        <a-button size="small" @click="initialize">重试</a-button>
+      </template>
+    </a-alert>
 
     <a-empty v-else-if="!skillEnabled" description="Skill 模块未启用">
       <a-button type="primary" @click="router.push('/chat')">
@@ -263,6 +281,10 @@ onMounted(initialize)
 .page-header h1 {
   font-size: 24px;
   margin: 2px 0 0;
+}
+
+.page-alert {
+  margin-bottom: 18px;
 }
 
 .eyebrow {

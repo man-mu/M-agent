@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { ChatStreamResponse, ResearchPlan } from '@/services/api/chat'
 import { conversationService } from '@/services'
+import { userMessageFromError } from '@/utils/errors'
 
 export interface ChatMessage {
   id: string
@@ -161,9 +162,7 @@ export const useMessageStore = defineStore('messageStore', {
         }
       } catch (error: any) {
         this.messages = []
-        this.lastError = error.response?.status === 404
-          ? '没有找到这条会话记录。'
-          : error.response?.data?.message || error.message || '会话加载失败，请确认后端服务已启动。'
+        this.lastError = userMessageFromError(error, '会话加载失败，请确认后端服务已启动。')
       } finally {
         this.loading = false
       }

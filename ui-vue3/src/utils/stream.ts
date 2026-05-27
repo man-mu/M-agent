@@ -1,3 +1,5 @@
+import { createAppError, streamEventErrorMessage, toAppError } from './errors'
+
 export interface StreamEvent<T = unknown> {
   id?: string
   event: string
@@ -68,15 +70,29 @@ export async function readSseStream<T = unknown>(
     ...(options.headers || {}),
   }
 
-  const response = await fetch(buildUrl(url), {
-    method: options.method || 'POST',
-    headers,
-    body: options.body == null ? undefined : JSON.stringify(options.body),
-    signal: options.signal,
-  })
+  let response: Response
+  try {
+    response = await fetch(buildUrl(url), {
+      method: options.method || 'POST',
+      headers,
+      body: options.body == null ? undefined : JSON.stringify(options.body),
+      signal: options.signal,
+    })
+  } catch (error) {
+    throw toAppError(error, { endpoint: url })
+  }
 
   if (!response.ok || !response.body) {
-    throw new Error(`请求失败：HTTP ${response.status}`)
+    const detail = await response.text().catch(() => '')
+    throw createAppError({
+      kind: response.status >= 500 ? 'server' : response.status === 404 ? 'notFound' : 'unknown',
+      status: response.status,
+      endpoint: url,
+      detail,
+      message: response.status >= 500
+        ? `后端 SSE 接口返回 ${response.status}，请查看后端日志。${detail ? ` ${detail}` : ''}`
+        : `SSE 请求失败：HTTP ${response.status}${detail ? ` ${detail}` : ''}`,
+    })
   }
 
   const reader = response.body.getReader()
@@ -85,9 +101,17 @@ export async function readSseStream<T = unknown>(
   const events: StreamEvent<T>[] = []
 
   while (true) {
-    const { value, done } = await reader.read()
-    if (done) {
-      break
+    let value: Uint8Array | undefined
+    let done = false
+    try {
+      const result = await reader.read()
+      value = result.value
+      done = result.done
+      if (done) {
+        break
+      }
+    } catch (error) {
+      throw toAppError(error, { endpoint: url, fallback: 'SSE 连接中断，请检查后端服务状态。' })
     }
 
     buffer += decoder.decode(value, { stream: true })
@@ -99,6 +123,13 @@ export async function readSseStream<T = unknown>(
       if (parsed) {
         events.push(parsed as StreamEvent<T>)
         onEvent(parsed as StreamEvent<T>)
+        if (parsed.event === 'error') {
+          throw createAppError({
+            kind: 'sse',
+            endpoint: url,
+            message: streamEventErrorMessage(parsed.data),
+          })
+        }
       }
     }
   }
@@ -108,6 +139,13 @@ export async function readSseStream<T = unknown>(
   if (tail) {
     events.push(tail as StreamEvent<T>)
     onEvent(tail as StreamEvent<T>)
+    if (tail.event === 'error') {
+      throw createAppError({
+        kind: 'sse',
+        endpoint: url,
+        message: streamEventErrorMessage(tail.data),
+      })
+    }
   }
 
   return events

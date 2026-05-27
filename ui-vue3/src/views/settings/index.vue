@@ -12,12 +12,14 @@ import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 import modelService from '@/services/api/model'
 import type { CurrentModelSelection, ProviderSummary } from '@/services/api/model'
+import { userMessageFromError } from '@/utils/errors'
 
 const router = useRouter()
 const providers = ref<ProviderSummary[]>([])
 const current = ref<CurrentModelSelection | null>(null)
 const loading = ref(false)
 const testing = ref(false)
+const loadError = ref('')
 
 const keyModalVisible = ref(false)
 const keyModalProvider = ref<ProviderSummary | null>(null)
@@ -31,6 +33,7 @@ const currentProviderName = computed(() => current.value?.providerName || curren
 
 async function loadData() {
   loading.value = true
+  loadError.value = ''
   try {
     const [providerList, currentModel] = await Promise.all([
       modelService.getProviders(),
@@ -39,7 +42,8 @@ async function loadData() {
     providers.value = providerList
     current.value = currentModel
   } catch (err: any) {
-    message.error(err.message || '加载模型信息失败')
+    loadError.value = userMessageFromError(err, '加载模型信息失败')
+    message.error(loadError.value)
   } finally {
     loading.value = false
   }
@@ -62,7 +66,7 @@ async function saveApiKey() {
     keyModalVisible.value = false
     await loadData()
   } catch (err: any) {
-    message.error(err.message || '保存失败')
+    message.error(userMessageFromError(err, '保存失败'))
   }
 }
 
@@ -82,7 +86,7 @@ async function switchModel() {
     switchModalVisible.value = false
     await loadData()
   } catch (err: any) {
-    message.error(err.message || '切换失败')
+    message.error(userMessageFromError(err, '切换失败'))
   }
 }
 
@@ -92,7 +96,7 @@ async function testModel() {
     const result = await modelService.testModel()
     message.success(`${result.providerId} / ${result.modelName} 测试通过`)
   } catch (err: any) {
-    message.error(err.message || '测试失败')
+    message.error(userMessageFromError(err, '测试失败'))
   } finally {
     testing.value = false
   }
@@ -117,6 +121,18 @@ onMounted(loadData)
         刷新
       </a-button>
     </div>
+
+    <a-alert
+      v-if="loadError"
+      class="page-alert"
+      show-icon
+      type="warning"
+      :message="loadError"
+    >
+      <template #action>
+        <a-button size="small" @click="loadData">重试</a-button>
+      </template>
+    </a-alert>
 
     <a-card class="current-card" v-if="current">
       <template #title>
@@ -230,7 +246,8 @@ onMounted(loadData)
 }
 
 .current-card,
-.provider-grid {
+.provider-grid,
+.page-alert {
   margin: 0 auto 16px;
   max-width: 1100px;
 }

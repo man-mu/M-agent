@@ -181,7 +181,7 @@
         <div class="composer-actions">
           <a-button
             v-if="messageStore.running || messageStore.planWaiting"
-            :disabled="!messageStore.threadId"
+            :disabled="!canStop"
             danger
             @click="stop"
           >
@@ -225,6 +225,7 @@ import { chatService } from '@/services'
 import type { ChatStreamResponse } from '@/services/api/chat'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
+import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
 import Report from '@/components/report/index.vue'
 import MD from '@/components/md/index.vue'
 
@@ -273,10 +274,12 @@ const autoExecutePlan = ref(false)
 const feedbackVisible = ref(false)
 const feedbackDraft = ref('')
 const pendingResumeDecision = ref<'accept' | 'feedback' | ''>('')
+const activeStreamController = ref<AbortController | null>(null)
 
 const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
 const planSteps = computed(() => activePlan.value?.steps || [])
 const isInteractionLocked = computed(() => messageStore.running || messageStore.planWaiting || messageStore.resuming)
+const canStop = computed(() => Boolean(messageStore.threadId || activeStreamController.value))
 
 const workflowNodes = computed(() => {
   const nodes = new Map<string, WorkflowNode>()
@@ -333,7 +336,7 @@ async function submit() {
   feedbackDraft.value = ''
   reportVisible.value = true
   await scrollToBottom()
-  let streamError = ''
+  const controller = createStreamController()
 
   try {
     const events = await chatService.stream(
@@ -346,16 +349,14 @@ async function submit() {
       },
       event => {
         messageStore.addEvent(event.data)
-        if (event.event === 'error') {
-          streamError = errorReason(event.data)
-        }
       },
+      controller.signal,
     )
 
     const final = [...events].reverse().find(event => event.data.done)?.data
     const failed = [...events].reverse().find(event => event.event === 'error')?.data
     if (failed) {
-      throw new Error(streamError || errorReason(failed))
+      throw new Error(streamEventErrorMessage(failed))
     }
     if (!messageStore.planWaiting) {
       const report = extractReport(final) || messageStore.reportContent
@@ -364,10 +365,17 @@ async function submit() {
       }
     }
   } catch (err: any) {
-    message.error(err.message || '研究流程执行失败')
-    messageStore.addAssistantMessage(`研究流程执行失败：${err.message || '未知错误'}`)
+    if (!isAbortError(err)) {
+      const errorMessage = userMessageFromError(err, '研究流程执行失败')
+      message.error(errorMessage)
+      messageStore.addAssistantMessage(`研究流程执行失败：${errorMessage}`)
+      reportVisible.value = false
+    }
     messageStore.clearPlanGate()
   } finally {
+    if (activeStreamController.value === controller) {
+      activeStreamController.value = null
+    }
     messageStore.running = false
     await scrollToBottom()
     await conversationStore.loadFromBackend()
@@ -391,7 +399,7 @@ async function resumePlan(accepted: boolean) {
   pendingResumeDecision.value = accepted ? 'accept' : 'feedback'
   reportVisible.value = true
   await scrollToBottom()
-  let streamError = ''
+  const controller = createStreamController()
 
   try {
     const events = await chatService.resume(
@@ -403,16 +411,14 @@ async function resumePlan(accepted: boolean) {
       },
       event => {
         messageStore.addEvent(event.data)
-        if (event.event === 'error') {
-          streamError = errorReason(event.data)
-        }
       },
+      controller.signal,
     )
 
     const final = [...events].reverse().find(event => event.data.done)?.data
     const failed = [...events].reverse().find(event => event.event === 'error')?.data
     if (failed) {
-      throw new Error(streamError || errorReason(failed))
+      throw new Error(streamEventErrorMessage(failed))
     }
     if (!messageStore.planWaiting) {
       const report = extractReport(final) || messageStore.reportContent
@@ -423,10 +429,17 @@ async function resumePlan(accepted: boolean) {
       feedbackDraft.value = ''
     }
   } catch (err: any) {
-    message.error(err.message || '继续研究失败')
-    messageStore.addAssistantMessage(`继续研究失败：${err.message || '未知错误'}`, messageStore.threadId)
+    if (!isAbortError(err)) {
+      const errorMessage = userMessageFromError(err, '继续研究失败')
+      message.error(errorMessage)
+      messageStore.addAssistantMessage(`继续研究失败：${errorMessage}`, messageStore.threadId)
+      reportVisible.value = false
+    }
     messageStore.clearPlanGate()
   } finally {
+    if (activeStreamController.value === controller) {
+      activeStreamController.value = null
+    }
     if (messageStore.planWaiting) {
       feedbackVisible.value = false
       feedbackDraft.value = ''
@@ -447,7 +460,14 @@ function handleComposerKeydown(event: KeyboardEvent) {
 }
 
 async function stop() {
+  activeStreamController.value?.abort()
+  activeStreamController.value = null
+  messageStore.running = false
+  messageStore.resuming = false
+  messageStore.clearPlanGate()
+
   if (!messageStore.threadId) {
+    message.success('已停止当前请求')
     return
   }
   try {
@@ -455,12 +475,10 @@ async function stop() {
       session_id: messageStore.convId,
       thread_id: messageStore.threadId,
     })
-    messageStore.running = false
-    messageStore.clearPlanGate()
     message.success('已请求停止当前研究')
     await conversationStore.loadFromBackend()
   } catch (err: any) {
-    message.error(err.message || '停止失败')
+    message.error(userMessageFromError(err, '停止失败'))
   }
 }
 
@@ -587,6 +605,13 @@ function errorReason(event: ChatStreamResponse) {
     return content
   }
   return '后端处理出错'
+}
+
+function createStreamController() {
+  activeStreamController.value?.abort()
+  const controller = new AbortController()
+  activeStreamController.value = controller
+  return controller
 }
 
 async function scrollToBottom() {

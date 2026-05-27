@@ -39,6 +39,7 @@ import { computed, ref, watch } from 'vue'
 import { CloseOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { reportService } from '@/services'
 import { useMessageStore } from '@/store/MessageStore'
+import { isNotFoundError, userMessageFromError } from '@/utils/errors'
 import MD from '@/components/md/index.vue'
 
 const props = defineProps<{
@@ -67,11 +68,12 @@ async function loadPersistedReport() {
     const result = await reportService.getReport(props.threadId)
     persistedReport.value = typeof result === 'string' ? result : result.report
   } catch (err: any) {
-    if (err.response?.status === 404) {
+    if (isNotFoundError(err)) {
       persistedReport.value = ''
+      error.value = '报告不存在或尚未生成。'
       return
     }
-    error.value = err.message || '暂时没有可读取的报告。'
+    error.value = userMessageFromError(err, '暂时没有可读取的报告。')
   } finally {
     loading.value = false
   }

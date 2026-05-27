@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { v4 as uuid } from 'uuid'
 import { conversationService } from '@/services'
+import { userMessageFromError } from '@/utils/errors'
 
 export interface ConversationItem {
   key: string
@@ -14,6 +15,7 @@ export const useConversationStore = defineStore('conversationStore', {
   state: () => ({
     currentKey: '',
     conversations: [] as ConversationItem[],
+    lastError: '',
   }),
   getters: {
     curConvKey: state => state.currentKey,
@@ -22,6 +24,7 @@ export const useConversationStore = defineStore('conversationStore', {
     async loadFromBackend() {
       try {
         const summaries = await conversationService.getConversations()
+        this.lastError = ''
         const backendItems = summaries.map(item => ({
           key: item.session_id,
           title: item.title || '未命名会话',
@@ -36,8 +39,8 @@ export const useConversationStore = defineStore('conversationStore', {
         if (this.currentKey && !this.contains(this.currentKey)) {
           this.currentKey = ''
         }
-      } catch {
-        // Keep local persisted sessions when backend is not reachable.
+      } catch (error) {
+        this.lastError = userMessageFromError(error, '会话列表加载失败，请确认后端服务已启动。')
       }
     },
     startDraft() {
