@@ -2,6 +2,7 @@ package top.lanshan.manmu.skill.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,6 +23,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/skills")
+@ConditionalOnProperty(prefix = "mvp.skill", name = "enabled", havingValue = "true")
 public class SkillController {
 
     private static final Logger logger = LoggerFactory.getLogger(SkillController.class);

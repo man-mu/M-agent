@@ -52,8 +52,4 @@ public class SkillAutoConfiguration {
         return new SkillService(fileRepository, registry, objectMapper);
     }
 
-    @Bean
-    SkillController skillController(SkillService skillService) {
-        return new SkillController(skillService);
-    }
 }

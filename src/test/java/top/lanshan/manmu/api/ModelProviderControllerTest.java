@@ -11,6 +11,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,13 +29,16 @@ class ModelProviderControllerTest {
 	@Test
 	void realProviderResponsesDoNotEchoPlainApiKeys() throws IOException {
 		JsonNode keys = objectMapper.readTree(Path.of(".local", "model-providers.json").toFile());
-		String dashScopeKey = keys.path("dashscope").asText();
-		String deepSeekKey = keys.path("deepseek").asText();
+		Map<String, String> configuredKeys = new LinkedHashMap<>();
+		addConfiguredKey(configuredKeys, "dashscope", keys.path("dashscope").asText());
+		addConfiguredKey(configuredKeys, "deepseek", keys.path("deepseek").asText());
 
-		webTestClient.post()
-			.uri("/api/model/providers/dashscope/key")
+		assertThat(configuredKeys).isNotEmpty();
+
+		configuredKeys.forEach((providerId, apiKey) -> webTestClient.post()
+			.uri("/api/model/providers/{providerId}/key", providerId)
 			.contentType(MediaType.APPLICATION_JSON)
-			.bodyValue(Map.of("apiKey", dashScopeKey))
+			.bodyValue(Map.of("apiKey", apiKey))
 			.exchange()
 			.expectStatus()
 			.isOk()
@@ -42,20 +46,7 @@ class ModelProviderControllerTest {
 			.jsonPath("$.apiKeyConfigured")
 			.isEqualTo(true)
 			.jsonPath("$.apiKey")
-			.doesNotExist();
-
-		webTestClient.post()
-			.uri("/api/model/providers/deepseek/key")
-			.contentType(MediaType.APPLICATION_JSON)
-			.bodyValue(Map.of("apiKey", deepSeekKey))
-			.exchange()
-			.expectStatus()
-			.isOk()
-			.expectBody()
-			.jsonPath("$.apiKeyConfigured")
-			.isEqualTo(true)
-			.jsonPath("$.apiKey")
-			.doesNotExist();
+			.doesNotExist());
 
 		webTestClient.get()
 			.uri("/api/model/providers")
@@ -63,7 +54,7 @@ class ModelProviderControllerTest {
 			.expectStatus()
 			.isOk()
 			.expectBody(String.class)
-			.value(body -> assertThat(body).doesNotContain(dashScopeKey, deepSeekKey));
+			.value(body -> assertThat(body).doesNotContain(configuredKeys.values()));
 
 		webTestClient.get()
 			.uri("/api/model/current")
@@ -71,7 +62,13 @@ class ModelProviderControllerTest {
 			.expectStatus()
 			.isOk()
 			.expectBody(String.class)
-			.value(body -> assertThat(body).doesNotContain(dashScopeKey, deepSeekKey));
+			.value(body -> assertThat(body).doesNotContain(configuredKeys.values()));
+	}
+
+	private void addConfiguredKey(Map<String, String> keys, String providerId, String apiKey) {
+		if (apiKey != null && !apiKey.isBlank()) {
+			keys.put(providerId, apiKey);
+		}
 	}
 
 }
