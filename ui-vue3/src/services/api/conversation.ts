@@ -22,6 +22,19 @@ export interface ConversationDetail {
   messages: ConversationMessage[]
 }
 
+export interface ResearchSessionHistory {
+  thread_id: string
+  session_id: string
+  query: string
+  status: string
+  report_thread_id?: string
+  error_message?: string
+  created_at?: string
+  updated_at?: string
+  completed_at?: string
+  stopped_at?: string
+}
+
 class ConversationService {
   getConversations(): Promise<ConversationSummary[]> {
     return apiRequest<ConversationSummary[]>({
@@ -35,6 +48,22 @@ class ConversationService {
     return apiRequest<ConversationDetail>({
       method: 'GET',
       url: `/api/conversations/${sessionId}`,
+      silentError: true,
+    })
+  }
+
+  getSessionHistory(sessionId: string): Promise<ResearchSessionHistory[]> {
+    return apiRequest<ResearchSessionHistory[]>({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}/history`,
+      silentError: true,
+    })
+  }
+
+  getThreadHistory(sessionId: string, threadId: string): Promise<ResearchSessionHistory> {
+    return apiRequest<ResearchSessionHistory>({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}/threads/${threadId}`,
       silentError: true,
     })
   }

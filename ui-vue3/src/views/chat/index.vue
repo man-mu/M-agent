@@ -15,6 +15,7 @@
           <a-button :disabled="!messageStore.threadId" @click="reportVisible = !reportVisible">
             <FileTextOutlined />
             报告
+            <a-tag v-if="currentConversation?.reportAvailable" color="green">可用</a-tag>
           </a-button>
         </a-space>
       </div>
@@ -289,6 +290,9 @@ const sessionStatus = computed(() => {
 })
 
 const workflowNodes = computed(() => messageStore.workflowNodes)
+const currentConversation = computed(() =>
+  conversationStore.conversations.find(item => item.key === messageStore.convId || item.key === route.params.convId),
+)
 
 function ensureConversation(query: string) {
   const routeId = route.params.convId as string | undefined
@@ -306,6 +310,7 @@ function ensureConversation(query: string) {
 async function loadConversation(sessionId: string) {
   conversationStore.activate(sessionId)
   await messageStore.init(sessionId)
+  await conversationStore.refreshConversationState(sessionId, messageStore.threadId)
 }
 
 async function submit() {
@@ -372,6 +377,7 @@ async function submit() {
     messageStore.running = false
     await scrollToBottom()
     await conversationStore.loadFromBackend()
+    await conversationStore.refreshConversationState(sessionId, messageStore.threadId)
   }
 }
 
@@ -445,6 +451,7 @@ async function resumePlan(accepted: boolean) {
     pendingResumeDecision.value = ''
     await scrollToBottom()
     await conversationStore.loadFromBackend()
+    await conversationStore.refreshConversationState(messageStore.convId, messageStore.threadId)
   }
 }
 
@@ -481,6 +488,7 @@ async function stop() {
     })
     message.success('已请求停止当前研究')
     await conversationStore.loadFromBackend()
+    await conversationStore.refreshConversationState(messageStore.convId, messageStore.threadId)
   } catch (err: any) {
     message.error(userMessageFromError(err, '停止失败'))
   }

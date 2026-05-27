@@ -21,7 +21,11 @@ class ReportService {
   }
 
   exists(threadId: string): Promise<boolean> {
-    return get<boolean>(`/api/reports/${threadId}/exists`)
+    return apiRequest<boolean>({
+      method: 'GET',
+      url: `/api/reports/${threadId}/exists`,
+      silentError: true,
+    })
   }
 
   getReportsBySession(sessionId: string): Promise<ResearchReport[]> {

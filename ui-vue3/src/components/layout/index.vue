@@ -12,6 +12,7 @@ import message from 'ant-design-vue/es/message'
 import appService from '@/services/api/app'
 import { disabledCapabilities, type AppCapabilities } from '@/services/api/app'
 import { useConversationStore } from '@/store/ConversationStore'
+import type { ConversationItem, ConversationStatusKind } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 import { userMessageFromError } from '@/utils/errors'
 
@@ -91,6 +92,41 @@ async function loadCapabilities() {
   }
 }
 
+function statusLabel(status?: ConversationStatusKind) {
+  if (status === 'draft') return '本地草稿'
+  if (status === 'completed') return '已完成'
+  if (status === 'stopped') return '已停止'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '运行中'
+  if (status === 'waiting') return '等待确认'
+  if (status === 'saved') return '已保存'
+  return '未知'
+}
+
+function statusClass(status?: ConversationStatusKind) {
+  return status || 'unknown'
+}
+
+function messageCountLabel(item: ConversationItem) {
+  return item.messageCount ? `${item.messageCount} 条消息` : '暂无消息'
+}
+
+function lastTimeLabel(value?: string) {
+  if (!value) {
+    return '本地'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 onMounted(async () => {
   await Promise.all([
     conversationStore.loadFromBackend(),
@@ -143,8 +179,15 @@ onMounted(async () => {
             @click="router.push(`/chat/${item.key}`)"
           >
             <span class="conversation-title">{{ item.title }}</span>
+            <span class="conversation-badges">
+              <span class="status-badge" :class="statusClass(item.status)">
+                {{ statusLabel(item.status) }}
+              </span>
+              <span v-if="item.reportAvailable" class="report-badge">报告</span>
+            </span>
             <span class="conversation-meta">
-              {{ item.messageCount ? `${item.messageCount} 条消息` : '本地会话' }}
+              <span>{{ messageCountLabel(item) }}</span>
+              <span>{{ lastTimeLabel(item.lastMessageAt) }}</span>
             </span>
             <a-button
               size="small"
@@ -231,6 +274,7 @@ onMounted(async () => {
   cursor: pointer;
   display: grid;
   grid-template-columns: 1fr auto;
+  gap: 6px 8px;
   padding: 10px;
   position: relative;
   text-align: left;
@@ -244,22 +288,84 @@ onMounted(async () => {
 }
 
 .conversation-title {
+  align-self: center;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.conversation-badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  grid-column: 1 / 2;
+  min-width: 0;
+}
+
+.status-badge,
+.report-badge {
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+}
+
+.status-badge {
+  background: #eef3fa;
+  color: #667085;
+}
+
+.status-badge.completed {
+  background: #eaf7ee;
+  color: #237847;
+}
+
+.status-badge.stopped,
+.status-badge.saved,
+.status-badge.unknown {
+  background: #eef3fa;
+  color: #667085;
+}
+
+.status-badge.failed {
+  background: #fff0f0;
+  color: #c32f35;
+}
+
+.status-badge.running {
+  background: #eaf1ff;
+  color: #2356f6;
+}
+
+.status-badge.waiting {
+  background: #fff7e8;
+  color: #a65f00;
+}
+
+.status-badge.draft {
+  background: #f5f0ff;
+  color: #5b3fb4;
+}
+
+.report-badge {
+  background: #eef7ff;
+  color: #2356f6;
+}
+
 .conversation-meta {
   color: #7a8798;
+  display: flex;
+  flex-wrap: wrap;
   font-size: 12px;
+  gap: 6px;
   grid-column: 1 / 2;
-  margin-top: 4px;
 }
 
 .delete-button {
   grid-column: 2 / 3;
-  grid-row: 1 / 3;
+  grid-row: 1 / 4;
 }
 
 .sidebar-footer {
