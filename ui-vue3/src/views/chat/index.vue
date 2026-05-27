@@ -51,10 +51,78 @@
           </div>
         </article>
 
+        <div v-if="activePlan" class="plan-review" data-testid="plan-review">
+          <div class="plan-review-header">
+            <div>
+              <span class="plan-label">计划确认</span>
+              <h2>{{ activePlan.title || '研究计划' }}</h2>
+            </div>
+            <a-tag color="orange">等待确认</a-tag>
+          </div>
+
+          <p v-if="activePlan.thought" class="plan-thought">{{ activePlan.thought }}</p>
+
+          <ol v-if="planSteps.length" class="plan-steps">
+            <li
+              v-for="(step, index) in planSteps"
+              :key="step.id || `${step.title}-${index}`"
+            >
+              <div class="step-title">
+                <strong>{{ step.title || `步骤 ${index + 1}` }}</strong>
+                <a-tag v-if="step.need_web_search" color="blue">搜索</a-tag>
+                <a-tag v-if="step.step_type">{{ step.step_type }}</a-tag>
+              </div>
+              <p v-if="step.description">{{ step.description }}</p>
+            </li>
+          </ol>
+
+          <a-textarea
+            v-if="feedbackVisible"
+            v-model:value="feedbackDraft"
+            :auto-size="{ minRows: 2, maxRows: 4 }"
+            :disabled="messageStore.resuming || messageStore.running"
+            class="plan-feedback"
+            data-testid="plan-feedback"
+            placeholder="写下你希望调整的方向..."
+          />
+
+          <div class="plan-actions">
+            <a-button
+              :disabled="messageStore.resuming || messageStore.running"
+              data-testid="modify-plan"
+              @click="feedbackVisible = !feedbackVisible"
+            >
+              <EditOutlined />
+              修改计划
+            </a-button>
+            <a-button
+              v-if="feedbackVisible"
+              :disabled="!feedbackDraft.trim() || messageStore.resuming || messageStore.running"
+              :loading="pendingResumeDecision === 'feedback'"
+              data-testid="submit-plan-feedback"
+              @click="resumePlan(false)"
+            >
+              <SendOutlined />
+              提交修改意见
+            </a-button>
+            <a-button
+              type="primary"
+              :disabled="messageStore.resuming || messageStore.running"
+              :loading="pendingResumeDecision === 'accept'"
+              data-testid="accept-plan"
+              @click="resumePlan(true)"
+            >
+              <CheckCircleOutlined />
+              接受计划
+            </a-button>
+          </div>
+        </div>
+
         <div v-if="messageStore.events.length" class="event-card">
           <div class="event-card-header">
             <span>工作流进度</span>
             <a-tag v-if="messageStore.running" color="processing">运行中</a-tag>
+            <a-tag v-else-if="messageStore.planWaiting" color="orange">等待确认</a-tag>
             <a-tag v-else color="default">已结束</a-tag>
           </div>
 
@@ -89,22 +157,43 @@
         <div class="composer-options">
           <a-switch v-model:checked="messageStore.deepResearch" />
           <span>{{ messageStore.deepResearch ? '深度研究' : '快速回答' }}</span>
+          <template v-if="messageStore.deepResearch">
+            <a-divider type="vertical" />
+            <a-switch
+              v-model:checked="autoExecutePlan"
+              :disabled="messageStore.running || messageStore.planWaiting"
+              size="small"
+              data-testid="auto-execute-plan"
+            />
+            <span>自动执行计划</span>
+          </template>
           <a-divider type="vertical" />
           <span class="thread" v-if="messageStore.threadId">Thread: {{ messageStore.threadId }}</span>
         </div>
         <a-textarea
           v-model:value="draft"
           :auto-size="{ minRows: 2, maxRows: 5 }"
-          :disabled="messageStore.running"
+          :disabled="isInteractionLocked"
+          data-testid="composer-input"
           placeholder="输入你的研究问题..."
           @keydown="handleComposerKeydown"
         />
         <div class="composer-actions">
-          <a-button v-if="messageStore.running" danger @click="stop">
+          <a-button
+            v-if="messageStore.running || messageStore.planWaiting"
+            :disabled="!messageStore.threadId"
+            danger
+            @click="stop"
+          >
             <PauseCircleOutlined />
             停止
           </a-button>
-          <a-button type="primary" :disabled="!draft.trim() || messageStore.running" @click="submit">
+          <a-button
+            type="primary"
+            :disabled="!draft.trim() || isInteractionLocked"
+            data-testid="send-message"
+            @click="submit"
+          >
             <SendOutlined />
             发送
           </a-button>
@@ -124,6 +213,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  CheckCircleOutlined,
+  EditOutlined,
   FileTextOutlined,
   PauseCircleOutlined,
   SendOutlined,
@@ -178,6 +269,14 @@ const messageStore = useMessageStore()
 const draft = ref('')
 const reportVisible = ref(false)
 const scrollRef = ref<HTMLElement | null>(null)
+const autoExecutePlan = ref(false)
+const feedbackVisible = ref(false)
+const feedbackDraft = ref('')
+const pendingResumeDecision = ref<'accept' | 'feedback' | ''>('')
+
+const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
+const planSteps = computed(() => activePlan.value?.steps || [])
+const isInteractionLocked = computed(() => messageStore.running || messageStore.planWaiting || messageStore.resuming)
 
 const workflowNodes = computed(() => {
   const nodes = new Map<string, WorkflowNode>()
@@ -218,7 +317,7 @@ async function loadConversation(sessionId: string) {
 
 async function submit() {
   const query = draft.value.trim()
-  if (!query || messageStore.running) {
+  if (!query || isInteractionLocked.value) {
     return
   }
 
@@ -227,8 +326,11 @@ async function submit() {
   conversationStore.markLocalMessage(sessionId)
   messageStore.addUserMessage(query)
   messageStore.events = []
+  messageStore.clearPlanGate()
   messageStore.running = true
   draft.value = ''
+  feedbackVisible.value = false
+  feedbackDraft.value = ''
   reportVisible.value = true
   await scrollToBottom()
   let streamError = ''
@@ -239,7 +341,7 @@ async function submit() {
         query,
         session_id: sessionId,
         enable_deepresearch: messageStore.deepResearch,
-        auto_accepted_plan: true,
+        auto_accepted_plan: !messageStore.deepResearch || autoExecutePlan.value,
         max_step_num: 3,
       },
       event => {
@@ -255,15 +357,83 @@ async function submit() {
     if (failed) {
       throw new Error(streamError || errorReason(failed))
     }
-    const report = extractReport(final) || messageStore.reportContent
-    if (report) {
-      messageStore.addAssistantMessage(report, messageStore.threadId)
+    if (!messageStore.planWaiting) {
+      const report = extractReport(final) || messageStore.reportContent
+      if (report) {
+        messageStore.addAssistantMessage(report, messageStore.threadId)
+      }
     }
   } catch (err: any) {
     message.error(err.message || '研究流程执行失败')
     messageStore.addAssistantMessage(`研究流程执行失败：${err.message || '未知错误'}`)
+    messageStore.clearPlanGate()
   } finally {
     messageStore.running = false
+    await scrollToBottom()
+    await conversationStore.loadFromBackend()
+  }
+}
+
+async function resumePlan(accepted: boolean) {
+  if (!messageStore.convId || !messageStore.threadId || messageStore.running || messageStore.resuming) {
+    return
+  }
+
+  const feedback = feedbackDraft.value.trim()
+  if (!accepted && !feedback) {
+    message.warning('请先填写修改意见')
+    return
+  }
+
+  messageStore.resuming = true
+  messageStore.running = true
+  messageStore.planWaiting = false
+  pendingResumeDecision.value = accepted ? 'accept' : 'feedback'
+  reportVisible.value = true
+  await scrollToBottom()
+  let streamError = ''
+
+  try {
+    const events = await chatService.resume(
+      {
+        session_id: messageStore.convId,
+        thread_id: messageStore.threadId,
+        feedback: accepted,
+        feedback_content: accepted ? undefined : feedback,
+      },
+      event => {
+        messageStore.addEvent(event.data)
+        if (event.event === 'error') {
+          streamError = errorReason(event.data)
+        }
+      },
+    )
+
+    const final = [...events].reverse().find(event => event.data.done)?.data
+    const failed = [...events].reverse().find(event => event.event === 'error')?.data
+    if (failed) {
+      throw new Error(streamError || errorReason(failed))
+    }
+    if (!messageStore.planWaiting) {
+      const report = extractReport(final) || messageStore.reportContent
+      if (report) {
+        messageStore.addAssistantMessage(report, messageStore.threadId)
+      }
+      feedbackVisible.value = false
+      feedbackDraft.value = ''
+    }
+  } catch (err: any) {
+    message.error(err.message || '继续研究失败')
+    messageStore.addAssistantMessage(`继续研究失败：${err.message || '未知错误'}`, messageStore.threadId)
+    messageStore.clearPlanGate()
+  } finally {
+    if (messageStore.planWaiting) {
+      feedbackVisible.value = false
+      feedbackDraft.value = ''
+    }
+    messageStore.running = false
+    messageStore.resuming = false
+    pendingResumeDecision.value = ''
     await scrollToBottom()
     await conversationStore.loadFromBackend()
   }
@@ -285,7 +455,10 @@ async function stop() {
       session_id: messageStore.convId,
       thread_id: messageStore.threadId,
     })
+    messageStore.running = false
+    messageStore.clearPlanGate()
     message.success('已请求停止当前研究')
+    await conversationStore.loadFromBackend()
   } catch (err: any) {
     message.error(err.message || '停止失败')
   }
@@ -311,6 +484,7 @@ function startDraft() {
 
 function eventColor(event: ChatStreamResponse) {
   if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') return 'red'
+  if (event.event_type === 'human_feedback.waiting' || event.phase === 'waiting') return 'orange'
   if (event.done || event.event_type?.includes('completed')) return 'green'
   if (event.event_type?.includes('started')) return 'blue'
   return 'gray'
@@ -330,6 +504,9 @@ function eventSummary(event: ChatStreamResponse) {
   }
   if (event.event_type?.includes('failed') || event.phase === 'error' || event.phase === 'failed') {
     return errorReason(event)
+  }
+  if (event.event_type === 'human_feedback.waiting' || event.phase === 'waiting') {
+    return '计划已生成，等待确认或修改意见。'
   }
   if (Array.isArray(event.payload)) {
     return arraySummary(event.payload)
@@ -600,6 +777,104 @@ onMounted(() => {
   padding: 4px 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.plan-review {
+  background: #fff;
+  border: 1px solid #f2c37b;
+  border-radius: 8px;
+  margin: 0 auto 18px;
+  max-width: 880px;
+  padding: 18px;
+}
+
+.plan-review-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.plan-label {
+  color: #a15c05;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.plan-review h2 {
+  color: #1b2638;
+  font-size: 20px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.plan-thought {
+  color: #55657a;
+  margin: 0 0 14px;
+  white-space: pre-wrap;
+}
+
+.plan-steps {
+  counter-reset: plan-step;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plan-steps li {
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
+  padding: 12px 12px 10px 44px;
+  position: relative;
+}
+
+.plan-steps li::before {
+  align-items: center;
+  background: #fff6e8;
+  border: 1px solid #f3c27a;
+  border-radius: 8px;
+  color: #9b5a00;
+  content: counter(plan-step);
+  counter-increment: plan-step;
+  display: flex;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  left: 12px;
+  position: absolute;
+  top: 12px;
+  width: 24px;
+}
+
+.step-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-steps p {
+  color: #637087;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.plan-feedback {
+  margin-top: 14px;
+}
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
 }
 
 .composer {

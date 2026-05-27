@@ -23,6 +23,23 @@ export interface ChatResumeRequest {
   feedback_content?: string
 }
 
+export interface ResearchStep {
+  id?: string
+  title?: string
+  description?: string
+  need_web_search?: boolean
+  step_type?: string
+  assigned_node?: string
+  execution_status?: string
+}
+
+export interface ResearchPlan {
+  title?: string
+  has_enough_context?: boolean
+  thought?: string
+  steps?: ResearchStep[]
+}
+
 export interface ChatStopRequest {
   session_id: string
   thread_id?: string

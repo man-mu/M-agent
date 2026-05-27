@@ -30,34 +30,65 @@ class LlmPlannerAgentTest {
 			.contains("Focus on risks.");
 	}
 
+	@Test
+	void acceptsDuplicateScalarPlannerFieldsFromModelOutput() {
+		RecordingAgentClient agentClient = new RecordingAgentClient();
+		agentClient.response = """
+				{
+				  "has_enough_context": true,
+				  "thought": "Initial thought.",
+				  "steps": [
+				    {
+				      "title": "Research",
+				      "description": "Collect facts.",
+				      "need_web_search": true,
+				      "step_type": "RESEARCH"
+				    }
+				  ],
+				  "title": "Duplicate field plan",
+				  "thought": "Final thought."
+				}
+				""";
+		LlmPlannerAgent plannerAgent = new LlmPlannerAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new PlannerOutputMapper());
+
+		var plan = plannerAgent.plan("Explain records.", 1);
+
+		assertThat(plan.title()).isEqualTo("Duplicate field plan");
+		assertThat(plan.thought()).isEqualTo("Final thought.");
+		assertThat(plan.steps()).hasSize(1);
+	}
+
 	private static class RecordingAgentClient implements AgentClient {
 
 		private String userPrompt;
 
+		private String response = """
+				{
+				  "title": "Context aware plan",
+				  "has_enough_context": true,
+				  "thought": "Use prior reports.",
+				  "steps": [
+				    {
+				      "title": "Review continuity",
+				      "description": "Use prior findings to plan the next step.",
+				      "need_web_search": false,
+				      "step_type": "RESEARCH"
+				    },
+				    {
+				      "title": "Synthesize",
+				      "description": "Prepare the final structure.",
+				      "need_web_search": false,
+				      "step_type": "PROCESSING"
+				    }
+				  ]
+				}
+				""";
+
 		@Override
 		public String call(String systemPrompt, String userPrompt) {
 			this.userPrompt = userPrompt;
-			return """
-					{
-					  "title": "Context aware plan",
-					  "has_enough_context": true,
-					  "thought": "Use prior reports.",
-					  "steps": [
-					    {
-					      "title": "Review continuity",
-					      "description": "Use prior findings to plan the next step.",
-					      "need_web_search": false,
-					      "step_type": "RESEARCH"
-					    },
-					    {
-					      "title": "Synthesize",
-					      "description": "Prepare the final structure.",
-					      "need_web_search": false,
-					      "step_type": "PROCESSING"
-					    }
-					  ]
-					}
-					""";
+			return response;
 		}
 
 	}

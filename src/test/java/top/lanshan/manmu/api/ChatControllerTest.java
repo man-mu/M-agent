@@ -8,13 +8,17 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
+import top.lanshan.manmu.model.ResearchPlan;
+import top.lanshan.manmu.model.ResearchStep;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchStreamEventType;
+import top.lanshan.manmu.model.StepType;
 import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -140,6 +144,33 @@ class ChatControllerTest {
 		verify(runner).resume(eq("thread-2"), decisionCaptor.capture());
 		assertThat(decisionCaptor.getValue().accepted()).isFalse();
 		assertThat(decisionCaptor.getValue().feedbackContent()).isEqualTo("Focus on risks.");
+	}
+
+	@Test
+	void planGateSerializesPlanStepTitlesAndDescriptions() {
+		ResearchRunner runner = mock(ResearchRunner.class);
+		ResearchPlan plan = new ResearchPlan("Plan", true, "Thought",
+				List.of(new ResearchStep("Read docs", "Inspect record semantics.", true, StepType.RESEARCH, null,
+						ResearchStep.STATUS_PENDING)));
+		when(runner.runUntilPlanGate(any(), eq("session-plan"))).thenReturn(Flux.just(
+				ResearchEvent.message("thread-plan", "human_feedback", "waiting", "Waiting for feedback", plan)));
+		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+
+		var json = client.post()
+			.uri("/chat/stream")
+			.contentType(MediaType.APPLICATION_JSON)
+			.bodyValue(Map.of("session_id", "session-plan", "thread_id", "thread-plan", "max_step_num", 2,
+					"auto_accepted_plan", false, "query", "Explain records."))
+			.exchange()
+			.expectStatus()
+			.isOk()
+			.expectBody(String.class)
+			.returnResult()
+			.getResponseBody();
+
+		assertThat(json).contains("\"event_type\":\"human_feedback.waiting\"")
+			.contains("\"title\":\"Read docs\"")
+			.contains("\"description\":\"Inspect record semantics.\"");
 	}
 
 	@Test
