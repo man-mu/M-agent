@@ -1,6 +1,6 @@
 <template>
   <div class="chat-page">
-    <section class="chat-main">
+    <section class="chat-main" data-testid="chat-main">
       <div class="chat-header">
         <div>
           <div class="eyebrow">Research Workbench</div>
@@ -12,7 +12,11 @@
               <SettingOutlined />
             </a-button>
           </a-tooltip>
-          <a-button :disabled="!messageStore.threadId" @click="reportVisible = !reportVisible">
+          <a-button
+            :disabled="!messageStore.threadId"
+            data-testid="toggle-report"
+            @click="reportVisible = !reportVisible"
+          >
             <FileTextOutlined />
             报告
             <a-tag v-if="currentConversation?.reportAvailable" color="green">可用</a-tag>
@@ -21,11 +25,11 @@
       </div>
 
       <div class="workbench-status" data-testid="research-status-bar">
-        <div class="status-item">
+        <div class="status-item" data-testid="mode-status">
           <span class="status-label">模式</span>
           <strong>{{ modeLabel }}</strong>
         </div>
-        <div class="status-item">
+        <div class="status-item" data-testid="plan-gate-status">
           <span class="status-label">计划</span>
           <strong>{{ planGateLabel }}</strong>
         </div>
@@ -44,7 +48,7 @@
             {{ modelLoadError ? '读取失败' : '读取中' }}
           </a-tag>
         </button>
-        <div class="status-item session-status" :class="sessionStatus.kind">
+        <div class="status-item session-status" :class="sessionStatus.kind" data-testid="session-status">
           <span class="status-label">会话</span>
           <strong>{{ sessionStatus.label }}</strong>
         </div>
@@ -64,7 +68,11 @@
           </a-space>
         </div>
 
-        <div v-else-if="messageStore.messages.length === 0 && messageStore.events.length === 0" class="welcome">
+        <div
+          v-else-if="messageStore.messages.length === 0 && messageStore.events.length === 0"
+          class="welcome"
+          data-testid="chat-empty-state"
+        >
           <h2>输入研究问题，启动真实模型流程。</h2>
           <p>进度、来源和报告只来自后端返回的数据。</p>
         </div>
@@ -100,7 +108,7 @@
           @toggle-feedback="toggleFeedback"
         />
 
-        <div v-if="messageStore.events.length" class="event-card">
+        <div v-if="messageStore.events.length" class="event-card" data-testid="workflow-progress">
           <div class="event-card-header">
             <span>工作流进度</span>
             <a-tag v-if="messageStore.running" color="processing">运行中</a-tag>
@@ -149,7 +157,11 @@
 
       <div class="composer">
         <div class="composer-options">
-          <a-switch v-model:checked="messageStore.deepResearch" :disabled="isInteractionLocked" />
+          <a-switch
+            v-model:checked="messageStore.deepResearch"
+            :disabled="isInteractionLocked"
+            data-testid="deep-research-switch"
+          />
           <span>{{ messageStore.deepResearch ? '深度研究' : '快速回答' }}</span>
           <template v-if="messageStore.deepResearch">
             <a-divider type="vertical" />
@@ -177,6 +189,7 @@
             v-if="messageStore.running || messageStore.planWaiting"
             :disabled="!canStop"
             danger
+            data-testid="stop-research"
             @click="stop"
           >
             <PauseCircleOutlined />

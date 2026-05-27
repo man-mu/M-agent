@@ -162,7 +162,7 @@ onMounted(async () => {
           </a-button>
         </div>
 
-        <div class="conversation-list">
+        <div class="conversation-list" data-testid="conversation-list">
           <a-alert
             v-if="conversationStore.lastError"
             class="sidebar-alert"
@@ -176,6 +176,7 @@ onMounted(async () => {
             :key="item.key"
             class="conversation-item"
             :class="{ active: item.key === route.params.convId }"
+            data-testid="conversation-item"
             @click="router.push(`/chat/${item.key}`)"
           >
             <span class="conversation-title">{{ item.title }}</span>

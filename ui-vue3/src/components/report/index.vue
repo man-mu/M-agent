@@ -1,24 +1,35 @@
 <template>
-  <aside class="report-panel" :class="{ open: visible }">
+  <aside class="report-panel" :class="{ open: visible }" data-testid="report-panel">
     <div class="report-header">
       <div>
         <div class="eyebrow">Research Report</div>
         <h2>研究报告</h2>
       </div>
       <a-space>
-        <a-tag :color="statusView.color">{{ statusView.label }}</a-tag>
+        <a-tag :color="statusView.color" data-testid="report-status">{{ statusView.label }}</a-tag>
         <a-tooltip title="复制报告">
-          <a-button size="small" :disabled="!content" @click="copyReport">
+          <a-button
+            size="small"
+            :disabled="!content"
+            data-testid="copy-report"
+            @click="copyReport"
+          >
             <CopyOutlined />
           </a-button>
         </a-tooltip>
         <a-tooltip title="刷新报告">
-          <a-button size="small" :disabled="!threadId" :loading="loading" @click="loadPersistedReport">
+          <a-button
+            size="small"
+            :disabled="!threadId"
+            :loading="loading"
+            data-testid="refresh-report"
+            @click="loadPersistedReport"
+          >
             <ReloadOutlined />
           </a-button>
         </a-tooltip>
         <a-tooltip title="关闭报告">
-          <a-button size="small" @click="$emit('close')">
+          <a-button size="small" data-testid="close-report" @click="$emit('close')">
             <CloseOutlined />
           </a-button>
         </a-tooltip>
@@ -30,7 +41,7 @@
       <span v-if="updatedAt">更新：{{ updatedAt }}</span>
     </div>
 
-    <div class="report-body">
+    <div class="report-body" data-testid="report-body">
       <a-alert
         v-if="error && !notGenerated"
         type="warning"

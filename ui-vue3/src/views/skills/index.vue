@@ -169,7 +169,7 @@ onMounted(initialize)
 </script>
 
 <template>
-  <main class="skills-page">
+  <main class="skills-page" data-testid="skills-page">
     <div class="page-header">
       <div>
         <div class="eyebrow">Prompt Skills</div>
@@ -201,7 +201,7 @@ onMounted(initialize)
       </template>
     </a-alert>
 
-    <a-empty v-else-if="!skillEnabled" description="Skill 模块未启用">
+    <a-empty v-else-if="!skillEnabled" data-testid="skills-disabled" description="Skill 模块未启用">
       <a-button type="primary" @click="router.push('/chat')">
         <ArrowLeftOutlined />
         返回对话

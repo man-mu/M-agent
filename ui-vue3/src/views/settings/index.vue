@@ -119,7 +119,7 @@ onMounted(loadData)
 </script>
 
 <template>
-  <main class="settings-page">
+  <main class="settings-page" data-testid="settings-page">
     <div class="page-header">
       <a-button @click="router.push('/chat')">
         <ArrowLeftOutlined />
@@ -147,7 +147,7 @@ onMounted(loadData)
       </template>
     </a-alert>
 
-    <a-card class="current-card" v-if="current">
+    <a-card v-if="current" class="current-card" data-testid="current-model-card">
       <template #title>
         <span><ThunderboltOutlined /> 当前模型</span>
       </template>
@@ -170,7 +170,12 @@ onMounted(loadData)
 
     <a-spin :spinning="loading">
       <div class="provider-grid">
-        <a-card v-for="provider in providers" :key="provider.providerId" class="provider-card">
+        <a-card
+          v-for="provider in providers"
+          :key="provider.providerId"
+          class="provider-card"
+          data-testid="provider-card"
+        >
           <template #title>
             <div class="provider-title">
               <span>{{ provider.displayName }}</span>
