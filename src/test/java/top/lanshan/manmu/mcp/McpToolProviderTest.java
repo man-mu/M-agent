@@ -44,6 +44,13 @@ class McpToolProviderTest {
 
         ToolCallback[] callbacks = provider.getToolCallbacks();
         assertThat(callbacks).isEmpty();
+
+        McpToolProvider.McpStatus status = provider.getStatus();
+        assertThat(status.enabled()).isTrue();
+        assertThat(status.toolCount()).isZero();
+        assertThat(status.servers()).hasSize(1);
+        assertThat(status.servers().get(0).configuredEnabled()).isFalse();
+        assertThat(status.servers().get(0).connected()).isFalse();
     }
 
     @Test

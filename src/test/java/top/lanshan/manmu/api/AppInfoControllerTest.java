@@ -10,12 +10,12 @@ class AppInfoControllerTest {
 
 	@Test
 	void returnsConfiguredCapabilities() {
-		AppInfoController controller = new AppInfoController(true, false, true);
+		AppInfoController controller = new AppInfoController(true, true, true);
 
 		AppInfoController.AppCapabilities capabilities = controller.capabilities();
 
 		assertThat(capabilities.skillEnabled()).isTrue();
-		assertThat(capabilities.ragEnabled()).isFalse();
+		assertThat(capabilities.ragEnabled()).isTrue();
 		assertThat(capabilities.mcpEnabled()).isTrue();
 	}
 

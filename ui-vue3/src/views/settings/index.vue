@@ -12,9 +12,12 @@ import {
   ReloadOutlined,
   SwapOutlined,
   ThunderboltOutlined,
+  ToolOutlined,
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
 import { useRouter } from 'vue-router'
+import appService from '@/services/api/app'
+import type { AppCapabilities, McpStatus } from '@/services/api/app'
 import modelService from '@/services/api/model'
 import type { CurrentModelSelection, ProviderSummary } from '@/services/api/model'
 import { userMessageFromError } from '@/utils/errors'
@@ -30,6 +33,8 @@ if (app) {
 }
 const providers = ref<ProviderSummary[]>([])
 const current = ref<CurrentModelSelection | null>(null)
+const capabilities = ref<AppCapabilities | null>(null)
+const mcpStatus = ref<McpStatus | null>(null)
 const loading = ref(false)
 const testing = ref(false)
 const loadError = ref('')
@@ -48,12 +53,19 @@ async function loadData() {
   loading.value = true
   loadError.value = ''
   try {
-    const [providerList, currentModel] = await Promise.all([
+    const [providerList, currentModel, appCapabilities] = await Promise.all([
       modelService.getProviders(),
       modelService.getCurrent(),
+      appService.getCapabilities(),
     ])
     providers.value = providerList
     current.value = currentModel
+    capabilities.value = appCapabilities
+    if (appCapabilities.mcpEnabled) {
+      mcpStatus.value = await appService.getMcpStatus()
+    } else {
+      mcpStatus.value = null
+    }
   } catch (err: any) {
     loadError.value = userMessageFromError(err, '加载模型信息失败')
     message.error(loadError.value)
@@ -164,6 +176,45 @@ onMounted(loadData)
           <a-tag :color="current.apiKeyConfigured ? 'green' : 'red'">
             {{ current.apiKeyConfigured ? '已配置' : '未配置' }}
           </a-tag>
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-card>
+
+    <a-card class="current-card" data-testid="module-status-card">
+      <template #title>
+        <span><ToolOutlined /> 扩展能力</span>
+      </template>
+      <a-descriptions :column="2">
+        <a-descriptions-item label="Skill">
+          <a-tag :color="capabilities?.skillEnabled ? 'green' : 'default'">
+            {{ capabilities?.skillEnabled ? '已启用' : '未启用' }}
+          </a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="MCP">
+          <a-tag :color="capabilities?.mcpEnabled ? 'green' : 'default'">
+            {{ capabilities?.mcpEnabled ? '已启用' : '未启用' }}
+          </a-tag>
+          <a-tag v-if="mcpStatus" :color="mcpStatus.toolCount > 0 ? 'blue' : 'orange'">
+            {{ mcpStatus.toolCount }} 个工具
+          </a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item v-if="mcpStatus" label="MCP 服务" :span="2">
+          <div class="mcp-server-list">
+            <div
+              v-for="server in mcpStatus.servers"
+              :key="server.url"
+              class="mcp-server"
+            >
+              <div>
+                <strong>{{ server.description || server.url }}</strong>
+                <p>{{ server.url }}{{ server.sseEndpoint || '' }}</p>
+              </div>
+              <a-tag v-if="!server.configuredEnabled" color="default">未配置启用</a-tag>
+              <a-tag v-else :color="server.connected ? 'green' : 'red'">
+                {{ server.connected ? '已连接' : '未连接' }}
+              </a-tag>
+            </div>
+          </div>
         </a-descriptions-item>
       </a-descriptions>
     </a-card>
@@ -294,5 +345,28 @@ onMounted(loadData)
   border-top: 1px solid #edf1f6;
   margin-top: 16px;
   padding-top: 12px;
+}
+
+.mcp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-server {
+  align-items: center;
+  background: #fbfcff;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.mcp-server p {
+  color: #6b7688;
+  margin: 4px 0 0;
+  word-break: break-all;
 }
 </style>

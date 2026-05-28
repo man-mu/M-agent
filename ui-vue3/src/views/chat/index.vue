@@ -182,8 +182,26 @@
           :disabled="isInteractionLocked"
           data-testid="composer-input"
           placeholder="输入你的研究问题..."
+          @blur="scheduleCloseSkillPicker"
           @keydown="handleComposerKeydown"
+          @input="handleDraftInput"
         />
+        <div
+          v-if="skillPickerVisible"
+          class="skill-picker"
+          data-testid="skill-picker"
+        >
+          <button
+            v-for="skill in filteredSkills"
+            :key="skill.name"
+            class="skill-option"
+            type="button"
+            @mousedown.prevent="selectSkill(skill.name)"
+          >
+            <strong>@{{ skill.name }}</strong>
+            <span>{{ skill.description }}</span>
+          </button>
+        </div>
         <div class="composer-actions">
           <a-button
             v-if="messageStore.running || messageStore.planWaiting"
@@ -235,12 +253,16 @@ import {
 import message from 'ant-design-vue/es/message'
 import PlanReview from '@/components/plan-review/index.vue'
 import { chatService } from '@/services'
+import appService from '@/services/api/app'
 import type { ChatStreamResponse } from '@/services/api/chat'
 import modelService from '@/services/api/model'
 import type { CurrentModelSelection } from '@/services/api/model'
+import skillService from '@/services/api/skills'
+import type { SkillDefinition } from '@/services/api/skills'
 import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
+import { filterSkillCandidates, findSkillTrigger, replaceSkillTrigger } from './skillPicker'
 
 const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
 const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
@@ -260,6 +282,11 @@ const activeStreamController = ref<AbortController | null>(null)
 const currentModel = ref<CurrentModelSelection | null>(null)
 const modelLoadError = ref('')
 const localTerminalStatus = ref<'completed' | 'failed' | 'stopped' | ''>('')
+const skillEnabled = ref(false)
+const skills = ref<SkillDefinition[]>([])
+const skillPickerVisible = ref(false)
+const skillQuery = ref('')
+let closeSkillPickerTimer: number | undefined
 
 const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
 const isInteractionLocked = computed(() => messageStore.running || messageStore.planWaiting || messageStore.resuming)
@@ -306,6 +333,9 @@ const workflowNodes = computed(() => messageStore.workflowNodes)
 const currentConversation = computed(() =>
   conversationStore.conversations.find(item => item.key === messageStore.convId || item.key === route.params.convId),
 )
+const filteredSkills = computed(() => {
+  return filterSkillCandidates(skills.value, skillQuery.value)
+})
 
 function ensureConversation(query: string) {
   const routeId = route.params.convId as string | undefined
@@ -476,10 +506,45 @@ function toggleFeedback() {
 }
 
 function handleComposerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && skillPickerVisible.value) {
+    event.preventDefault()
+    skillPickerVisible.value = false
+    return
+  }
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
     event.preventDefault()
     submit()
   }
+}
+
+function handleDraftInput() {
+  if (!skillEnabled.value) {
+    skillPickerVisible.value = false
+    return
+  }
+  const trigger = findSkillTrigger(draft.value)
+  if (!trigger) {
+    skillPickerVisible.value = false
+    skillQuery.value = ''
+    return
+  }
+  skillQuery.value = trigger.query
+  skillPickerVisible.value = filteredSkills.value.length > 0
+}
+
+function selectSkill(name: string) {
+  draft.value = replaceSkillTrigger(draft.value, name)
+  skillPickerVisible.value = false
+  skillQuery.value = ''
+}
+
+function scheduleCloseSkillPicker() {
+  if (closeSkillPickerTimer) {
+    window.clearTimeout(closeSkillPickerTimer)
+  }
+  closeSkillPickerTimer = window.setTimeout(() => {
+    skillPickerVisible.value = false
+  }, 150)
 }
 
 async function stop() {
@@ -528,6 +593,21 @@ async function loadCurrentModel() {
   } catch (error) {
     currentModel.value = null
     modelLoadError.value = userMessageFromError(error, '模型状态读取失败')
+  }
+}
+
+async function loadSkillsForComposer() {
+  try {
+    const capabilities = await appService.getCapabilities()
+    skillEnabled.value = capabilities.skillEnabled
+    if (capabilities.skillEnabled) {
+      skills.value = await skillService.list()
+    } else {
+      skills.value = []
+    }
+  } catch {
+    skillEnabled.value = false
+    skills.value = []
   }
 }
 
@@ -616,6 +696,7 @@ watch(
 
 onMounted(() => {
   loadCurrentModel()
+  loadSkillsForComposer()
   if (!route.params.convId) {
     conversationStore.startDraft()
   }
@@ -908,6 +989,7 @@ onMounted(() => {
   background: #fff;
   border-top: 1px solid #e8edf4;
   padding: 14px 24px 18px;
+  position: relative;
 }
 
 .composer-options {
@@ -932,6 +1014,45 @@ onMounted(() => {
   gap: 10px;
   justify-content: flex-end;
   margin-top: 10px;
+}
+
+.skill-picker {
+  background: #fff;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  bottom: 126px;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 12%);
+  display: flex;
+  flex-direction: column;
+  left: 24px;
+  max-height: 220px;
+  max-width: min(520px, calc(100% - 48px));
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  right: 24px;
+  z-index: 20;
+}
+
+.skill-option {
+  background: #fff;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.skill-option:hover {
+  background: #f3f6ff;
+}
+
+.skill-option span {
+  color: #667085;
+  font-size: 12px;
 }
 
 .report-placeholder {
@@ -1034,6 +1155,13 @@ onMounted(() => {
 
   .composer {
     padding: 12px;
+  }
+
+  .skill-picker {
+    bottom: 120px;
+    left: 12px;
+    max-width: calc(100% - 24px);
+    right: 12px;
   }
 
   .composer-options {

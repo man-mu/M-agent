@@ -49,8 +49,15 @@ public final class McpConfigMergeUtil {
 
     public static List<WebFluxSseClientTransport> createTransports(McpProperties.McpServerConfig config,
             WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
+        return createNamedTransports(config, webClientBuilder, objectMapper).stream()
+                .map(NamedTransport::transport)
+                .toList();
+    }
 
-        List<WebFluxSseClientTransport> transports = new ArrayList<>();
+    public static List<NamedTransport> createNamedTransports(McpProperties.McpServerConfig config,
+            WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
+
+        List<NamedTransport> transports = new ArrayList<>();
         if (config == null || config.getMcpServers() == null) {
             return transports;
         }
@@ -65,9 +72,13 @@ public final class McpConfigMergeUtil {
                 .sseEndpoint(sseEndpoint)
                 .objectMapper(objectMapper)
                 .build();
-            transports.add(transport);
+            transports.add(new NamedTransport(si, transport));
             logger.info("MCP transport created: {} -> {}", si.getUrl(), sseEndpoint);
         }
         return transports;
+    }
+
+    public record NamedTransport(McpProperties.McpServerInfo server,
+            WebFluxSseClientTransport transport) {
     }
 }
