@@ -2,8 +2,8 @@
   <div class="plan-review" data-testid="plan-review">
     <div class="plan-review-header">
       <div>
-        <span class="plan-label">计划审阅</span>
-        <h2>{{ plan.title || '研究计划' }}</h2>
+        <span class="plan-label">方案确认</span>
+        <h2>{{ plan.title || '研究方案' }}</h2>
       </div>
       <a-tag :color="statusColor">{{ statusLabel }}</a-tag>
     </div>
@@ -34,7 +34,7 @@
         </div>
       </li>
     </ol>
-    <a-empty v-else description="后端未返回计划步骤" />
+    <a-empty v-else description="后端未返回方案步骤" />
 
     <a-textarea
       v-if="feedbackVisible"
@@ -54,7 +54,7 @@
         @click="$emit('toggle-feedback')"
       >
         <EditOutlined />
-        {{ feedbackVisible ? '收起修改' : '修改计划' }}
+        {{ feedbackVisible ? '收起修改' : '修改方案' }}
       </a-button>
       <a-button
         v-if="feedbackVisible"
@@ -74,7 +74,7 @@
         @click="$emit('accept')"
       >
         <CheckCircleOutlined />
-        接受计划
+        确认执行
       </a-button>
     </div>
   </div>

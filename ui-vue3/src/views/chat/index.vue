@@ -95,19 +95,6 @@
           </div>
         </article>
 
-        <PlanReview
-          v-if="activePlan"
-          v-model:feedback="feedbackDraft"
-          :feedback-visible="feedbackVisible"
-          :pending-action="pendingResumeDecision"
-          :plan="activePlan"
-          :resuming="messageStore.resuming"
-          :running="messageStore.running"
-          @accept="resumePlan(true)"
-          @submit-feedback="resumePlan(false)"
-          @toggle-feedback="toggleFeedback"
-        />
-
         <div v-if="messageStore.events.length" class="event-card" data-testid="workflow-progress">
           <div class="event-card-header">
             <span>工作流进度</span>
@@ -153,6 +140,19 @@
             </a-timeline-item>
           </a-timeline>
         </div>
+
+        <PlanReview
+          v-if="activePlan"
+          v-model:feedback="feedbackDraft"
+          :feedback-visible="feedbackVisible"
+          :pending-action="pendingResumeDecision"
+          :plan="activePlan"
+          :resuming="messageStore.resuming"
+          :running="messageStore.running"
+          @accept="resumePlan(true)"
+          @submit-feedback="resumePlan(false)"
+          @toggle-feedback="toggleFeedback"
+        />
       </div>
 
       <div class="composer">
@@ -233,6 +233,7 @@ import {
   SettingOutlined,
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
+import PlanReview from '@/components/plan-review/index.vue'
 import { chatService } from '@/services'
 import type { ChatStreamResponse } from '@/services/api/chat'
 import modelService from '@/services/api/model'
@@ -243,7 +244,6 @@ import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/u
 
 const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
 const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
-const PlanReview = defineAsyncComponent(() => import('@/components/plan-review/index.vue'))
 
 const router = useRouter()
 const route = useRoute()
@@ -609,8 +609,9 @@ watch(
 )
 
 watch(
-  () => [messageStore.messages.length, messageStore.events.length],
+  () => [messageStore.messages.length, messageStore.events.length, Boolean(activePlan.value)],
   () => scrollToBottom(),
+  { flush: 'post' },
 )
 
 onMounted(() => {

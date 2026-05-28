@@ -260,4 +260,53 @@ describe('MessageStore', () => {
     expect(store.reportContent).toBe('persisted report')
     expect(store.workflowNodes.map(node => node.key)).toEqual(['reporter', '__END__'])
   })
+
+  it('restores pending plan review state from persisted thread events', async () => {
+    service.getMessages.mockResolvedValue({
+      session_id: 'session-plan',
+      title: 'Pending plan',
+      message_count: 1,
+      messages: [
+        {
+          session_id: 'session-plan',
+          thread_id: 'thread-plan',
+          role: 'USER',
+          content: 'question',
+          created_at: '2026-05-28T00:00:00Z',
+        },
+      ],
+    })
+    service.getThreadEvents.mockResolvedValue([
+      {
+        graph_id: { session_id: 'session-plan', thread_id: 'thread-plan' },
+        event_type: 'plan.generated',
+        node_name: 'planner',
+        phase: 'completed',
+        payload: {
+          title: 'Research plan',
+          steps: [{ id: 's1', title: 'First step' }],
+        },
+        sequence: 1,
+      },
+      {
+        graph_id: { session_id: 'session-plan', thread_id: 'thread-plan' },
+        event_type: 'human_feedback.waiting',
+        node_name: 'human_feedback',
+        phase: 'waiting',
+        content: {
+          title: 'Research plan',
+          steps: [{ id: 's1', title: 'First step' }],
+        },
+        sequence: 2,
+      },
+    ])
+
+    const store = useMessageStore()
+    await store.init('session-plan')
+
+    expect(store.planWaiting).toBe(true)
+    expect(store.running).toBe(false)
+    expect(store.plan?.title).toBe('Research plan')
+    expect(store.plan?.steps?.[0]?.title).toBe('First step')
+  })
 })

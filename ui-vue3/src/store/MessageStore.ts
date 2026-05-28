@@ -137,6 +137,19 @@ function eventPlan(event: ChatStreamResponse) {
   return null
 }
 
+function applyPlanGateState(state: MessageState, event: ChatStreamResponse) {
+  const plan = eventPlan(event)
+  if ((isPlanGenerated(event) || isFeedbackWaiting(event)) && plan) {
+    state.plan = plan
+  }
+  if (isFeedbackWaiting(event)) {
+    state.planWaiting = true
+    state.running = false
+  } else if (isFeedbackDecision(event) || isTerminalEvent(event)) {
+    state.planWaiting = false
+  }
+}
+
 function isPlanGenerated(event: ChatStreamResponse) {
   return eventType(event) === 'plan.generated' || (nodeName(event) === 'planner' && event.phase === 'completed')
 }
@@ -469,6 +482,7 @@ export const useMessageStore = defineStore('messageStore', {
         if (lastThread) {
           this.threadId = lastThread
           this.events = await conversationService.getThreadEvents(sessionId, lastThread)
+          this.events.forEach(event => applyPlanGateState(this, event))
         }
       } catch (error: any) {
         this.messages = []
@@ -504,19 +518,7 @@ export const useMessageStore = defineStore('messageStore', {
       if (id?.thread_id) {
         this.threadId = id.thread_id
       }
-      const plan = eventPlan(event)
-      if (isPlanGenerated(event) && plan) {
-        this.plan = plan
-      }
-      if (isFeedbackWaiting(event)) {
-        if (plan) {
-          this.plan = plan
-        }
-        this.planWaiting = true
-        this.running = false
-      } else if (isFeedbackDecision(event) || isTerminalEvent(event)) {
-        this.planWaiting = false
-      }
+      applyPlanGateState(this, event)
       this.events.push(event)
     },
     clearPlanGate() {
