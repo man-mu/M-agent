@@ -82,7 +82,7 @@ class GraphResearchRunnerTest {
 			assertThat(event.nodeName()).isEqualTo("coordinator");
 			assertThat(event.nodeType()).isEqualTo("coordinator");
 			assertThat(event.status()).isEqualTo("decision");
-			assertThat(event.displayTitle()).isEqualTo("Coordinator");
+			assertThat(event.displayTitle()).isEqualTo("\u7406\u89e3\u9700\u6c42");
 		});
 		assertThat(reportService.savedReports()).singleElement().satisfies(report -> {
 			assertThat(report.threadId()).isEqualTo("thread-direct");

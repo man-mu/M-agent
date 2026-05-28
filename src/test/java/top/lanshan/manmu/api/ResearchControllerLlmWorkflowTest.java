@@ -87,16 +87,16 @@ class ResearchControllerLlmWorkflowTest {
 		});
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.nodeName()).isEqualTo("planner");
-			assertThat(event.displayTitle()).isEqualTo("\u7814\u7a76\u8ba1\u5212");
+			assertThat(event.displayTitle()).isEqualTo("\u5236\u5b9a\u7814\u7a76\u8ba1\u5212");
 			assertThat(event.content()).isNotNull();
 		});
 		assertThat(events).anySatisfy(event -> {
 			assertThat(event.nodeName()).isEqualTo("coder_0");
-			assertThat(event.displayTitle()).isEqualTo("Coder 0");
+			assertThat(event.displayTitle()).isEqualTo("\u5185\u5bb9\u6574\u7406");
 			assertThat(event.nodeType()).isEqualTo("coder");
 			assertThat(event.executorId()).isEqualTo(0);
 		});
-		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("\u7ed3\u675f");
+		assertThat(events.get(events.size() - 1).displayTitle()).isEqualTo("\u5b8c\u6210");
 		assertThat(String.valueOf(events.get(events.size() - 1).content())).contains("done=true");
 	}
 

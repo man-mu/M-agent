@@ -127,7 +127,7 @@ class ParallelExecutorNodeTest {
 		assertThat(sequenced.eventType()).isEqualTo(ResearchStreamEventType.NODE_DELTA);
 		assertThat(sequenced.nodeName()).isEqualTo("parallel_executor");
 		assertThat(sequenced.nodeType()).isEqualTo("parallel_executor");
-		assertThat(sequenced.displayTitle()).isEqualTo("Parallel Executor");
+		assertThat(sequenced.displayTitle()).isEqualTo("\u4efb\u52a1\u5206\u914d");
 	}
 
 	@Test

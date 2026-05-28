@@ -48,23 +48,47 @@ export interface WorkflowNodeView {
 
 const nodeTitleMap: Record<string, string> = {
   __START__: '开始',
-  __END__: '结束',
-  coordinator: 'Coordinator',
-  rewrite_multi_query: 'Query Rewrite',
-  background_investigator: 'Background Investigation',
-  user_file_rag: 'User File RAG',
-  professional_kb_decision: 'Professional KB Decision',
-  professional_kb_rag: 'Professional KB RAG',
-  planner: '研究计划',
-  plan_validator: 'Plan Validator',
-  human_feedback: '人工反馈',
-  research_team: '研究团队',
-  parallel_executor: 'Parallel Executor',
+  __END__: '完成',
+  coordinator: '理解需求',
+  rewrite_multi_query: '优化问题',
+  background_investigator: '背景检索',
+  user_file_rag: '读取上传资料',
+  professional_kb_decision: '匹配专业知识',
+  professional_kb_rag: '补充专业资料',
+  planner: '制定研究计划',
+  plan_validator: '检查计划',
+  human_feedback: '确认计划',
+  research_team: '安排研究步骤',
+  parallel_executor: '任务分配',
   information: '信息检索',
-  researcher: '研究执行',
-  coder: 'Coder',
+  researcher: '资料分析',
+  coder: '内容整理',
   reporter: '报告生成',
   runner: '运行异常',
+}
+
+const rawTitleMap: Record<string, string> = {
+  Coordinator: '理解需求',
+  'Query Rewrite': '优化问题',
+  'Background Investigation': '背景检索',
+  'User File RAG': '读取上传资料',
+  'Professional KB Decision': '匹配专业知识',
+  'Professional KB RAG': '补充专业资料',
+  'Plan Validator': '检查计划',
+  'Parallel Executor': '任务分配',
+}
+
+const routeLabelMap: Record<string, string> = {
+  DEEP_RESEARCH: '进入深度研究',
+  DIRECT_ANSWER: '直接回答',
+  HUMAN_FEEDBACK: '等待确认',
+  PLANNER: '重新规划',
+  PLAN_VALIDATOR: '检查计划',
+  RESEARCH_TEAM: '安排研究步骤',
+  PARALLEL_EXECUTOR: '分配任务',
+  REPORTER: '生成报告',
+  FAILED: '处理失败',
+  WAITING: '等待确认',
 }
 
 export function initialMessageState(): MessageState {
@@ -184,17 +208,32 @@ function workflowNodeKey(event: ChatStreamResponse) {
 function workflowTitle(event: ChatStreamResponse) {
   const node = event.node_name || event.nodeName || ''
   const type = event.node_type || node
-  const executor = event.executor_id
-  if (event.displayTitle || event.display_title) {
-    return String(event.displayTitle || event.display_title)
-  }
+  const friendlyTitle = friendlyNodeTitle(node, type)
+  if (friendlyTitle) return friendlyTitle
   if (type === 'researcher' || /^researcher_\d+$/.test(node)) {
-    return executor === undefined || executor === null ? '研究执行' : `研究执行 ${executor}`
+    return '资料分析'
   }
   if (type === 'coder' || /^coder_\d+$/.test(node)) {
-    return executor === undefined || executor === null ? 'Coder' : `Coder ${executor}`
+    return '内容整理'
   }
-  return nodeTitleMap[node] || nodeTitleMap[type] || node || '工作流事件'
+  const rawTitle = String(event.displayTitle || event.display_title || '').trim()
+  if (rawTitle) {
+    return friendlyRawTitle(rawTitle)
+  }
+  return node || '工作流事件'
+}
+
+function friendlyNodeTitle(node: string, type: string) {
+  if (type === 'researcher' || /^researcher_\d+$/.test(node)) return '资料分析'
+  if (type === 'coder' || /^coder_\d+$/.test(node)) return '内容整理'
+  return nodeTitleMap[node] || nodeTitleMap[type] || ''
+}
+
+function friendlyRawTitle(title: string) {
+  if (rawTitleMap[title]) return rawTitleMap[title]
+  if (/^Coder\s*\d*$/i.test(title)) return '内容整理'
+  if (/^Researcher\s*\d*$/i.test(title) || /^研究执行\s*\d*$/.test(title)) return '资料分析'
+  return title
 }
 
 function workflowSummary(event: ChatStreamResponse) {
@@ -235,9 +274,8 @@ function workflowSummary(event: ChatStreamResponse) {
 function objectSummary(payload: Record<string, unknown>) {
   if (typeof payload.title === 'string' && payload.title.trim()) return truncate(payload.title.trim(), 220)
   if (typeof payload.query === 'string' && payload.query.trim()) return `查询：${truncate(payload.query.trim(), 200)}`
-  if (typeof payload.route === 'string' && payload.route.trim()) return `路由：${payload.route}`
-  if (typeof payload.next_route === 'string' && payload.next_route.trim()) return `路由：${payload.next_route}`
-  if (typeof payload.nextRoute === 'string' && payload.nextRoute.trim()) return `路由：${payload.nextRoute}`
+  const routeSummary = userRouteSummary(payload.route || payload.next_route || payload.nextRoute)
+  if (routeSummary) return routeSummary
   if (payload.completedSteps != null && payload.totalSteps != null) {
     return `已完成 ${payload.completedSteps}/${payload.totalSteps} 个步骤。`
   }
@@ -250,6 +288,14 @@ function objectSummary(payload: Record<string, unknown>) {
   if (Array.isArray(payload.siteInformation)) return `返回 ${payload.siteInformation.length} 条来源。`
   if (Array.isArray(payload.site_information)) return `返回 ${payload.site_information.length} 条来源。`
   return ''
+}
+
+function userRouteSummary(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return ''
+  }
+  const label = routeLabelMap[value.trim().toUpperCase()]
+  return label ? `下一步：${label}` : ''
 }
 
 function arraySummary(items: unknown[]) {

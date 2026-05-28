@@ -136,6 +136,51 @@ describe('MessageStore', () => {
     })
   })
 
+  it('hides backend executor names from workflow titles and route summaries', () => {
+    const nodes = deriveWorkflowNodes([
+      {
+        event_type: 'node.completed',
+        node_name: 'research_team',
+        node_type: 'research_team',
+        phase: 'decision',
+        payload: { nextRoute: 'PARALLEL_EXECUTOR' },
+        sequence: 1,
+      },
+      {
+        event_type: 'node.completed',
+        node_name: 'parallel_executor',
+        node_type: 'parallel_executor',
+        displayTitle: 'Parallel Executor',
+        phase: 'step.assigned',
+        payload: { assigned_node: 'coder_0' },
+        sequence: 2,
+      },
+      {
+        event_type: 'node.started',
+        node_name: 'coder_0',
+        node_type: 'coder',
+        executor_id: 0,
+        displayTitle: 'Coder 0',
+        phase: 'started',
+        sequence: 3,
+      },
+      {
+        event_type: 'node.started',
+        node_name: 'researcher_1',
+        node_type: 'researcher',
+        executor_id: 1,
+        display_title: '研究执行 1',
+        phase: 'started',
+        sequence: 4,
+      },
+    ])
+
+    expect(nodes.map(node => node.title)).toEqual(['安排研究步骤', '任务分配', '内容整理', '资料分析'])
+    expect(nodes[0].summary).toBe('下一步：分配任务')
+    expect(nodes.map(node => `${node.title} ${node.summary}`)).not.toContain('Parallel Executor')
+    expect(nodes.map(node => `${node.title} ${node.summary}`).join(' ')).not.toContain('Coder 0')
+  })
+
   it('exposes workflow nodes through the store getter', () => {
     const store = useMessageStore()
 

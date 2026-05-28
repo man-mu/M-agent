@@ -22,7 +22,7 @@ public class UserFileRagNode implements ResearchNode {
 
 	private static final Logger logger = LoggerFactory.getLogger(UserFileRagNode.class);
 
-	private static final String DISPLAY_TITLE = "User File RAG";
+	private static final String DISPLAY_TITLE = "\u8bfb\u53d6\u4e0a\u4f20\u8d44\u6599";
 
 	private static final String NO_CONTEXT_PAYLOAD = "No user-upload RAG context was retrieved.";
 
