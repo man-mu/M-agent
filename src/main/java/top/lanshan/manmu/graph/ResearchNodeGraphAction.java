@@ -44,6 +44,7 @@ public final class ResearchNodeGraphAction implements NodeAction {
 		Objects.requireNonNull(graphState, "graphState must not be null");
 		ResearchState state = ResearchGraphState.researchState(graphState);
 		List<ResearchEvent> events = Objects.requireNonNull(node.run(state), "node result must not be null")
+			.doOnNext(state::emitLiveEvent)
 			.collectList()
 			.block();
 		if (events != null) {

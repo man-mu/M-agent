@@ -2,6 +2,7 @@ package top.lanshan.manmu.node;
 
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.lanshan.manmu.agent.QueryRewriteAgent;
 import top.lanshan.manmu.model.QueryRewritePayload;
 import top.lanshan.manmu.model.ResearchEvent;
@@ -30,22 +31,24 @@ public class QueryRewriteNode implements ResearchNode {
 
 	@Override
 	public Flux<ResearchEvent> run(ResearchState state) {
-		return Flux.defer(() -> {
+		ResearchEvent started = ResearchEvent.message(state.threadId(), name(), "started",
+				"Rewriting research queries", new QueryRewritePayload(state.query(), List.of()));
+		return Flux.concat(Flux.just(started), Mono.defer(() -> {
 			try {
 				List<String> optimizedQueries = queryRewriteAgent.rewrite(state.query(), state.optimizeQueryNum());
 				state.optimizedQueries(optimizedQueries);
 				state.queryRewriteCompleted(true);
-				return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed",
+				return Mono.just(ResearchEvent.message(state.threadId(), name(), "completed",
 						"Optimized research queries generated",
 						new QueryRewritePayload(state.query(), state.optimizedQueries())));
 			}
 			catch (RuntimeException error) {
 				return degraded(state, error);
 			}
-		});
+		}));
 	}
 
-	private Flux<ResearchEvent> degraded(ResearchState state, RuntimeException error) {
+	private Mono<ResearchEvent> degraded(ResearchState state, RuntimeException error) {
 		if (state.optimizeQueryNum() == 0) {
 			state.optimizedQueries(List.of());
 		}
@@ -53,7 +56,7 @@ public class QueryRewriteNode implements ResearchNode {
 			state.optimizedQueries(List.of(state.query()));
 		}
 		state.queryRewriteCompleted(true);
-		return Flux.just(ResearchEvent.message(state.threadId(), name(), "degraded",
+		return Mono.just(ResearchEvent.message(state.threadId(), name(), "degraded",
 				"Query rewrite failed; continuing with the original query",
 				new QueryRewritePayload(state.query(), state.optimizedQueries(), error.getMessage())));
 	}

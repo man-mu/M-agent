@@ -20,84 +20,90 @@ import java.util.Map;
 
 public class UserFileRagNode implements ResearchNode {
 
-    private static final Logger logger = LoggerFactory.getLogger(UserFileRagNode.class);
+	private static final Logger logger = LoggerFactory.getLogger(UserFileRagNode.class);
 
-    private final RagRetriever retriever;
+	private static final String DISPLAY_TITLE = "User File RAG";
 
-    private final ChatClient ragAgent;
+	private static final String NO_CONTEXT_PAYLOAD = "No user-upload RAG context was retrieved.";
 
-    private final String ragPromptTemplate;
+	private final RagRetriever retriever;
 
-    public UserFileRagNode(RagRetriever retriever, ChatClient.Builder chatClientBuilder,
-            ResourceLoader resourceLoader) {
-        this.retriever = retriever;
-        this.ragAgent = chatClientBuilder.build();
-        this.ragPromptTemplate = loadPrompt(resourceLoader);
-    }
+	private final ChatClient ragAgent;
 
-    private String loadPrompt(ResourceLoader resourceLoader) {
-        Resource resource = resourceLoader.getResource("classpath:prompts/rag.md");
-        try {
-            return resource.getContentAsString(StandardCharsets.UTF_8);
-        }
-        catch (IOException e) {
-            throw new IllegalStateException("Failed to load RAG prompt from classpath:prompts/rag.md", e);
-        }
-    }
+	private final String ragPromptTemplate;
 
-    @Override
-    public int order() {
-        return 8;
-    }
+	public UserFileRagNode(RagRetriever retriever, ChatClient.Builder chatClientBuilder, ResourceLoader resourceLoader) {
+		this.retriever = retriever;
+		this.ragAgent = chatClientBuilder.build();
+		this.ragPromptTemplate = loadPrompt(resourceLoader);
+	}
 
-    @Override
-    public String name() {
-        return "user_file_rag";
-    }
+	private String loadPrompt(ResourceLoader resourceLoader) {
+		Resource resource = resourceLoader.getResource("classpath:prompts/rag.md");
+		try {
+			return resource.getContentAsString(StandardCharsets.UTF_8);
+		}
+		catch (IOException e) {
+			throw new IllegalStateException("Failed to load RAG prompt from classpath:prompts/rag.md", e);
+		}
+	}
 
-    @Override
-    public Flux<ResearchEvent> run(ResearchState state) {
-        return Flux.defer(() -> {
-            String sessionId = state.sessionId();
-            if (sessionId == null || sessionId.isBlank()) {
-                return Flux.empty();
-            }
-            String query = queryForRag(state);
-            logger.info("UserFileRagNode retrieving for session={}, query={}", sessionId,
-                    query.length() > 80 ? query.substring(0, 80) + "..." : query);
+	@Override
+	public int order() {
+		return 8;
+	}
 
-            Map<String, Object> filters = Map.of(
-                "source_type", "user_upload",
-                "session_id", sessionId);
-            List<Document> documents = retriever.retrieve(query, filters);
-            if (documents.isEmpty()) {
-                return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
-                        null, null, null, "completed", "completed",
-                        "用户文件检索", "No user-upload RAG context matched this query",
-                        "未检索到可用的用户文件上下文。", null, false, Instant.now()));
-            }
+	@Override
+	public String name() {
+		return "user_file_rag";
+	}
 
-            String context = retriever.buildContext(documents);
-            String prompt = ragPromptTemplate
-                .replace("{context}", context)
-                .replace("{question}", query);
+	@Override
+	public Flux<ResearchEvent> run(ResearchState state) {
+		return Flux.defer(() -> {
+			String sessionId = state.sessionId();
+			if (sessionId == null || sessionId.isBlank()) {
+				return Flux.empty();
+			}
+			String query = queryForRag(state);
+			ResearchEvent started = event(state, "started", "started", "Retrieving user-upload RAG context", query);
+			return Flux.concat(Flux.just(started), retrieveAndApplyRag(state, sessionId, query));
+		});
+	}
 
-            return Mono.fromCallable(() -> ragAgent.prompt().user(prompt).call().content())
-                .flatMapMany(ragContent -> {
-                    state.addObservation("[RAG] " + ragContent);
-                    return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
-                            null, null, null, "completed", "completed",
-                            "用户文件检索", "RAG context retrieved and applied", ragContent,
-                            null, false, Instant.now()));
-                });
-        });
-    }
+	private Flux<ResearchEvent> retrieveAndApplyRag(ResearchState state, String sessionId, String query) {
+		return Flux.defer(() -> {
+			logger.info("UserFileRagNode retrieving for session={}, query={}", sessionId,
+					query.length() > 80 ? query.substring(0, 80) + "..." : query);
 
-    private String queryForRag(ResearchState state) {
-        if (state.optimizedQueries() != null && !state.optimizedQueries().isEmpty()) {
-            return String.join(" ", state.optimizedQueries());
-        }
-        return state.query();
-    }
+			Map<String, Object> filters = Map.of("source_type", "user_upload", "session_id", sessionId);
+			List<Document> documents = retriever.retrieve(query, filters);
+			if (documents.isEmpty()) {
+				return Flux.just(event(state, "completed", "completed",
+						"No user-upload RAG context matched this query", NO_CONTEXT_PAYLOAD));
+			}
+
+			String context = retriever.buildContext(documents);
+			String prompt = ragPromptTemplate.replace("{context}", context).replace("{question}", query);
+
+			return Mono.fromCallable(() -> ragAgent.prompt().user(prompt).call().content()).flatMapMany(ragContent -> {
+				state.addObservation("[RAG] " + ragContent);
+				return Flux.just(event(state, "completed", "completed", "RAG context retrieved and applied",
+						ragContent));
+			});
+		});
+	}
+
+	private ResearchEvent event(ResearchState state, String phase, String status, String content, Object payload) {
+		return new ResearchEvent(state.threadId(), null, null, name(), name(), null, null, null, phase, status,
+				DISPLAY_TITLE, content, payload, null, false, Instant.now());
+	}
+
+	private String queryForRag(ResearchState state) {
+		if (state.optimizedQueries() != null && !state.optimizedQueries().isEmpty()) {
+			return String.join(" ", state.optimizedQueries());
+		}
+		return state.query();
+	}
 
 }

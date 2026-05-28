@@ -1,6 +1,7 @@
 package top.lanshan.manmu.node;
 
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.lanshan.manmu.agent.ProcessorAgent;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
@@ -10,7 +11,6 @@ import top.lanshan.manmu.model.StepExecutionStatus;
 import top.lanshan.manmu.model.StepType;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,34 +55,35 @@ public class CoderNode implements ResearchNode {
 				return Flux.empty();
 			}
 
-			List<ResearchEvent> events = new ArrayList<>();
-			events.add(ResearchEvent.message(state.threadId(), name(), "started", "Executing processing steps",
-					decision));
-
-			for (ResearchStep step : steps) {
-				markStepStarted(state, step);
-				try {
-					String result = processorAgent.process(state, step);
-					step.executionRes(result);
-					markStepCompleted(state, step);
-					state.addObservation(result);
-
-					events.add(stepEvent(state, step, "step_completed", step.executionStatus(),
-							"Completed: " + step.title(), payload(step, "result", result)));
-				}
-				catch (RuntimeException ex) {
-					String errorMessage = errorMessage(ex);
-					markStepFailed(state, step, errorMessage);
-					events.add(stepEvent(state, step, "failed", step.executionStatus(), "Failed: " + step.title(),
-							payload(step, "error", errorMessage)));
-					return Flux.concat(Flux.fromIterable(events), Flux.error(ex));
-				}
-			}
-
-			events.add(ResearchEvent.message(state.threadId(), name(), "completed", "Processing steps completed",
-					state.observations()));
-			return Flux.fromIterable(events);
+			ResearchEvent started =
+					ResearchEvent.message(state.threadId(), name(), "started", "Executing processing steps", decision);
+			return Flux.concat(Flux.just(started), Flux.fromIterable(steps).concatMap(step -> executeStep(state, step)),
+					Mono.fromSupplier(() -> ResearchEvent.message(state.threadId(), name(), "completed",
+							"Processing steps completed", state.observations())).flux());
 		});
+	}
+
+	private Flux<ResearchEvent> executeStep(ResearchState state, ResearchStep step) {
+		return Mono.fromSupplier(() -> {
+			markStepStarted(state, step);
+			try {
+				String result = processorAgent.process(state, step);
+				step.executionRes(result);
+				markStepCompleted(state, step);
+				state.addObservation(result);
+
+				return stepEvent(state, step, "step_completed", step.executionStatus(),
+						"Completed: " + step.title(), payload(step, "result", result));
+			}
+			catch (RuntimeException ex) {
+				String errorMessage = errorMessage(ex);
+				markStepFailed(state, step, errorMessage);
+				throw new StepExecutionException(stepEvent(state, step, "failed", step.executionStatus(),
+						"Failed: " + step.title(), payload(step, "error", errorMessage)), ex);
+			}
+		}).flux()
+			.onErrorResume(StepExecutionException.class,
+					error -> Flux.concat(Flux.just(error.event()), Flux.error(error.getCause())));
 	}
 
 	private List<ResearchStep> runnableSteps(ResearchState state) {
@@ -141,6 +142,21 @@ public class CoderNode implements ResearchNode {
 			return ex.getMessage();
 		}
 		return ex.getClass().getSimpleName();
+	}
+
+	private static class StepExecutionException extends RuntimeException {
+
+		private final ResearchEvent event;
+
+		StepExecutionException(ResearchEvent event, RuntimeException cause) {
+			super(cause);
+			this.event = event;
+		}
+
+		ResearchEvent event() {
+			return event;
+		}
+
 	}
 
 }

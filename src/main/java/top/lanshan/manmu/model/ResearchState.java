@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public class ResearchState {
 
@@ -76,6 +77,8 @@ public class ResearchState {
 
 	private String report;
 
+	private transient Consumer<ResearchEvent> liveEventConsumer;
+
 	private ResearchState(String threadId, String sessionId, String query, int maxSteps, int optimizeQueryNum,
 			boolean deepResearchEnabled, boolean autoAcceptedPlan, int maxPlanIterations) {
 		this.threadId = threadId;
@@ -135,6 +138,16 @@ public class ResearchState {
 
 	public void autoAcceptedPlan(boolean autoAcceptedPlan) {
 		this.autoAcceptedPlan = autoAcceptedPlan;
+	}
+
+	public void liveEventConsumer(Consumer<ResearchEvent> liveEventConsumer) {
+		this.liveEventConsumer = liveEventConsumer;
+	}
+
+	public void emitLiveEvent(ResearchEvent event) {
+		if (liveEventConsumer != null) {
+			liveEventConsumer.accept(event);
+		}
 	}
 
 	public int maxPlanIterations() {

@@ -438,6 +438,53 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
+	void emitsNodeEventsBeforeBlockingNodeCompletes() {
+		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new CompletedPlanningNode(), new RealPlanValidatorNodeAdapter(),
+				new HumanFeedbackNodeStub(), new StreamingBlockingInformationNode(releaseInformation),
+				new ResearchTeamNode(), new ParallelExecutorNodeStub(), new ReporterNode()),
+				new RecordingReportService(), new RecordingSessionHistoryService(), new RecordingSessionContextService());
+
+		StepVerifier.create(runner.runChat(new ResearchRequest("Explain workflow.", "thread-stream-live", 1),
+				"session-stream-live"))
+			.expectNextMatches(event -> "coordinator".equals(event.node()))
+			.expectNextMatches(event -> "rewrite_multi_query".equals(event.node()))
+			.expectNextMatches(event -> "background_investigator".equals(event.node()))
+			.expectNextMatches(event -> "planner".equals(event.node()))
+			.expectNextMatches(event -> "plan_validator".equals(event.node()))
+			.expectNextMatches(event -> "information".equals(event.node()) && "started".equals(event.phase()))
+			.then(() -> releaseInformation.tryEmitEmpty())
+			.expectNextMatches(event -> "information".equals(event.node()) && "completed".equals(event.phase()))
+			.expectNextMatches(event -> "research_team".equals(event.node()))
+			.expectNextMatches(event -> "reporter".equals(event.node()))
+			.expectNextMatches(event -> "__END__".equals(event.node()) && event.done())
+			.verifyComplete();
+	}
+
+	@Test
+	void resumeEmitsNodeEventsBeforeBlockingNodeCompletes() {
+		Sinks.Empty<Void> releaseInformation = Sinks.empty();
+		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new RealPlanValidatorNodeAdapter(),
+				new RealHumanFeedbackNodeAdapter(), new StreamingBlockingInformationNode(releaseInformation),
+				new ResearchTeamNode(), new ParallelExecutorNodeStub(), new ReporterNode()),
+				new RecordingReportService(), new RecordingSessionHistoryService(), new RecordingSessionContextService());
+
+		runner.runUntilPlanGate(new ResearchRequest("Explain workflow.", "thread-resume-stream-live", 1),
+				"session-resume-stream-live").collectList().block();
+
+		StepVerifier.create(runner.resume("thread-resume-stream-live", new ResumeDecision(true, null)))
+			.expectNextMatches(event -> "human_feedback".equals(event.node())
+					&& ResearchStreamEventType.HUMAN_FEEDBACK_ACCEPTED.equals(event.eventType()))
+			.expectNextMatches(event -> "information".equals(event.node()) && "started".equals(event.phase()))
+			.then(() -> releaseInformation.tryEmitEmpty())
+			.expectNextMatches(event -> "information".equals(event.node()) && "completed".equals(event.phase()))
+			.thenCancel()
+			.verify();
+	}
+
+	@Test
 	void stopMissingThreadReturnsFalse() {
 		GraphResearchRunner runner = newRunner(List.of(new CoordinatorNodeStub(), new QueryRewriteNodeStub(),
 				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new PlanValidatorNodeStub(),
@@ -716,6 +763,31 @@ class GraphResearchRunnerTest {
 
 	}
 
+	private static class CompletedPlanningNode implements ResearchNode {
+
+		@Override
+		public int order() {
+			return 10;
+		}
+
+		@Override
+		public String name() {
+			return "planner";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			state.recordPlanAttempt();
+			state.plannerError(null);
+			ResearchStep completedStep = new ResearchStep("Finished", "Already done.", true, StepType.RESEARCH,
+					"Done", ResearchStep.STATUS_COMPLETED);
+			completedStep.id("step-completed");
+			state.plan(new ResearchPlan("Completed plan", true, "Already complete", List.of(completedStep)));
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "completed", "planned", state.plan()));
+		}
+
+	}
+
 	private static class PlanValidatorNodeStub implements ResearchNode {
 
 		@Override
@@ -843,6 +915,34 @@ class GraphResearchRunnerTest {
 			return release.asMono()
 				.thenReturn(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()))
 				.flux();
+		}
+
+	}
+
+	private static class StreamingBlockingInformationNode implements ResearchNode {
+
+		private final Sinks.Empty<Void> release;
+
+		StreamingBlockingInformationNode(Sinks.Empty<Void> release) {
+			this.release = release;
+		}
+
+		@Override
+		public int order() {
+			return 20;
+		}
+
+		@Override
+		public String name() {
+			return "information";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			return Flux.concat(Flux.just(ResearchEvent.message(state.threadId(), name(), "started",
+					"started", null)), release.asMono()
+				.thenReturn(ResearchEvent.message(state.threadId(), name(), "completed", "searched", List.of()))
+				.flux());
 		}
 
 	}

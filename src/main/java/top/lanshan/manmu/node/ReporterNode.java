@@ -7,6 +7,7 @@ import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Component
 public class ReporterNode implements ResearchNode {
@@ -36,7 +37,9 @@ public class ReporterNode implements ResearchNode {
 
 	@Override
 	public Flux<ResearchEvent> run(ResearchState state) {
-		return Flux.defer(() -> {
+		ResearchEvent started =
+				ResearchEvent.message(state.threadId(), name(), "started", "Generating final report", null);
+		return Flux.concat(Flux.just(started), Mono.defer(() -> {
 			String userProfileContext = "";
 			if (userProfileProperties != null && userProfileProperties.isGuideReporter()
 					&& userProfileService != null) {
@@ -44,10 +47,8 @@ public class ReporterNode implements ResearchNode {
 			}
 			String report = reporterAgent.report(state, userProfileContext);
 			state.report(report);
-			return Flux.just(
-					ResearchEvent.message(state.threadId(), name(), "started", "Generating final report", null),
-					ResearchEvent.message(state.threadId(), name(), "completed", report, report));
-		});
+			return Mono.just(ResearchEvent.message(state.threadId(), name(), "completed", report, report));
+		}));
 	}
 
 }

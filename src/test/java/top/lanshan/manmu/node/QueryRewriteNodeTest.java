@@ -20,6 +20,9 @@ class QueryRewriteNodeTest {
 
 		StepVerifier.create(node.run(state)).assertNext(event -> {
 			assertThat(event.node()).isEqualTo("rewrite_multi_query");
+			assertThat(event.phase()).isEqualTo("started");
+		}).assertNext(event -> {
+			assertThat(event.node()).isEqualTo("rewrite_multi_query");
 			assertThat(event.phase()).isEqualTo("completed");
 			assertThat(event.payload()).isInstanceOf(QueryRewritePayload.class);
 			QueryRewritePayload payload = (QueryRewritePayload) event.payload();
@@ -36,6 +39,8 @@ class QueryRewriteNodeTest {
 		ResearchState state = ResearchState.from(new ResearchRequest("Original question", "thread-1", 3));
 
 		StepVerifier.create(node.run(state)).assertNext(event -> {
+			assertThat(event.phase()).isEqualTo("started");
+		}).assertNext(event -> {
 			assertThat(event.node()).isEqualTo("rewrite_multi_query");
 			assertThat(event.phase()).isEqualTo("degraded");
 			QueryRewritePayload payload = (QueryRewritePayload) event.payload();
@@ -53,6 +58,8 @@ class QueryRewriteNodeTest {
 		ResearchState state = ResearchState.from(new ResearchRequest("Original question", "thread-1", 3, 0));
 
 		StepVerifier.create(node.run(state)).assertNext(event -> {
+			assertThat(event.phase()).isEqualTo("started");
+		}).assertNext(event -> {
 			assertThat(event.phase()).isEqualTo("degraded");
 			QueryRewritePayload payload = (QueryRewritePayload) event.payload();
 			assertThat(payload.optimizedQueries()).isEmpty();

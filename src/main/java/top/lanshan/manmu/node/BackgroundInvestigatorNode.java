@@ -2,6 +2,7 @@ package top.lanshan.manmu.node;
 
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.BackgroundInvestigationPayload;
 import top.lanshan.manmu.model.BackgroundInvestigationSearchResult;
 import top.lanshan.manmu.model.ResearchEvent;
@@ -40,44 +41,51 @@ public class BackgroundInvestigatorNode implements ResearchNode {
 	public Flux<ResearchEvent> run(ResearchState state) {
 		return Flux.defer(() -> {
 			List<String> queries = searchQueries(state);
-			List<ResearchEvent> events = new ArrayList<>();
 			List<BackgroundInvestigationSearchResult> results = new ArrayList<>();
 			List<String> failures = new ArrayList<>();
 
-			events.add(ResearchEvent.message(state.threadId(), name(), "started",
+			ResearchEvent started = ResearchEvent.message(state.threadId(), name(), "started",
 					"Investigating current-question background",
-					new BackgroundInvestigationPayload(queries, List.of(), "")));
-
-			for (String query : queries) {
-				try {
-					List<SiteInformation> siteInformation = webSearchClient.search(query);
-					BackgroundInvestigationSearchResult result =
-							new BackgroundInvestigationSearchResult(query, siteInformation);
-					results.add(result);
-					events.add(ResearchEvent.message(state.threadId(), name(), "search_completed",
-							"Background search completed", new BackgroundInvestigationPayload(List.of(query),
-									List.of(result), result.promptText())));
-				}
-				catch (RuntimeException error) {
-					failures.add("%s: %s".formatted(query, error.getMessage()));
-					events.add(ResearchEvent.message(state.threadId(), name(), "search_degraded",
-							"Background search failed; continuing with visible degraded context",
-							new BackgroundInvestigationPayload(List.of(query), List.of(), "", error.getMessage())));
-				}
-			}
-
-			String backgroundContext = backgroundContext(results, failures);
-			state.backgroundInvestigationResults(results);
-			state.backgroundInvestigationContext(backgroundContext);
-			state.backgroundInvestigationCompleted(true);
-
-			String finalPhase = results.isEmpty() && !failures.isEmpty() ? "degraded" : "completed";
-			String reason = failures.isEmpty() ? null : String.join("\n", failures);
-			events.add(ResearchEvent.message(state.threadId(), name(), finalPhase,
-					"Background investigation " + ("completed".equals(finalPhase) ? "completed" : "degraded"),
-					new BackgroundInvestigationPayload(queries, results, backgroundContext, reason)));
-			return Flux.fromIterable(events);
+					new BackgroundInvestigationPayload(queries, List.of(), ""));
+			return Flux.concat(Flux.just(started),
+					Flux.fromIterable(queries).concatMap(query -> search(state, query, results, failures)),
+					Mono.fromSupplier(() -> complete(state, queries, results, failures)).flux());
 		});
+	}
+
+	private Mono<ResearchEvent> search(ResearchState state, String query,
+			List<BackgroundInvestigationSearchResult> results, List<String> failures) {
+		return Mono.fromSupplier(() -> {
+			try {
+				List<SiteInformation> siteInformation = webSearchClient.search(query);
+				BackgroundInvestigationSearchResult result = new BackgroundInvestigationSearchResult(query,
+						siteInformation);
+				results.add(result);
+				return ResearchEvent.message(state.threadId(), name(), "search_completed",
+						"Background search completed", new BackgroundInvestigationPayload(List.of(query),
+								List.of(result), result.promptText()));
+			}
+			catch (RuntimeException error) {
+				failures.add("%s: %s".formatted(query, errorMessage(error)));
+				return ResearchEvent.message(state.threadId(), name(), "search_degraded",
+						"Background search failed; continuing with visible degraded context",
+						new BackgroundInvestigationPayload(List.of(query), List.of(), "", errorMessage(error)));
+			}
+		});
+	}
+
+	private ResearchEvent complete(ResearchState state, List<String> queries,
+			List<BackgroundInvestigationSearchResult> results, List<String> failures) {
+		String backgroundContext = backgroundContext(results, failures);
+		state.backgroundInvestigationResults(results);
+		state.backgroundInvestigationContext(backgroundContext);
+		state.backgroundInvestigationCompleted(true);
+
+		String finalPhase = results.isEmpty() && !failures.isEmpty() ? "degraded" : "completed";
+		String reason = failures.isEmpty() ? null : String.join("\n", failures);
+		return ResearchEvent.message(state.threadId(), name(), finalPhase,
+				"Background investigation " + ("completed".equals(finalPhase) ? "completed" : "degraded"),
+				new BackgroundInvestigationPayload(queries, results, backgroundContext, reason));
 	}
 
 	private List<String> searchQueries(ResearchState state) {
@@ -113,6 +121,13 @@ public class BackgroundInvestigatorNode implements ResearchNode {
 
 	private String bulletList(List<String> values) {
 		return values.stream().map(value -> "- " + value).collect(Collectors.joining("\n"));
+	}
+
+	private String errorMessage(RuntimeException error) {
+		if (error.getMessage() != null && !error.getMessage().isBlank()) {
+			return error.getMessage();
+		}
+		return error.getClass().getSimpleName();
 	}
 
 }

@@ -11,9 +11,9 @@ import top.lanshan.manmu.model.StepType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -55,40 +55,41 @@ public class ResearcherNode implements ResearchNode {
 				return Flux.error(new IllegalStateException("Research team decision is missing"));
 			}
 
-			List<ResearchEvent> events = new ArrayList<>();
 			List<ResearchStep> steps = runnableSteps(state, decision);
 			if (steps.isEmpty()) {
 				return Flux.empty();
 			}
 
-			events.add(ResearchEvent.message(state.threadId(), name(), "started",
-					"Executing " + decision.nextStepType().name().toLowerCase() + " steps", decision));
-
-			for (ResearchStep step : steps) {
-				markStepStarted(state, step);
-				try {
-					StepSearchContext searchContext = state.searchContextFor(step).orElse(step.searchContext());
-					String observation = researcherAgent.research(state.query(), step, searchContext);
-					step.executionRes(observation);
-					markStepCompleted(state, step);
-					state.addObservation(observation);
-
-					events.add(stepEvent(state, step, "step_completed", step.executionStatus(),
-							"Completed: " + step.title(), Map.of("step", step, "observation", observation)));
-				}
-				catch (RuntimeException ex) {
-					String errorMessage = errorMessage(ex);
-					markStepFailed(state, step, errorMessage);
-					events.add(stepEvent(state, step, "failed", step.executionStatus(), "Failed: " + step.title(),
-							Map.of("step", step, "error", errorMessage)));
-					return Flux.concat(Flux.fromIterable(events), Flux.error(ex));
-				}
-			}
-
-			events.add(ResearchEvent.message(state.threadId(), name(), "completed", "Research steps completed",
-					state.observations()));
-			return Flux.fromIterable(events);
+			ResearchEvent started = ResearchEvent.message(state.threadId(), name(), "started",
+					"Executing " + decision.nextStepType().name().toLowerCase() + " steps", decision);
+			return Flux.concat(Flux.just(started), Flux.fromIterable(steps).concatMap(step -> executeStep(state, step)),
+					Mono.fromSupplier(() -> ResearchEvent.message(state.threadId(), name(), "completed",
+							"Research steps completed", state.observations())).flux());
 		});
+	}
+
+	private Flux<ResearchEvent> executeStep(ResearchState state, ResearchStep step) {
+		return Mono.fromSupplier(() -> {
+			markStepStarted(state, step);
+			try {
+				StepSearchContext searchContext = state.searchContextFor(step).orElse(step.searchContext());
+				String observation = researcherAgent.research(state.query(), step, searchContext);
+				step.executionRes(observation);
+				markStepCompleted(state, step);
+				state.addObservation(observation);
+
+				return stepEvent(state, step, "step_completed", step.executionStatus(),
+						"Completed: " + step.title(), Map.of("step", step, "observation", observation));
+			}
+			catch (RuntimeException ex) {
+				String errorMessage = errorMessage(ex);
+				markStepFailed(state, step, errorMessage);
+				throw new StepExecutionException(stepEvent(state, step, "failed", step.executionStatus(),
+						"Failed: " + step.title(), Map.of("step", step, "error", errorMessage)), ex);
+			}
+		}).flux()
+			.onErrorResume(StepExecutionException.class,
+					error -> Flux.concat(Flux.just(error.event()), Flux.error(error.getCause())));
 	}
 
 	private List<ResearchStep> runnableSteps(ResearchState state, ResearchTeamDecision decision) {
@@ -144,6 +145,21 @@ public class ResearcherNode implements ResearchNode {
 			return ex.getMessage();
 		}
 		return ex.getClass().getSimpleName();
+	}
+
+	private static class StepExecutionException extends RuntimeException {
+
+		private final ResearchEvent event;
+
+		StepExecutionException(ResearchEvent event, RuntimeException cause) {
+			super(cause);
+			this.event = event;
+		}
+
+		ResearchEvent event() {
+			return event;
+		}
+
 	}
 
 }

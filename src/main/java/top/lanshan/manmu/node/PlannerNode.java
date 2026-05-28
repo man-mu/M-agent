@@ -7,6 +7,7 @@ import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Component
 public class PlannerNode implements ResearchNode {
@@ -34,17 +35,23 @@ public class PlannerNode implements ResearchNode {
 			state.plannerError(null);
 			ResearchEvent started =
 					ResearchEvent.message(state.threadId(), name(), "started", "Planning research steps", null);
+			return Flux.concat(Flux.just(started), plan(state));
+		});
+	}
+
+	private Mono<ResearchEvent> plan(ResearchState state) {
+		return Mono.defer(() -> {
 			try {
 				ResearchPlan plan = plannerAgent.plan(state.query(), state.maxSteps(), state.planFeedback(),
 						state.backgroundContext(), state.optimizedQueries(), state.backgroundInvestigationContext());
 				state.plan(plan);
-				return Flux.just(started,
-						ResearchEvent.message(state.threadId(), name(), "completed", "Plan generated", snapshot(plan)));
+				return Mono.just(ResearchEvent.message(state.threadId(), name(), "completed", "Plan generated",
+						snapshot(plan)));
 			}
 			catch (RuntimeException error) {
 				state.plan(null);
 				state.plannerError(errorMessage(error));
-				return Flux.just(started, ResearchEvent.message(state.threadId(), name(), "failed",
+				return Mono.just(ResearchEvent.message(state.threadId(), name(), "failed",
 						"Plan generation failed", state.plannerError()));
 			}
 		});

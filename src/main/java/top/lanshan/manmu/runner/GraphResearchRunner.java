@@ -5,7 +5,9 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
@@ -22,6 +24,7 @@ import top.lanshan.manmu.sessioncontext.SessionContextService;
 import top.lanshan.manmu.sessionhistory.SessionHistoryService;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -141,40 +144,32 @@ public class GraphResearchRunner implements ResearchRunner {
 	private Flux<ResearchEvent> runAutoResearchGraph(ResearchState state) {
 		Map<String, Object> graphState = ResearchGraphState.from(state);
 		LatestGraphState latestGraphState = new LatestGraphState(graphState);
-		List<ResearchEvent> emittedEvents = new ArrayList<>();
-		return graph.fluxStream(graphState)
-			.concatMap(output -> {
-				latestGraphState.update(output);
-				return emitNewEvents(output, emittedEvents);
-			})
-			.concatWith(Flux.defer(
-					() -> saveCompletedReport(ResearchGraphState.researchState(latestGraphState.graphState()))))
-			.subscribeOn(Schedulers.boundedElastic());
+		List<ResearchEvent> emittedEvents = Collections.synchronizedList(new ArrayList<>());
+		return graphEvents(graphState, emittedEvents,
+				graph.fluxStream(graphState)
+					.doOnNext(latestGraphState::update)
+					.concatMap(output -> emitNewEvents(output, emittedEvents))
+					.concatWith(Flux.defer(() -> saveCompletedReport(
+							ResearchGraphState.researchState(latestGraphState.graphState())))));
 	}
 
 	private Flux<ResearchEvent> runPlanGateGraph(ResearchState state) {
 		Map<String, Object> graphState = ResearchGraphState.from(state);
 		LatestGraphState latestGraphState = new LatestGraphState(graphState);
-		List<ResearchEvent> emittedEvents = new ArrayList<>();
-		return planGateGraph.fluxStream(graphState)
-			.concatMap(output -> {
-				latestGraphState.update(output);
-				return emitNewEvents(output, emittedEvents);
-			})
-			.concatWith(Flux.defer(() -> handlePlanGateCompletion(latestGraphState.graphState())))
-			.subscribeOn(Schedulers.boundedElastic());
+		List<ResearchEvent> emittedEvents = Collections.synchronizedList(new ArrayList<>());
+		return graphEvents(graphState, emittedEvents, planGateGraph.fluxStream(graphState)
+			.doOnNext(latestGraphState::update)
+			.concatMap(output -> emitNewEvents(output, emittedEvents))
+			.concatWith(Flux.defer(() -> handlePlanGateCompletion(latestGraphState.graphState()))));
 	}
 
 	private Flux<ResearchEvent> runResumeGraph(Map<String, Object> graphState) {
 		LatestGraphState latestGraphState = new LatestGraphState(graphState);
-		List<ResearchEvent> emittedEvents = new ArrayList<>(ResearchGraphState.events(graphState));
-		return resumeGraph.fluxStream(graphState)
-			.concatMap(output -> {
-				latestGraphState.update(output);
-				return emitNewEvents(output, emittedEvents);
-			})
-			.concatWith(Flux.defer(() -> handleResumeCompletion(latestGraphState.graphState())))
-			.subscribeOn(Schedulers.boundedElastic());
+		List<ResearchEvent> emittedEvents = Collections.synchronizedList(new ArrayList<>(ResearchGraphState.events(graphState)));
+		return graphEvents(graphState, emittedEvents, resumeGraph.fluxStream(graphState)
+			.doOnNext(latestGraphState::update)
+			.concatMap(output -> emitNewEvents(output, emittedEvents))
+			.concatWith(Flux.defer(() -> handleResumeCompletion(latestGraphState.graphState()))));
 	}
 
 	private Flux<ResearchEvent> emitNewEvents(NodeOutput output, List<ResearchEvent> emittedEvents) {
@@ -188,6 +183,52 @@ public class GraphResearchRunner implements ResearchRunner {
 			.toList();
 		emittedEvents.addAll(newEvents);
 		return Flux.fromIterable(newEvents);
+	}
+
+	private Flux<ResearchEvent> graphEvents(Map<String, Object> graphState, List<ResearchEvent> emittedEvents,
+			Flux<ResearchEvent> completionEvents) {
+		return Flux.defer(() -> {
+			Sinks.Many<ResearchEvent> liveEvents = Sinks.many().unicast().onBackpressureBuffer();
+			ResearchGraphState.researchState(graphState).liveEventConsumer(event -> {
+				emittedEvents.add(event);
+				liveEvents.tryEmitNext(event);
+			});
+			List<ResearchEvent> bufferedCompletionEvents = Collections.synchronizedList(new ArrayList<>());
+			return Flux.<ResearchEvent>create(emitter -> {
+				Disposable liveSubscription = liveEvents.asFlux().subscribe(emitter::next, emitter::error);
+				Disposable graphSubscription = completionEvents.doOnNext(bufferedCompletionEvents::add)
+					.then()
+					.subscribeOn(Schedulers.boundedElastic())
+					.subscribe(null, error -> failGraphEvents(graphState, liveEvents, emitter, error),
+							() -> completeGraphEvents(graphState, liveEvents, bufferedCompletionEvents, emitter));
+				emitter.onCancel(() -> {
+					graphSubscription.dispose();
+					liveSubscription.dispose();
+					cleanupGraphEvents(graphState, liveEvents);
+				});
+			}, FluxSink.OverflowStrategy.BUFFER);
+		});
+	}
+
+	private void completeGraphEvents(Map<String, Object> graphState, Sinks.Many<ResearchEvent> liveEvents,
+			List<ResearchEvent> bufferedCompletionEvents, FluxSink<ResearchEvent> emitter) {
+		ResearchGraphState.researchState(graphState).liveEventConsumer(null);
+		if (!bufferedCompletionEvents.isEmpty()) {
+			bufferedCompletionEvents.forEach(emitter::next);
+		}
+		emitter.complete();
+		liveEvents.tryEmitComplete();
+	}
+
+	private void failGraphEvents(Map<String, Object> graphState, Sinks.Many<ResearchEvent> liveEvents,
+			FluxSink<ResearchEvent> emitter, Throwable error) {
+		cleanupGraphEvents(graphState, liveEvents);
+		emitter.error(error);
+	}
+
+	private void cleanupGraphEvents(Map<String, Object> graphState, Sinks.Many<ResearchEvent> liveEvents) {
+		ResearchGraphState.researchState(graphState).liveEventConsumer(null);
+		liveEvents.tryEmitComplete();
 	}
 
 	private Flux<ResearchEvent> handlePlanGateCompletion(Map<String, Object> graphState) {
