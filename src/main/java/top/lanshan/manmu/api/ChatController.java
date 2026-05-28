@@ -21,6 +21,7 @@ import top.lanshan.manmu.model.InformationPayload;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchRequest;
 import top.lanshan.manmu.model.ResearchStreamEventType;
+import top.lanshan.manmu.eventhistory.ResearchEventHistoryService;
 import top.lanshan.manmu.runner.ResearchRunner;
 import top.lanshan.manmu.runner.ResumeDecision;
 
@@ -36,10 +37,13 @@ public class ChatController {
 
 	private final ResearchRunner runner;
 
+	private final ResearchEventHistoryService eventHistoryService;
+
 	private final ConcurrentHashMap<String, Integer> sessionCount = new ConcurrentHashMap<>();
 
-	public ChatController(ResearchRunner runner) {
+	public ChatController(ResearchRunner runner, ResearchEventHistoryService eventHistoryService) {
 		this.runner = runner;
+		this.eventHistoryService = eventHistoryService;
 	}
 
 	@PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -50,22 +54,25 @@ public class ChatController {
 
 		Flux<ResearchEvent> events = request.autoAcceptedPlan() ? runner.runChat(researchRequest, graphId.sessionId())
 				: runner.runUntilPlanGate(researchRequest, graphId.sessionId());
-		return events.map(event -> ServerSentEvent.<ChatStreamResponse>builder()
-			.id(graphId.threadId())
-			.event(eventName(event))
-			.data(toResponse(graphId, event))
-			.build());
+		return events.concatMap(event -> toPersistedResponse(graphId, event)
+			.map(response -> ServerSentEvent.<ChatStreamResponse>builder()
+				.id(graphId.threadId())
+				.event(eventName(event))
+				.data(response)
+				.build()));
 	}
 
 	@PostMapping(value = "/resume", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<ChatStreamResponse>> resume(@Valid @RequestBody FeedbackRequest request) {
 		GraphId graphId = new GraphId(request.sessionId(), request.threadId());
 		ResumeDecision decision = new ResumeDecision(request.feedback(), request.feedbackContent());
-		return runner.resume(request.threadId(), decision).map(event -> ServerSentEvent.<ChatStreamResponse>builder()
-			.id(graphId.threadId())
-			.event(eventName(event))
-			.data(toResponse(graphId, event))
-			.build());
+		return runner.resume(request.threadId(), decision)
+			.concatMap(event -> toPersistedResponse(graphId, event)
+				.map(response -> ServerSentEvent.<ChatStreamResponse>builder()
+					.id(graphId.threadId())
+					.event(eventName(event))
+					.data(response)
+					.build()));
 	}
 
 	@PostMapping("/stop")
@@ -87,6 +94,11 @@ public class ChatController {
 		Object content = content(event);
 		Object siteInformation = siteInformation(event);
 		return ChatStreamResponse.from(graphId, event, content, siteInformation);
+	}
+
+	private Mono<ChatStreamResponse> toPersistedResponse(GraphId graphId, ResearchEvent event) {
+		ChatStreamResponse response = toResponse(graphId, event);
+		return eventHistoryService.save(graphId.sessionId(), graphId.threadId(), response).thenReturn(response);
 	}
 
 	private Object content(ResearchEvent event) {

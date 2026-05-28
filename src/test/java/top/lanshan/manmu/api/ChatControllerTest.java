@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import top.lanshan.manmu.eventhistory.ResearchEventHistoryService;
 import top.lanshan.manmu.model.ApiResponse;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.ResearchPlan;
@@ -31,12 +32,19 @@ import static org.mockito.Mockito.when;
 
 class ChatControllerTest {
 
+	private final ResearchEventHistoryService eventHistoryService = mock(ResearchEventHistoryService.class);
+
+	private ChatController controller(ResearchRunner runner) {
+		when(eventHistoryService.save(any(), any(), any())).thenReturn(Mono.empty());
+		return new ChatController(runner, eventHistoryService);
+	}
+
 	@Test
 	void streamUsesPlanGateWhenAutoAcceptedPlanIsFalse() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runUntilPlanGate(any(), eq("session-a"))).thenReturn(Flux.just(ResearchEvent.message("thread-1",
 				"human_feedback", "waiting", "Waiting for feedback", null).withSequence(1)));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var events = client.post()
 			.uri("/chat/stream")
@@ -71,6 +79,7 @@ class ChatControllerTest {
 		ArgumentCaptor<ResearchRequest> requestCaptor = ArgumentCaptor.forClass(ResearchRequest.class);
 		verify(runner).runUntilPlanGate(requestCaptor.capture(), eq("session-a"));
 		verify(runner, never()).runChat(any(), any());
+		verify(eventHistoryService).save(eq("session-a"), eq("thread-1"), any(ChatStreamResponse.class));
 		assertThat(requestCaptor.getValue().threadId()).isEqualTo("thread-1");
 		assertThat(requestCaptor.getValue().maxSteps()).isEqualTo(2);
 	}
@@ -80,7 +89,7 @@ class ChatControllerTest {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.runChat(any(), eq("session-auto")))
 			.thenReturn(Flux.just(ResearchEvent.stopped("thread-auto", "Stopped by user").withSequence(2)));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var events = client.post()
 			.uri("/chat/stream")
@@ -116,7 +125,7 @@ class ChatControllerTest {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.resume(eq("thread-2"), any())).thenReturn(Flux.just(ResearchEvent.message("thread-2",
 				"planner", "completed", "Plan regenerated", null).withSequence(7)));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var events = client.post()
 			.uri("/chat/resume")
@@ -154,7 +163,7 @@ class ChatControllerTest {
 						ResearchStep.STATUS_PENDING)));
 		when(runner.runUntilPlanGate(any(), eq("session-plan"))).thenReturn(Flux.just(
 				ResearchEvent.message("thread-plan", "human_feedback", "waiting", "Waiting for feedback", plan)));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var json = client.post()
 			.uri("/chat/stream")
@@ -177,7 +186,7 @@ class ChatControllerTest {
 	void stopReturnsSuccessWhenRunnerStopsThread() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.stopAndRecord("thread-3")).thenReturn(Mono.just(true));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var response = client.post()
 			.uri("/chat/stop")
@@ -201,7 +210,7 @@ class ChatControllerTest {
 	void stopReturnsFailureWhenThreadIsMissing() {
 		ResearchRunner runner = mock(ResearchRunner.class);
 		when(runner.stopAndRecord("missing-thread")).thenReturn(Mono.just(false));
-		WebTestClient client = WebTestClient.bindToController(new ChatController(runner)).build();
+		WebTestClient client = WebTestClient.bindToController(controller(runner)).build();
 
 		var response = client.post()
 			.uri("/chat/stop")

@@ -468,6 +468,7 @@ export const useMessageStore = defineStore('messageStore', {
         const lastThread = [...messages].reverse().find(item => item.thread_id)?.thread_id
         if (lastThread) {
           this.threadId = lastThread
+          this.events = await conversationService.getThreadEvents(sessionId, lastThread)
         }
       } catch (error: any) {
         this.messages = []

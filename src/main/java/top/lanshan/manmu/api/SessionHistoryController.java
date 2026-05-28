@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import top.lanshan.manmu.eventhistory.ResearchEventHistoryService;
+import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.sessionhistory.ResearchSessionHistory;
 import top.lanshan.manmu.sessionhistory.SessionHistoryResponse;
 import top.lanshan.manmu.sessionhistory.SessionHistoryService;
@@ -20,8 +22,12 @@ public class SessionHistoryController {
 
 	private final SessionHistoryService sessionHistoryService;
 
-	public SessionHistoryController(SessionHistoryService sessionHistoryService) {
+	private final ResearchEventHistoryService eventHistoryService;
+
+	public SessionHistoryController(SessionHistoryService sessionHistoryService,
+			ResearchEventHistoryService eventHistoryService) {
 		this.sessionHistoryService = sessionHistoryService;
+		this.eventHistoryService = eventHistoryService;
 	}
 
 	@GetMapping("/{sessionId}/history")
@@ -56,6 +62,22 @@ public class SessionHistoryController {
 				.ok(SessionHistoryResponse.success(sessionId, null, "Recent history retrieved successfully", histories)))
 			.onErrorResume(error -> Mono.just(ResponseEntity.internalServerError()
 				.body(SessionHistoryResponse.error(sessionId, null, "Failed to get history: " + error.getMessage()))));
+	}
+
+	@GetMapping("/{sessionId}/threads/{threadId}/events")
+	public Mono<ResponseEntity<SessionHistoryResponse<List<ChatStreamResponse>>>> getThreadEvents(
+			@PathVariable String sessionId, @PathVariable String threadId) {
+		return sessionHistoryService.findBySessionIdAndThreadId(sessionId, threadId)
+			.flatMap(history -> eventHistoryService.findBySessionIdAndThreadId(sessionId, threadId)
+				.map(record -> record.event())
+				.collectList()
+				.map(events -> ResponseEntity
+					.ok(SessionHistoryResponse.success(sessionId, threadId, "Thread events retrieved successfully",
+							events))))
+			.defaultIfEmpty(ResponseEntity.status(HttpStatus.NOT_FOUND)
+				.body(SessionHistoryResponse.notFound(sessionId, threadId, "Thread history not found")))
+			.onErrorResume(error -> Mono.just(ResponseEntity.internalServerError()
+				.body(SessionHistoryResponse.error(sessionId, threadId, "Failed to get events: " + error.getMessage()))));
 	}
 
 }

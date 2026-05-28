@@ -1,10 +1,24 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { deriveWorkflowNodes, useMessageStore } from './MessageStore'
+
+const service = vi.hoisted(() => ({
+  getMessages: vi.fn(),
+  getThreadEvents: vi.fn(),
+}))
+
+vi.mock('@/services', () => ({
+  conversationService: {
+    getMessages: service.getMessages,
+    getThreadEvents: service.getThreadEvents,
+  },
+}))
 
 describe('MessageStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    service.getMessages.mockReset()
+    service.getThreadEvents.mockReset()
   })
 
   it('extracts report content from final graph output', () => {
@@ -193,5 +207,57 @@ describe('MessageStore', () => {
       statusLabel: '等待确认',
     })
     expect(store.planWaiting).toBe(true)
+  })
+
+  it('loads persisted thread events when opening history conversations', async () => {
+    service.getMessages.mockResolvedValue({
+      session_id: 'session-history',
+      title: 'History',
+      message_count: 2,
+      messages: [
+        {
+          session_id: 'session-history',
+          thread_id: 'thread-history',
+          role: 'USER',
+          content: 'question',
+          created_at: '2026-05-28T00:00:00Z',
+        },
+        {
+          session_id: 'session-history',
+          thread_id: 'thread-history',
+          role: 'ASSISTANT',
+          content: 'answer',
+          created_at: '2026-05-28T00:01:00Z',
+        },
+      ],
+    })
+    service.getThreadEvents.mockResolvedValue([
+      {
+        graph_id: { session_id: 'session-history', thread_id: 'thread-history' },
+        event_type: 'node.completed',
+        node_name: 'reporter',
+        phase: 'completed',
+        content: 'persisted report',
+        sequence: 1,
+      },
+      {
+        graph_id: { session_id: 'session-history', thread_id: 'thread-history' },
+        event_type: 'graph.completed',
+        node_name: '__END__',
+        done: true,
+        content: { output: 'persisted report' },
+        sequence: 2,
+      },
+    ])
+
+    const store = useMessageStore()
+    await store.init('session-history')
+
+    expect(service.getMessages).toHaveBeenCalledWith('session-history')
+    expect(service.getThreadEvents).toHaveBeenCalledWith('session-history', 'thread-history')
+    expect(store.threadId).toBe('thread-history')
+    expect(store.events).toHaveLength(2)
+    expect(store.reportContent).toBe('persisted report')
+    expect(store.workflowNodes.map(node => node.key)).toEqual(['reporter', '__END__'])
   })
 })

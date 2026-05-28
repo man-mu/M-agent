@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import top.lanshan.manmu.eventhistory.ResearchEventHistoryService;
 import top.lanshan.manmu.memory.ConversationMessageRecord;
 import top.lanshan.manmu.memory.ConversationMessageRepository;
 import top.lanshan.manmu.memory.ConversationMemoryService;
@@ -25,11 +26,13 @@ public class ConversationController {
 
     private final ConversationMemoryService memoryService;
     private final ConversationMessageRepository repository;
+    private final ResearchEventHistoryService eventHistoryService;
 
     public ConversationController(ConversationMemoryService memoryService,
-            ConversationMessageRepository repository) {
+            ConversationMessageRepository repository, ResearchEventHistoryService eventHistoryService) {
         this.memoryService = memoryService;
         this.repository = repository;
+        this.eventHistoryService = eventHistoryService;
     }
 
     @GetMapping
@@ -57,7 +60,8 @@ public class ConversationController {
 
     @DeleteMapping("/{sessionId}")
     public Mono<ApiResponse<Void>> deleteConversation(@PathVariable String sessionId) {
-        return repository.deleteBySessionId(sessionId)
+        return eventHistoryService.deleteBySessionId(sessionId)
+                .then(repository.deleteBySessionId(sessionId))
                 .doOnSuccess(count -> logger.info("Deleted {} messages for session {}", count, sessionId))
                 .then(Mono.just(ApiResponse.success(null)));
     }

@@ -1,6 +1,7 @@
 package top.lanshan.manmu.model;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.annotation.JsonCreator;
 
 public enum ResearchStreamEventType {
 
@@ -27,6 +28,19 @@ public enum ResearchStreamEventType {
 	@JsonValue
 	public String value() {
 		return value;
+	}
+
+	@JsonCreator
+	public static ResearchStreamEventType fromValue(String value) {
+		if (value == null || value.isBlank()) {
+			return GRAPH_FAILED;
+		}
+		for (ResearchStreamEventType eventType : values()) {
+			if (eventType.value.equals(value) || eventType.name().equalsIgnoreCase(value)) {
+				return eventType;
+			}
+		}
+		return GRAPH_FAILED;
 	}
 
 	public static ResearchStreamEventType from(ResearchEvent event) {

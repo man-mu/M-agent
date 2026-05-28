@@ -1,4 +1,5 @@
 import { apiRequest, del } from '@/utils/request'
+import type { ChatStreamResponse } from './chat'
 
 export interface ConversationSummary {
   session_id: string
@@ -64,6 +65,14 @@ class ConversationService {
     return apiRequest<ResearchSessionHistory>({
       method: 'GET',
       url: `/api/sessions/${sessionId}/threads/${threadId}`,
+      silentError: true,
+    })
+  }
+
+  getThreadEvents(sessionId: string, threadId: string): Promise<ChatStreamResponse[]> {
+    return apiRequest<ChatStreamResponse[]>({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}/threads/${threadId}/events`,
       silentError: true,
     })
   }
