@@ -51,7 +51,7 @@ public class OpenAiCompatibleModelProvider implements ModelProvider {
 			.restClientBuilder(restClientBuilder())
 			.webClientBuilder(webClientBuilder())
 			.build();
-		OpenAiChatOptions options = OpenAiChatOptions.builder().model(modelName).temperature(0.7).build();
+		OpenAiChatOptions options = OpenAiChatOptions.builder().model(modelName).build();
 		return OpenAiChatModel.builder().openAiApi(openAiApi).defaultOptions(options).build();
 	}
 

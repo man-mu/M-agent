@@ -93,31 +93,57 @@ mvp:
       - provider-id: dashscope
         display-name: Alibaba DashScope
         models:
-          - qwen-turbo-2025-04-28
+          - qwen3.7-max
+          - qwen3.6-plus
+          - qwen3.6-flash
+          - qwen3-max
           - qwen-plus
+          - qwen-flash
+          - qwen-turbo-2025-04-28
       - provider-id: deepseek
         display-name: DeepSeek
         base-url: https://api.deepseek.com
         models:
+          - deepseek-v4-flash
+          - deepseek-v4-pro
           - deepseek-chat
           - deepseek-reasoner
       - provider-id: minimax
         display-name: MiniMax
-        base-url: https://api.minimax.io/v1
+        base-url: https://api.minimaxi.com/v1
         models:
-          - MiniMax-Text-01
+          - MiniMax-M2.7
+          - MiniMax-M2.7-highspeed
+          - MiniMax-M2.5
+          - MiniMax-M2.5-highspeed
+          - MiniMax-M2.1
+          - MiniMax-M2.1-lightning
+          - MiniMax-M2
       - provider-id: moonshot
         display-name: Moonshot AI
-        base-url: https://api.moonshot.cn/v1
+        base-url: https://api.moonshot.ai/v1
         models:
+          - kimi-k2.6
+          - kimi-k2.5
           - moonshot-v1-8k
           - moonshot-v1-32k
+          - moonshot-v1-128k
       - provider-id: zhipu
         display-name: Zhipu AI
         base-url: https://open.bigmodel.cn/api/paas/v4
         models:
-          - glm-4
-          - glm-4-flash
+          - glm-5.1
+          - glm-5-turbo
+          - glm-5
+          - glm-4.7
+          - glm-4.7-flash
+          - glm-4.7-flashx
+          - glm-4.6
+          - glm-4.5-air
+          - glm-4.5-airx
+          - glm-4.5-flash
+          - glm-4-flash-250414
+          - glm-4-flashx-250414
       - provider-id: yi
         display-name: 01.AI
         base-url: https://api.lingyiwanwu.com/v1
