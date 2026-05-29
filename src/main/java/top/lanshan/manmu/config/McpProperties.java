@@ -38,6 +38,8 @@ public class McpProperties {
         private String sseEndpoint = "/sse";
         private String description;
         private boolean enabled = true;
+        @JsonProperty("allowed-tools")
+        private List<String> allowedTools = new ArrayList<>();
 
         public String getUrl() { return url; }
         public void setUrl(String url) { this.url = url; }
@@ -47,5 +49,7 @@ public class McpProperties {
         public void setDescription(String description) { this.description = description; }
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public List<String> getAllowedTools() { return allowedTools; }
+        public void setAllowedTools(List<String> allowedTools) { this.allowedTools = allowedTools; }
     }
 }

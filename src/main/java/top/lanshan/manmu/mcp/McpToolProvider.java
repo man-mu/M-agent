@@ -14,7 +14,9 @@ import top.lanshan.manmu.config.McpProperties;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class McpToolProvider {
 
@@ -102,7 +104,11 @@ public class McpToolProvider {
             return new ToolCallback[0];
         }
 
-        AsyncMcpToolCallbackProvider provider = new AsyncMcpToolCallbackProvider(clients);
+        Set<String> allowedTools = allowedTools(transports);
+        AsyncMcpToolCallbackProvider provider = allowedTools.isEmpty()
+                ? new AsyncMcpToolCallbackProvider(clients)
+                : new AsyncMcpToolCallbackProvider(
+                    (connectionInfo, tool) -> allowedTools.contains(tool.name()), clients);
         ToolCallback[] callbacks = provider.getToolCallbacks();
         serverStatuses = withDisabledServers(statuses);
         logger.info("MCP tools ready: {} tools from {} client(s)", callbacks.length, clients.size());
@@ -118,6 +124,20 @@ public class McpToolProvider {
                         ? ServerStatus.failed(server, "No transport initialized")
                         : ServerStatus.disabled(server))
                 .toList();
+    }
+
+    Set<String> allowedTools(List<McpConfigMergeUtil.NamedTransport> transports) {
+        Set<String> tools = new LinkedHashSet<>();
+        for (McpConfigMergeUtil.NamedTransport transport : transports) {
+            List<String> allowed = transport.server().getAllowedTools();
+            if (allowed != null) {
+                allowed.stream()
+                        .filter(name -> name != null && !name.isBlank())
+                        .map(String::strip)
+                        .forEach(tools::add);
+            }
+        }
+        return tools;
     }
 
     private List<ServerStatus> withDisabledServers(List<ServerStatus> activeStatuses) {

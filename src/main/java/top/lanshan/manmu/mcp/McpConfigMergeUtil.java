@@ -12,10 +12,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class McpConfigMergeUtil {
 
     private static final Logger logger = LoggerFactory.getLogger(McpConfigMergeUtil.class);
+    private static final Pattern ENV_PLACEHOLDER = Pattern.compile("\\$\\{([A-Z0-9_]+)(?::([^}]*))?}");
 
     private McpConfigMergeUtil() {}
 
@@ -66,8 +69,9 @@ public final class McpConfigMergeUtil {
             if (!si.isEnabled()) {
                 continue;
             }
-            WebClient.Builder clone = webClientBuilder.clone().baseUrl(si.getUrl());
+            WebClient.Builder clone = webClientBuilder.clone().baseUrl(resolvePlaceholders(si.getUrl()));
             String sseEndpoint = si.getSseEndpoint() != null ? si.getSseEndpoint() : "/sse";
+            sseEndpoint = resolvePlaceholders(sseEndpoint);
             WebFluxSseClientTransport transport = WebFluxSseClientTransport.builder(clone)
                 .sseEndpoint(sseEndpoint)
                 .objectMapper(objectMapper)
@@ -76,6 +80,23 @@ public final class McpConfigMergeUtil {
             logger.info("MCP transport created: {} -> {}", si.getUrl(), sseEndpoint);
         }
         return transports;
+    }
+
+    static String resolvePlaceholders(String value) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        Matcher matcher = ENV_PLACEHOLDER.matcher(value);
+        StringBuilder resolved = new StringBuilder();
+        while (matcher.find()) {
+            String envName = matcher.group(1);
+            String fallback = matcher.group(2) != null ? matcher.group(2) : "";
+            String envValue = System.getenv(envName);
+            matcher.appendReplacement(resolved, Matcher.quoteReplacement(
+                    envValue != null && !envValue.isBlank() ? envValue : fallback));
+        }
+        matcher.appendTail(resolved);
+        return resolved.toString();
     }
 
     public record NamedTransport(McpProperties.McpServerInfo server,

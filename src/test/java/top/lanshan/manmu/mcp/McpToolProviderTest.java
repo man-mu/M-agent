@@ -69,4 +69,23 @@ class McpToolProviderTest {
         assertThat(first).isSameAs(second);
     }
 
+    @Test
+    void collectsAllowedToolsFromEnabledServers() {
+        McpProperties props = new McpProperties();
+        props.setEnabled(true);
+
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        info.setUrl("https://mcp.amap.com");
+        info.setAllowedTools(List.of("maps_weather", " ", "maps_geo", "maps_weather"));
+
+        McpToolProvider provider = new McpToolProvider(props,
+                new McpProperties.McpServerConfig(List.of(info)),
+                WebClient.builder(),
+                new ObjectMapper(),
+                "test", "1.0");
+
+        assertThat(provider.allowedTools(List.of(new McpConfigMergeUtil.NamedTransport(info, null))))
+                .containsExactly("maps_weather", "maps_geo");
+    }
+
 }
