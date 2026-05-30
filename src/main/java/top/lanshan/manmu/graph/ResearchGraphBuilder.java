@@ -131,7 +131,8 @@ public class ResearchGraphBuilder {
 			addRequiredNodes(graph, sessionContextService);
 			addExecutorNodes(graph, executorNodes);
 			graph.addEdge(StateGraph.START, COORDINATOR);
-			graph.addConditionalEdges(COORDINATOR, edge(this::routeCoordinator),
+			graph.addConditionalEdges(COORDINATOR,
+                    edge(this::routeCoordinator),
 					Map.of("direct_answer", StateGraph.END, "deep_research", REWRITE_MULTI_QUERY));
 			addRagConditionalEdge(graph, REWRITE_MULTI_QUERY, BACKGROUND_INVESTIGATOR);
 			graph.addEdge(BACKGROUND_INVESTIGATOR, PLANNER);

@@ -144,8 +144,3 @@ mvp:
           - glm-4.5-flash
           - glm-4-flash-250414
           - glm-4-flashx-250414
-      - provider-id: yi
-        display-name: 01.AI
-        base-url: https://api.lingyiwanwu.com/v1
-        models:
-          - yi-lightning
