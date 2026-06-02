@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import {
   DeleteOutlined,
+  EnvironmentOutlined,
   MessageOutlined,
   PlusOutlined,
   SettingOutlined,
@@ -24,6 +25,7 @@ const capabilities = ref<AppCapabilities>(disabledCapabilities)
 
 const currentMode = computed(() => {
   if (route.path.startsWith('/skills')) return 'skills'
+  if (route.path.startsWith('/mcp')) return 'mcp'
   if (route.path.startsWith('/settings')) return 'settings'
   return 'chat'
 })
@@ -34,7 +36,11 @@ const navItems = computed(() => {
     { value: 'settings', label: '模型', icon: SettingOutlined },
   ]
   if (capabilities.value.skillEnabled) {
-    items.splice(1, 0, { value: 'skills', label: 'Skills', icon: ToolOutlined })
+    items.splice(1, 0, { value: 'skills', label: 'Skill', icon: ToolOutlined })
+  }
+  if (capabilities.value.mcpEnabled) {
+    const modelIndex = items.findIndex(item => item.value === 'settings')
+    items.splice(modelIndex, 0, { value: 'mcp', label: 'MCP 工具', icon: EnvironmentOutlined })
   }
   return items
 })
@@ -43,6 +49,8 @@ function switchMode(mode: string) {
   if (mode === 'chat') {
     router.push(conversationStore.curConvKey ? `/chat/${conversationStore.curConvKey}` : '/chat')
   } else if (mode === 'skills' && !capabilities.value.skillEnabled) {
+    router.push('/chat')
+  } else if (mode === 'mcp' && !capabilities.value.mcpEnabled) {
     router.push('/chat')
   } else {
     router.push(`/${mode}`)
@@ -410,13 +418,24 @@ onMounted(async () => {
   }
 
   .topbar {
+    gap: 8px;
     height: auto;
     line-height: 1.2;
     padding: 10px 12px;
   }
 
+  .topbar :deep(.ant-segmented) {
+    flex: 1;
+    min-width: 0;
+  }
+
   .topbar :deep(.ant-segmented-item-label) {
-    padding: 0 8px;
+    min-height: 28px;
+    padding: 0 6px;
+  }
+
+  .nav-label {
+    font-size: 12px;
   }
 
   .main-layout {

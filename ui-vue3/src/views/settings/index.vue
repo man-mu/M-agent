@@ -8,6 +8,7 @@ import Select from 'ant-design-vue/es/select'
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
+  EnvironmentOutlined,
   KeyOutlined,
   ReloadOutlined,
   SwapOutlined,
@@ -21,6 +22,7 @@ import type { AppCapabilities, McpStatus } from '@/services/api/app'
 import modelService from '@/services/api/model'
 import type { CurrentModelSelection, ProviderSummary } from '@/services/api/model'
 import { userMessageFromError } from '@/utils/errors'
+import { mcpOverallStatusView } from '@/utils/moduleStatus'
 
 const router = useRouter()
 const app = getCurrentInstance()?.appContext.app
@@ -48,6 +50,7 @@ const switchProvider = ref<ProviderSummary | null>(null)
 const switchModelName = ref('')
 
 const currentProviderName = computed(() => current.value?.providerName || current.value?.providerId || '未选择')
+const mcpSummary = computed(() => mcpOverallStatusView(mcpStatus.value))
 
 async function loadData() {
   loading.value = true
@@ -184,39 +187,40 @@ onMounted(loadData)
       <template #title>
         <span><ToolOutlined /> 扩展能力</span>
       </template>
-      <a-descriptions :column="2">
-        <a-descriptions-item label="Skill">
-          <a-tag :color="capabilities?.skillEnabled ? 'green' : 'default'">
-            {{ capabilities?.skillEnabled ? '已启用' : '未启用' }}
-          </a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item label="MCP">
-          <a-tag :color="capabilities?.mcpEnabled ? 'green' : 'default'">
-            {{ capabilities?.mcpEnabled ? '已启用' : '未启用' }}
-          </a-tag>
-          <a-tag v-if="mcpStatus" :color="mcpStatus.toolCount > 0 ? 'blue' : 'orange'">
-            {{ mcpStatus.toolCount }} 个工具
-          </a-tag>
-        </a-descriptions-item>
-        <a-descriptions-item v-if="mcpStatus" label="MCP 服务" :span="2">
-          <div class="mcp-server-list">
-            <div
-              v-for="server in mcpStatus.servers"
-              :key="server.url"
-              class="mcp-server"
-            >
-              <div>
-                <strong>{{ server.description || server.url }}</strong>
-                <p>{{ server.url }}{{ server.sseEndpoint || '' }}</p>
-              </div>
-              <a-tag v-if="!server.configuredEnabled" color="default">未配置启用</a-tag>
-              <a-tag v-else :color="server.connected ? 'green' : 'red'">
-                {{ server.connected ? '已连接' : '未连接' }}
-              </a-tag>
-            </div>
+      <div class="module-summary">
+        <div class="module-item">
+          <div>
+            <div class="module-title">Skill 管理</div>
+            <p>维护可在对话中通过 @ 调用的提示词能力。</p>
           </div>
-        </a-descriptions-item>
-      </a-descriptions>
+          <div class="module-actions">
+            <a-tag :color="capabilities?.skillEnabled ? 'green' : 'default'">
+              {{ capabilities?.skillEnabled ? '已启用' : '未启用' }}
+            </a-tag>
+            <a-button size="small" :disabled="!capabilities?.skillEnabled" @click="router.push('/skills')">
+              <ToolOutlined />
+              管理 Skill
+            </a-button>
+          </div>
+        </div>
+
+        <div class="module-item">
+          <div>
+            <div class="module-title">MCP 工具</div>
+            <p>{{ mcpSummary.description }}</p>
+          </div>
+          <div class="module-actions">
+            <a-tag :color="mcpSummary.color">{{ mcpSummary.label }}</a-tag>
+            <a-tag v-if="mcpStatus" :color="mcpStatus.toolCount > 0 ? 'blue' : 'orange'">
+              {{ mcpStatus.toolCount }} 个工具
+            </a-tag>
+            <a-button size="small" :disabled="!capabilities?.mcpEnabled" @click="router.push('/mcp')">
+              <EnvironmentOutlined />
+              查看 MCP
+            </a-button>
+          </div>
+        </div>
+      </div>
     </a-card>
 
     <a-spin :spinning="loading">
@@ -347,26 +351,63 @@ onMounted(loadData)
   padding-top: 12px;
 }
 
-.mcp-server-list {
+.module-summary {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
-.mcp-server {
+.module-item {
   align-items: center;
   background: #fbfcff;
   border: 1px solid #edf1f6;
   border-radius: 8px;
   display: flex;
-  gap: 12px;
   justify-content: space-between;
-  padding: 10px 12px;
+  gap: 16px;
+  padding: 12px;
 }
 
-.mcp-server p {
+.module-title {
+  color: #172033;
+  font-weight: 700;
+}
+
+.module-item p {
   color: #6b7688;
   margin: 4px 0 0;
-  word-break: break-all;
+}
+
+.module-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .settings-page {
+    padding: 18px 12px;
+  }
+
+  .page-header {
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .module-item,
+  .provider-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .module-actions {
+    justify-content: flex-start;
+  }
+
+  .provider-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

@@ -13,6 +13,10 @@ export interface McpServerStatus {
   configuredEnabled: boolean
   connected: boolean
   error?: string
+  allowedTools?: string[]
+  keyEnvName?: string
+  keyConfigured?: boolean
+  requiredEnvVars?: string[]
 }
 
 export interface McpStatus {
