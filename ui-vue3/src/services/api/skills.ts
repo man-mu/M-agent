@@ -7,6 +7,8 @@ export interface SkillDefinition {
   enabled: boolean
   parameters?: Record<string, unknown>
   dependencies?: string[]
+  created_at?: string
+  inputSchemaJson?: string
 }
 
 export interface SkillDetail {
