@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.lanshan.manmu.skill.market.SkillCatalogRepository;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,18 +21,35 @@ public class SkillAutoConfiguration {
     @Value("${mvp.skill.content-path:}")
     private String configuredContentPath;
 
+    @Value("${mvp.skill.builtin-content-path:}")
+    private String configuredBuiltinContentPath;
+
+    @Value("${mvp.skill.local-market-path:}")
+    private String configuredLocalMarketPath;
+
     @Bean
     SkillFileRepository skillFileRepository(ObjectMapper objectMapper) {
-        Path contentPath;
+        Path builtinContentPath;
         if (configuredContentPath != null && !configuredContentPath.isBlank()) {
-            contentPath = Paths.get(configuredContentPath);
+            builtinContentPath = Paths.get(configuredContentPath);
+        } else if (configuredBuiltinContentPath != null && !configuredBuiltinContentPath.isBlank()) {
+            builtinContentPath = Paths.get(configuredBuiltinContentPath);
         } else {
-            String userDir = System.getProperty("user.dir");
-            contentPath = Paths.get(userDir,
+            builtinContentPath = Paths.get(userDir(),
                     "src/main/java/top/lanshan/manmu/skill/content");
         }
-        logger.info("Skill content path: {}", contentPath.toAbsolutePath());
-        return new SkillFileRepository(contentPath, objectMapper);
+        Path localInstalledPath = localMarketPath().resolve("installed");
+        logger.info("Built-in Skill content path: {}", builtinContentPath.toAbsolutePath());
+        logger.info("Local Skill installed path: {}", localInstalledPath.toAbsolutePath());
+        return new SkillFileRepository(builtinContentPath, localInstalledPath, objectMapper);
+    }
+
+    @Bean
+    SkillCatalogRepository skillCatalogRepository(ObjectMapper objectMapper) {
+        SkillCatalogRepository repository = new SkillCatalogRepository(localMarketPath(), objectMapper);
+        repository.load();
+        logger.info("Skill catalog path: {}", repository.catalogPath().toAbsolutePath());
+        return repository;
     }
 
     @Bean
@@ -50,6 +68,17 @@ public class SkillAutoConfiguration {
     SkillService skillService(SkillFileRepository fileRepository, SkillRegistry registry,
             ObjectMapper objectMapper) {
         return new SkillService(fileRepository, registry, objectMapper);
+    }
+
+    private Path localMarketPath() {
+        if (configuredLocalMarketPath != null && !configuredLocalMarketPath.isBlank()) {
+            return Paths.get(configuredLocalMarketPath);
+        }
+        return Paths.get(userDir(), ".local", "skills");
+    }
+
+    private String userDir() {
+        return System.getProperty("user.dir");
     }
 
 }

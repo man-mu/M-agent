@@ -2,6 +2,7 @@ package top.lanshan.manmu.skill.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import top.lanshan.manmu.skill.market.SkillPackageType;
 
 import java.util.Map;
 
@@ -46,5 +47,35 @@ class SkillDefinitionTest {
         String schema = def.getInputSchemaJson();
         assertThat(schema).contains("\"type\"");
         assertThat(schema).contains("\"string\"");
+    }
+
+    @Test
+    void deserializesMarketMetadata() throws Exception {
+        String json = """
+                {
+                    "name": "market-skill",
+                    "description": "A market skill",
+                    "displayName": "Market Skill",
+                    "category": "tools",
+                    "author": "local",
+                    "homepage": "https://example.com",
+                    "tags": ["market", "prompt"],
+                    "packageType": "PROMPT",
+                    "source": "local",
+                    "installed_at": "2026-06-03T10:00:00Z",
+                    "updated_at": "2026-06-03T11:00:00Z"
+                }""";
+
+        SkillDefinition def = objectMapper.readValue(json, SkillDefinition.class);
+
+        assertThat(def.getDisplayName()).isEqualTo("Market Skill");
+        assertThat(def.getCategory()).isEqualTo("tools");
+        assertThat(def.getAuthor()).isEqualTo("local");
+        assertThat(def.getHomepage()).isEqualTo("https://example.com");
+        assertThat(def.getTags()).containsExactly("market", "prompt");
+        assertThat(def.getPackageType()).isEqualTo(SkillPackageType.PROMPT);
+        assertThat(def.getSource()).isEqualTo("local");
+        assertThat(def.getInstalledAt()).isNotNull();
+        assertThat(def.getUpdatedAt()).isNotNull();
     }
 }

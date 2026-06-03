@@ -3,6 +3,7 @@ package top.lanshan.manmu.skill.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.lanshan.manmu.skill.market.SkillPackageValidator;
 
 import java.io.IOException;
 import java.util.List;
@@ -38,6 +39,7 @@ public class SkillService {
     }
 
     public SkillDefinition create(SkillDefinition definition, String promptTemplate) throws IOException {
+        SkillPackageValidator.requireValidDefinition(definition);
         if (fileRepository.exists(definition.getName())) {
             throw new IllegalArgumentException("Skill '" + definition.getName() + "' already exists");
         }
@@ -48,8 +50,16 @@ public class SkillService {
     }
 
     public SkillDefinition update(String name, SkillDefinition definition, String promptTemplate) throws IOException {
+        SkillPackageValidator.requireValidSkillName(name);
+        SkillPackageValidator.requireValidDefinition(definition);
         if (!fileRepository.exists(name)) {
             throw new IllegalArgumentException("Skill '" + name + "' not found");
+        }
+        if (fileRepository.isBuiltin(name)) {
+            throw new IllegalArgumentException("Built-in Skill '" + name + "' is read-only");
+        }
+        if (!name.equals(definition.getName()) && fileRepository.exists(definition.getName())) {
+            throw new IllegalArgumentException("Skill '" + definition.getName() + "' already exists");
         }
         if (!name.equals(definition.getName())) {
             fileRepository.deleteSkill(name);
@@ -62,8 +72,12 @@ public class SkillService {
     }
 
     public void delete(String name) throws IOException {
+        SkillPackageValidator.requireValidSkillName(name);
         if (!fileRepository.exists(name)) {
             throw new IllegalArgumentException("Skill '" + name + "' not found");
+        }
+        if (fileRepository.isBuiltin(name)) {
+            throw new IllegalArgumentException("Built-in Skill '" + name + "' is read-only");
         }
         fileRepository.deleteSkill(name);
         registry.unregister(name);
@@ -105,8 +119,12 @@ public class SkillService {
     }
 
     public SkillDefinition toggle(String name) throws IOException {
+        SkillPackageValidator.requireValidSkillName(name);
         SkillDefinition def = registry.getDefinition(name)
                 .orElseThrow(() -> new IllegalArgumentException("Skill '" + name + "' not found"));
+        if (fileRepository.isBuiltin(name)) {
+            throw new IllegalArgumentException("Built-in Skill '" + name + "' is read-only");
+        }
         def.setEnabled(!def.isEnabled());
         fileRepository.writeSkill(name, def, registry.getPromptTemplate(name).orElse(""));
         registry.register(def, registry.getPromptTemplate(name).orElse(""));
