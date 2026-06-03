@@ -1,6 +1,6 @@
 import type { McpServerStatus, McpStatus } from '@/services/api/app'
 
-export type ModuleStatusKind = 'connected' | 'missingKey' | 'disabled' | 'failed'
+export type ModuleStatusKind = 'connected' | 'missingKey' | 'serviceStopped' | 'disabled' | 'failed'
 
 export interface ModuleStatusView {
   kind: ModuleStatusKind
@@ -29,12 +29,24 @@ export function mcpServerStatusView(server: McpServerStatus): ModuleStatusView {
   }
 
   const error = server.error || ''
-  if (server.sseEndpoint?.includes('${') || /key|token|credential|api[_-]?key/i.test(error)) {
+  if (server.keyConfigured === false
+    || server.sseEndpoint?.includes('${')
+    || /key|token|credential|api[_-]?key/i.test(error)) {
     return {
       kind: 'missingKey',
       label: '需要配置 Key',
       color: 'orange',
       description: '服务需要本地环境变量或后端安全配置提供访问 Key。',
+    }
+  }
+
+  if (isLocalAddress(server.url)
+    && /connection refused|econnrefused|connectexception|failed to connect|timeoutexception|timed out|did not observe/i.test(error)) {
+    return {
+      kind: 'serviceStopped',
+      label: '服务未启动',
+      color: 'orange',
+      description: '本地 MCP 服务暂未连接，请启动本地服务后刷新。',
     }
   }
 
@@ -44,6 +56,10 @@ export function mcpServerStatusView(server: McpServerStatus): ModuleStatusView {
     color: 'red',
     description: '服务暂未连接成功，请检查后端日志、网络和服务地址。',
   }
+}
+
+function isLocalAddress(url: string) {
+  return /^(https?:\/\/)?(127\.0\.0\.1|localhost|\[?::1]?)/i.test(url)
 }
 
 export function mcpOverallStatusView(status: McpStatus | null | undefined): ModuleStatusView {

@@ -88,4 +88,28 @@ class McpToolProviderTest {
                 .containsExactly("maps_weather", "maps_geo");
     }
 
+    @Test
+    void exposesNonSensitiveServerMetadataInStatus() {
+        McpProperties props = new McpProperties();
+        props.setEnabled(true);
+
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        info.setUrl("http://127.0.0.1:18090");
+        info.setDescription("本地和风天气 MCP");
+        info.setEnabled(false);
+        info.setAllowedTools(List.of("weather_now", "weather_now", " "));
+
+        McpToolProvider provider = new McpToolProvider(props,
+                new McpProperties.McpServerConfig(List.of(info)),
+                WebClient.builder(),
+                new ObjectMapper(),
+                "test", "1.0");
+
+        McpToolProvider.ServerStatus status = provider.getStatus().servers().get(0);
+        assertThat(status.allowedTools()).containsExactly("weather_now");
+        assertThat(status.requiredEnvVars()).containsExactly("QWEATHER_API_KEY");
+        assertThat(status.keyEnvName()).isEqualTo("QWEATHER_API_KEY");
+        assertThat(status.toString()).doesNotContain("secret");
+    }
+
 }

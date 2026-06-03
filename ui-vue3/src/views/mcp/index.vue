@@ -5,14 +5,17 @@ import Card from 'ant-design-vue/es/card'
 import {
   ArrowLeftOutlined,
   EnvironmentOutlined,
+  KeyOutlined,
   ReloadOutlined,
   SettingOutlined,
+  ToolOutlined,
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
 import appService from '@/services/api/app'
 import type { AppCapabilities, McpStatus } from '@/services/api/app'
 import { userMessageFromError } from '@/utils/errors'
 import { mcpOverallStatusView, mcpServerStatusView } from '@/utils/moduleStatus'
+import { mcpServerDisplay } from './mcpTools'
 
 const router = useRouter()
 const app = getCurrentInstance()?.appContext.app
@@ -27,6 +30,12 @@ const loadError = ref('')
 
 const overallStatus = computed(() => mcpOverallStatusView(mcpStatus.value))
 const connectedCount = computed(() => mcpStatus.value?.servers.filter(server => server.connected).length || 0)
+const serverViews = computed(() => (mcpStatus.value?.servers || []).map(server => ({
+  server,
+  status: mcpServerStatusView(server),
+  display: mcpServerDisplay(server),
+  address: serverAddress(server.url, server.sseEndpoint),
+})))
 
 async function loadData() {
   loading.value = true
@@ -120,38 +129,111 @@ onMounted(loadData)
     <a-spin v-else :spinning="loading">
       <div class="server-list">
         <a-card
-          v-for="server in mcpStatus?.servers || []"
-          :key="server.url"
+          v-for="view in serverViews"
+          :key="view.server.url"
           class="server-card"
+          :class="{ 'weather-card': view.display.isLocalQWeather }"
           data-testid="mcp-server-card"
         >
           <template #title>
             <div class="server-title">
-              <span>{{ server.description || 'MCP 服务' }}</span>
-              <a-tag :color="mcpServerStatusView(server).color">
-                {{ mcpServerStatusView(server).label }}
-              </a-tag>
+              <div class="server-heading">
+                <span class="server-name">{{ view.display.serviceName }}</span>
+                <span class="server-summary">{{ view.display.serviceSummary }}</span>
+              </div>
+              <div class="server-tags">
+                <a-tag :color="view.status.color">{{ view.status.label }}</a-tag>
+                <a-tag
+                  v-if="view.display.requiredEnvVars.length"
+                  :color="view.display.keyStatusColor"
+                >
+                  {{ view.display.keyStatusLabel }}
+                </a-tag>
+              </div>
             </div>
           </template>
 
           <div class="server-body">
-            <div>
-              <span class="label">服务地址</span>
-              <p class="server-url">{{ serverAddress(server.url, server.sseEndpoint) }}</p>
+            <div class="status-grid">
+              <div>
+                <span class="label">服务地址</span>
+                <p class="server-url">{{ view.address }}</p>
+              </div>
+              <div>
+                <span class="label">连接状态</span>
+                <p>{{ view.status.description }}</p>
+              </div>
+              <div v-if="view.display.requiredEnvVars.length">
+                <span class="label">访问凭证</span>
+                <p>{{ view.display.requiredEnvVars.join('、') }}</p>
+              </div>
             </div>
-            <div>
-              <span class="label">说明</span>
-              <p>{{ mcpServerStatusView(server).description }}</p>
-            </div>
-            <div v-if="server.error && mcpServerStatusView(server).kind !== 'missingKey'">
+
+            <section v-if="view.display.tools.length" class="tool-section">
+              <div class="section-title">
+                <ToolOutlined />
+                <span>工具列表</span>
+              </div>
+              <div class="tool-list">
+                <div
+                  v-for="tool in view.display.tools"
+                  :key="tool.name"
+                  class="tool-item"
+                >
+                  <div class="tool-title">
+                    <strong>{{ tool.label }}</strong>
+                    <a-tag color="blue">{{ tool.name }}</a-tag>
+                  </div>
+                  <p>{{ tool.description }}</p>
+                </div>
+              </div>
+            </section>
+
+            <section
+              v-if="view.display.requiredEnvVars.length || view.display.setupHints.length"
+              class="key-section"
+            >
+              <div class="section-title">
+                <KeyOutlined />
+                <span>Key 指引</span>
+              </div>
+              <div class="env-row" v-if="view.display.requiredEnvVars.length">
+                <span class="label">必需</span>
+                <div class="tag-list">
+                  <a-tag
+                    v-for="name in view.display.requiredEnvVars"
+                    :key="name"
+                    color="orange"
+                  >
+                    {{ name }}
+                  </a-tag>
+                </div>
+              </div>
+              <div class="env-row" v-if="view.display.optionalEnvVars.length">
+                <span class="label">可选</span>
+                <div class="tag-list">
+                  <a-tag
+                    v-for="name in view.display.optionalEnvVars"
+                    :key="name"
+                  >
+                    {{ name }}
+                  </a-tag>
+                </div>
+              </div>
+              <ul class="hint-list">
+                <li v-for="hint in view.display.setupHints" :key="hint">{{ hint }}</li>
+              </ul>
+            </section>
+
+            <div v-if="view.server.error && view.status.kind !== 'missingKey'">
               <span class="label">当前状态</span>
-              <p class="error-text">{{ mcpServerStatusView(server).description }}</p>
+              <p class="error-text">{{ view.status.description }}</p>
             </div>
           </div>
         </a-card>
 
         <a-empty
-          v-if="!loading && capabilities?.mcpEnabled && !mcpStatus?.servers.length"
+          v-if="!loading && capabilities?.mcpEnabled && !serverViews.length"
           description="还没有启用的 MCP 服务"
         />
       </div>
@@ -235,6 +317,10 @@ onMounted(loadData)
   min-width: 0;
 }
 
+.weather-card {
+  border-color: #c7e7df;
+}
+
 .server-card :deep(.ant-card-head-title) {
   min-width: 0;
   overflow: visible;
@@ -242,25 +328,48 @@ onMounted(loadData)
 }
 
 .server-title {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   justify-content: space-between;
   min-width: 0;
 }
 
-.server-title span {
+.server-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.server-name {
+  color: #172033;
+  font-size: 16px;
   min-width: 0;
   word-break: break-word;
 }
 
+.server-summary {
+  color: #6b7688;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.server-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .server-body {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
-.server-body > div {
+.server-body > div,
+.server-body > section {
   min-width: 0;
 }
 
@@ -268,9 +377,81 @@ onMounted(loadData)
   margin: 0;
 }
 
+.status-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 2fr 1.5fr 1fr;
+}
+
 .server-url {
   color: #334155;
   word-break: break-all;
+}
+
+.section-title {
+  align-items: center;
+  color: #172033;
+  display: flex;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tool-list {
+  display: grid;
+  gap: 10px;
+}
+
+.tool-item {
+  background: #f7fbff;
+  border: 1px solid #e4edf7;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.tool-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-title strong {
+  color: #172033;
+}
+
+.tool-item p,
+.hint-list {
+  color: #5f6b7c;
+  font-size: 13px;
+}
+
+.key-section {
+  background: #fffaf2;
+  border: 1px solid #f4dfb6;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.env-row {
+  margin-bottom: 10px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hint-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.hint-list li + li {
+  margin-top: 4px;
 }
 
 .error-text {
@@ -278,7 +459,7 @@ onMounted(loadData)
   word-break: break-word;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   .mcp-page {
     padding: 18px 12px;
   }
@@ -293,8 +474,15 @@ onMounted(loadData)
   }
 
   .server-title {
-    align-items: flex-start;
     flex-direction: column;
+  }
+
+  .server-tags {
+    justify-content: flex-start;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

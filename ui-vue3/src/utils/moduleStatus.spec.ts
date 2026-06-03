@@ -27,6 +27,36 @@ describe('module status helpers', () => {
       })
   })
 
+  it('detects explicit missing key metadata', () => {
+    expect(mcpServerStatusView({ ...baseServer, keyConfigured: false }))
+      .toMatchObject({
+        kind: 'missingKey',
+        label: '需要配置 Key',
+      })
+  })
+
+  it('detects stopped local MCP services', () => {
+    expect(mcpServerStatusView({
+      ...baseServer,
+      url: 'http://127.0.0.1:18090',
+      error: 'Connection refused: /127.0.0.1:18090',
+    })).toMatchObject({
+      kind: 'serviceStopped',
+      label: '服务未启动',
+    })
+  })
+
+  it('maps local MCP initialization timeout to stopped service status', () => {
+    expect(mcpServerStatusView({
+      ...baseServer,
+      url: 'http://127.0.0.1:18090',
+      error: 'TimeoutException: Did not observe any item or terminal signal',
+    })).toMatchObject({
+      kind: 'serviceStopped',
+      label: '服务未启动',
+    })
+  })
+
   it('summarizes overall MCP status', () => {
     expect(mcpOverallStatusView(null).kind).toBe('disabled')
     expect(mcpOverallStatusView({

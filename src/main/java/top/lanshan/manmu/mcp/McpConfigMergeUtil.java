@@ -112,6 +112,33 @@ public final class McpConfigMergeUtil {
         return resolved.toString();
     }
 
+    static List<String> placeholderNames(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        Matcher matcher = ENV_PLACEHOLDER.matcher(value);
+        List<String> names = new ArrayList<>();
+        while (matcher.find()) {
+            String envName = matcher.group(1);
+            if (!names.contains(envName)) {
+                names.add(envName);
+            }
+        }
+        return List.copyOf(names);
+    }
+
+    static boolean hasConfiguredValue(String envName) {
+        if (envName == null || envName.isBlank()) {
+            return false;
+        }
+        String envValue = System.getenv(envName);
+        if (envValue != null && !envValue.isBlank()) {
+            return true;
+        }
+        String localValue = localMcpKeys().get(envName);
+        return localValue != null && !localValue.isBlank();
+    }
+
     static Map<String, String> readLocalMcpKeys(Path path) {
         if (path == null || !Files.isRegularFile(path)) {
             return Map.of();

@@ -168,21 +168,63 @@ public class McpToolProvider {
     }
 
     public record ServerStatus(String url, String sseEndpoint, String description,
-            boolean configuredEnabled, boolean connected, String error) {
+            boolean configuredEnabled, boolean connected, String error,
+            List<String> allowedTools, String keyEnvName, Boolean keyConfigured,
+            List<String> requiredEnvVars) {
 
         static ServerStatus connected(McpProperties.McpServerInfo server) {
             return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
-                    server.getDescription(), server.isEnabled(), true, "");
+                    server.getDescription(), server.isEnabled(), true, "",
+                    allowedTools(server), keyEnvName(server), keyConfigured(server),
+                    requiredEnvVars(server));
         }
 
         static ServerStatus failed(McpProperties.McpServerInfo server, String error) {
             return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
-                    server.getDescription(), server.isEnabled(), false, error);
+                    server.getDescription(), server.isEnabled(), false, error,
+                    allowedTools(server), keyEnvName(server), keyConfigured(server),
+                    requiredEnvVars(server));
         }
 
         static ServerStatus disabled(McpProperties.McpServerInfo server) {
             return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
-                    server.getDescription(), server.isEnabled(), false, "");
+                    server.getDescription(), server.isEnabled(), false, "",
+                    allowedTools(server), keyEnvName(server), keyConfigured(server),
+                    requiredEnvVars(server));
+        }
+
+        private static List<String> allowedTools(McpProperties.McpServerInfo server) {
+            if (server.getAllowedTools() == null) {
+                return List.of();
+            }
+            return server.getAllowedTools().stream()
+                    .filter(name -> name != null && !name.isBlank())
+                    .map(String::strip)
+                    .distinct()
+                    .toList();
+        }
+
+        private static List<String> requiredEnvVars(McpProperties.McpServerInfo server) {
+            List<String> envNames = new ArrayList<>();
+            envNames.addAll(McpConfigMergeUtil.placeholderNames(server.getUrl()));
+            envNames.addAll(McpConfigMergeUtil.placeholderNames(server.getSseEndpoint()));
+            if (allowedTools(server).contains("weather_now") && !envNames.contains("QWEATHER_API_KEY")) {
+                envNames.add("QWEATHER_API_KEY");
+            }
+            return envNames.stream().distinct().toList();
+        }
+
+        private static String keyEnvName(McpProperties.McpServerInfo server) {
+            List<String> names = requiredEnvVars(server);
+            return names.isEmpty() ? null : names.get(0);
+        }
+
+        private static Boolean keyConfigured(McpProperties.McpServerInfo server) {
+            List<String> names = requiredEnvVars(server);
+            if (names.isEmpty()) {
+                return null;
+            }
+            return names.stream().allMatch(McpConfigMergeUtil::hasConfiguredValue);
         }
     }
 
