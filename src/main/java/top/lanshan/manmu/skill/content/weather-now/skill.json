@@ -1,0 +1,32 @@
+{
+  "name": "weather-now",
+  "description": "查询指定城市实时天气，优先使用本地和风天气 MCP 工具获取真实天气数据",
+  "version": "1.0.0",
+  "enabled": true,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "location": {
+        "type": "string",
+        "description": "城市名、和风 Location ID 或 lon,lat 经纬度"
+      },
+      "adm": {
+        "type": "string",
+        "description": "上级行政区，用于城市重名消歧"
+      },
+      "unit": {
+        "type": "string",
+        "description": "单位，m 为公制，i 为英制",
+        "enum": ["m", "i"],
+        "default": "m"
+      },
+      "lang": {
+        "type": "string",
+        "description": "返回语言",
+        "default": "zh"
+      }
+    },
+    "required": ["location"]
+  },
+  "dependencies": ["mcp-qweather"]
+}

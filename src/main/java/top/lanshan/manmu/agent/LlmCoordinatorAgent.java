@@ -4,10 +4,16 @@ import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Component;
 import top.lanshan.manmu.agent.client.AgentClient;
 import top.lanshan.manmu.model.CoordinatorDecision;
+import top.lanshan.manmu.model.CoordinatorRoute;
 import top.lanshan.manmu.prompt.PromptService;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class LlmCoordinatorAgent implements CoordinatorAgent {
+
+	private static final Pattern FENCED_JSON = Pattern.compile("(?s)```(?:json)?\\s*(\\{.*?})\\s*```");
 
 	private final AgentClient agentClient;
 
@@ -48,8 +54,55 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 				""".formatted(query, deepResearchEnabled, profileSection);
 		String modelOutput = agentClient.call(promptService.load("coordinator") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
-		CoordinatorResponse response = outputConverter.convert(modelOutput);
+		CoordinatorResponse response = parseResponse(modelOutput, query, deepResearchEnabled);
 		return outputMapper.toDecision(response, query, deepResearchEnabled);
+	}
+
+	private CoordinatorResponse parseResponse(String modelOutput, String query, boolean deepResearchEnabled) {
+		String candidate = extractJsonObject(modelOutput);
+		if (allowsDirectAnswerFallback(query, deepResearchEnabled) && !looksLikeJsonObject(candidate)) {
+			return directAnswerResponse(modelOutput);
+		}
+		try {
+			return outputConverter.convert(candidate);
+		}
+		catch (RuntimeException ex) {
+			if (!allowsDirectAnswerFallback(query, deepResearchEnabled)) {
+				throw ex;
+			}
+			return directAnswerResponse(modelOutput);
+		}
+	}
+
+	private boolean allowsDirectAnswerFallback(String query, boolean deepResearchEnabled) {
+		return !deepResearchEnabled || (query != null && query.stripLeading().startsWith("@"));
+	}
+
+	private boolean looksLikeJsonObject(String text) {
+		return text != null && text.stripLeading().startsWith("{");
+	}
+
+	private CoordinatorResponse directAnswerResponse(String modelOutput) {
+		String answer = modelOutput == null ? "" : modelOutput.strip();
+		return new CoordinatorResponse(CoordinatorRoute.DIRECT_ANSWER, answer,
+				"Model returned direct answer text instead of structured coordinator JSON.");
+	}
+
+	private String extractJsonObject(String modelOutput) {
+		if (modelOutput == null) {
+			return null;
+		}
+		String trimmed = modelOutput.strip();
+		Matcher fenced = FENCED_JSON.matcher(trimmed);
+		if (fenced.find()) {
+			return fenced.group(1).strip();
+		}
+		int start = trimmed.indexOf('{');
+		int end = trimmed.lastIndexOf('}');
+		if (start >= 0 && end > start) {
+			return trimmed.substring(start, end + 1);
+		}
+		return trimmed;
 	}
 
 }

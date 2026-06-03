@@ -52,6 +52,48 @@ class LlmCoordinatorAgentTest {
 	}
 
 	@Test
+	void parsesDirectAnswerFromFencedJsonWithLeadingText() {
+		RecordingAgentClient agentClient = new RecordingAgentClient("""
+				Based on the tool output, here is the answer:
+
+				```json
+				{
+				  "next_route": "DIRECT_ANSWER",
+				  "direct_answer": "北京当前阴，温度 27°C。",
+				  "thought": "Used the weather tool."
+				}
+				```
+				""");
+		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new CoordinatorOutputMapper());
+
+		CoordinatorDecision decision = agent.coordinate("@weather-now 查询北京今天实时天气", false, "");
+
+		assertThat(decision.nextRoute()).isEqualTo(CoordinatorRoute.DIRECT_ANSWER);
+		assertThat(decision.directAnswer()).contains("北京当前阴");
+	}
+
+	@Test
+	void treatsMarkdownOutputAsDirectAnswerWhenDeepResearchDisabled() {
+		RecordingAgentClient agentClient = new RecordingAgentClient("""
+				Based on the real-time weather data from QWeather:
+
+				**Beijing real-time weather**
+
+				- Temperature: 27C
+				- Humidity: 56%
+				""");
+		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new CoordinatorOutputMapper());
+
+		CoordinatorDecision decision = agent.coordinate("@weather-now query Beijing weather", false, "");
+
+		assertThat(decision.nextRoute()).isEqualTo(CoordinatorRoute.DIRECT_ANSWER);
+		assertThat(decision.directAnswer()).contains("Beijing real-time weather");
+		assertThat(decision.directAnswer()).contains("Temperature");
+	}
+
+	@Test
 	void injectsUserProfileContextWithGuardrail() {
 		RecordingAgentClient agentClient = new RecordingAgentClient("""
 				{
