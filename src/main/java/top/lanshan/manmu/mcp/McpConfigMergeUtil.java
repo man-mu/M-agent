@@ -8,6 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
 import top.lanshan.manmu.config.McpProperties;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +23,9 @@ public final class McpConfigMergeUtil {
 
     private static final Logger logger = LoggerFactory.getLogger(McpConfigMergeUtil.class);
     private static final Pattern ENV_PLACEHOLDER = Pattern.compile("\\$\\{([A-Z0-9_]+)(?::([^}]*))?}");
+    private static final Path LOCAL_MCP_KEYS_PATH = Path.of(".local", "mcp-keys.json");
+    private static final ObjectMapper LOCAL_KEYS_OBJECT_MAPPER = new ObjectMapper();
+    private static volatile Map<String, String> localMcpKeysCache;
 
     private McpConfigMergeUtil() {}
 
@@ -83,6 +90,10 @@ public final class McpConfigMergeUtil {
     }
 
     static String resolvePlaceholders(String value) {
+        return resolvePlaceholders(value, localMcpKeys());
+    }
+
+    static String resolvePlaceholders(String value, Map<String, String> localKeys) {
         if (value == null || value.isBlank()) {
             return value;
         }
@@ -92,11 +103,55 @@ public final class McpConfigMergeUtil {
             String envName = matcher.group(1);
             String fallback = matcher.group(2) != null ? matcher.group(2) : "";
             String envValue = System.getenv(envName);
+            String localValue = localKeys != null ? localKeys.get(envName) : null;
+            String resolvedValue = firstPresent(envValue, localValue, fallback);
             matcher.appendReplacement(resolved, Matcher.quoteReplacement(
-                    envValue != null && !envValue.isBlank() ? envValue : fallback));
+                    resolvedValue));
         }
         matcher.appendTail(resolved);
         return resolved.toString();
+    }
+
+    static Map<String, String> readLocalMcpKeys(Path path) {
+        if (path == null || !Files.isRegularFile(path)) {
+            return Map.of();
+        }
+        try (InputStream input = Files.newInputStream(path)) {
+            Map<String, Object> raw = LOCAL_KEYS_OBJECT_MAPPER.readValue(input,
+                    new TypeReference<Map<String, Object>>() {});
+            Map<String, String> keys = new LinkedHashMap<>();
+            raw.forEach((key, value) -> {
+                if (key != null && value instanceof String stringValue && !stringValue.isBlank()) {
+                    keys.put(key, stringValue);
+                }
+            });
+            return Map.copyOf(keys);
+        } catch (IOException e) {
+            logger.warn("Failed to read local MCP key file {} ({})", path, e.getClass().getSimpleName());
+            return Map.of();
+        }
+    }
+
+    private static Map<String, String> localMcpKeys() {
+        Map<String, String> cached = localMcpKeysCache;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (McpConfigMergeUtil.class) {
+            if (localMcpKeysCache == null) {
+                localMcpKeysCache = readLocalMcpKeys(LOCAL_MCP_KEYS_PATH);
+            }
+            return localMcpKeysCache;
+        }
+    }
+
+    private static String firstPresent(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     public record NamedTransport(McpProperties.McpServerInfo server,

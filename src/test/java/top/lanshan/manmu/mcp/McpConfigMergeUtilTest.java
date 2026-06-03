@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import top.lanshan.manmu.config.McpProperties;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -95,6 +97,40 @@ class McpConfigMergeUtilTest {
     void resolvesEnvironmentPlaceholdersWithEmptyFallback() {
         assertThat(McpConfigMergeUtil.resolvePlaceholders("/sse?key=${MANMU_TEST_MISSING_KEY}"))
                 .isEqualTo("/sse?key=");
+    }
+
+    @Test
+    void resolvesPlaceholdersFromLocalKeysWhenEnvironmentMissing() {
+        assertThat(McpConfigMergeUtil.resolvePlaceholders("/sse?key=${MANMU_TEST_LOCAL_KEY}",
+                Map.of("MANMU_TEST_LOCAL_KEY", "local-secret")))
+                .isEqualTo("/sse?key=local-secret");
+    }
+
+    @Test
+    void fallbackIsUsedWhenEnvironmentAndLocalKeysAreMissing() {
+        assertThat(McpConfigMergeUtil.resolvePlaceholders("${MANMU_TEST_MISSING_KEY:fallback-value}",
+                Map.of()))
+                .isEqualTo("fallback-value");
+    }
+
+    @Test
+    void readsStringValuesFromLocalMcpKeyFile() throws Exception {
+        Path keyFile = Files.createTempFile("mcp-keys", ".json");
+        Files.writeString(keyFile, """
+                {
+                  "AMAP_MAPS_API_KEY": "amap-test-key",
+                  "QWEATHER_API_KEY": "qweather-test-key",
+                  "IGNORED_NUMBER": 123,
+                  "IGNORED_BLANK": ""
+                }
+                """);
+
+        Map<String, String> keys = McpConfigMergeUtil.readLocalMcpKeys(keyFile);
+
+        assertThat(keys)
+                .containsEntry("AMAP_MAPS_API_KEY", "amap-test-key")
+                .containsEntry("QWEATHER_API_KEY", "qweather-test-key")
+                .doesNotContainKeys("IGNORED_NUMBER", "IGNORED_BLANK");
     }
 
     private static McpProperties.McpServerInfo server(String url, String sseEndpoint,
