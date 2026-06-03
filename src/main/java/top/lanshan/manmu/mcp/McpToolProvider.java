@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.AsyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import top.lanshan.manmu.config.McpProperties;
 
 import java.time.Duration;
@@ -28,6 +30,7 @@ public class McpToolProvider {
     private final ObjectMapper objectMapper;
     private final String clientName;
     private final String clientVersion;
+    private final Duration initTimeout = Duration.ofMinutes(2);
 
     private volatile ToolCallback[] cachedCallbacks;
     private volatile boolean initialized;
@@ -58,7 +61,9 @@ public class McpToolProvider {
             if (initialized) {
                 return cachedCallbacks;
             }
-            cachedCallbacks = initToolCallbacks();
+            cachedCallbacks = Mono.fromCallable(this::initToolCallbacks)
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .block(initTimeout);
             initialized = true;
         }
         return cachedCallbacks;
