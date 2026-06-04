@@ -5,6 +5,7 @@ import {
   parameterCount,
   parseJsonObject,
   renderPromptPreview,
+  validateHomepage,
   validateSkillName,
 } from './skillForm'
 
@@ -13,6 +14,12 @@ describe('skill form helpers', () => {
     expect(validateSkillName('code-review_2')).toBe('')
     expect(validateSkillName('bad/name')).toContain('仅支持')
     expect(validateSkillName('')).toContain('不能为空')
+  })
+
+  it('validates optional homepage URLs for market metadata', () => {
+    expect(validateHomepage('')).toBe('')
+    expect(validateHomepage(' https://example.com/skill ')).toBe('')
+    expect(validateHomepage('ftp://example.com')).toContain('http:// 或 https://')
   })
 
   it('normalizes dependencies from text and removes duplicates', () => {

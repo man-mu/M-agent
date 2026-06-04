@@ -21,6 +21,17 @@ export function validateSkillName(name: string) {
   return ''
 }
 
+export function validateHomepage(homepage: string | undefined | null) {
+  const trimmed = homepage?.trim() || ''
+  if (!trimmed) {
+    return ''
+  }
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) {
+    return '主页地址必须以 http:// 或 https:// 开头。'
+  }
+  return ''
+}
+
 export function normalizeDependencies(input: string | string[] | undefined | null) {
   const raw = Array.isArray(input) ? input.join('\n') : input || ''
   const seen = new Set<string>()
