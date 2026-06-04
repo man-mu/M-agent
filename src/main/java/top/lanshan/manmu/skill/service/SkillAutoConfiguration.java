@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.lanshan.manmu.skill.market.SkillCatalogRepository;
+import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -53,6 +54,11 @@ public class SkillAutoConfiguration {
     }
 
     @Bean
+    SkillPackageArchiveService skillPackageArchiveService(ObjectMapper objectMapper) {
+        return new SkillPackageArchiveService(objectMapper);
+    }
+
+    @Bean
     SkillRegistry skillRegistry(SkillFileRepository fileRepository) {
         SkillRegistry registry = new SkillRegistry(fileRepository);
         registry.loadAll();
@@ -66,8 +72,9 @@ public class SkillAutoConfiguration {
 
     @Bean
     SkillService skillService(SkillFileRepository fileRepository, SkillRegistry registry,
-            ObjectMapper objectMapper) {
-        return new SkillService(fileRepository, registry, objectMapper);
+            ObjectMapper objectMapper, SkillPackageArchiveService archiveService,
+            SkillCatalogRepository catalogRepository) {
+        return new SkillService(fileRepository, registry, objectMapper, archiveService, catalogRepository);
     }
 
     private Path localMarketPath() {

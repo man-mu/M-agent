@@ -8,10 +8,12 @@ import message from 'ant-design-vue/es/message'
 import {
   ArrowLeftOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PlusOutlined,
   PoweroffOutlined,
   ReloadOutlined,
+  UploadOutlined,
 } from '@ant-design/icons-vue'
 import appService from '@/services/api/app'
 import skillService from '@/services/api/skills'
@@ -44,10 +46,13 @@ const capabilityLoading = ref(true)
 const skillEnabled = ref(false)
 const loading = ref(false)
 const saving = ref(false)
+const importing = ref(false)
+const packageBusyName = ref('')
 const loadError = ref('')
 const formError = ref('')
 const modalVisible = ref(false)
 const editingName = ref('')
+const packageInput = ref<HTMLInputElement | null>(null)
 const keyword = ref('')
 const statusFilter = ref<StatusFilter>('all')
 const dependenciesText = ref('')
@@ -73,7 +78,8 @@ const columns = [
   { title: '状态', key: 'enabled', width: 96 },
   { title: '依赖', key: 'dependencies', width: 180 },
   { title: '参数', key: 'parameters', width: 90 },
-  { title: '操作', key: 'actions', width: 176, fixed: 'right' },
+  { title: '来源', key: 'source', width: 110 },
+  { title: '操作', key: 'actions', width: 280, fixed: 'right' },
 ] as const
 
 const statusOptions = [
@@ -109,6 +115,8 @@ const filteredSkills = computed(() => {
       skill.name,
       skill.description,
       skill.version,
+      skill.source,
+      skill.storageLocation,
       ...(skill.dependencies || []),
     ].join(' ').toLowerCase()
     return searchable.includes(query)
@@ -274,6 +282,98 @@ function confirmDelete(skill: SkillDefinition) {
   })
 }
 
+function isBuiltin(skill: SkillDefinition) {
+  return skill.storageLocation === 'BUILTIN' || skill.source === 'builtin'
+}
+
+function sourceLabel(skill: SkillDefinition) {
+  return isBuiltin(skill) ? '内置' : '本地'
+}
+
+function sourceColor(skill: SkillDefinition) {
+  return isBuiltin(skill) ? 'blue' : 'green'
+}
+
+function openPackagePicker() {
+  packageInput.value?.click()
+}
+
+async function handlePackageFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) {
+    return
+  }
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    message.warning('请选择 .zip 格式的 Skill 包')
+    return
+  }
+  importing.value = true
+  try {
+    const result = await skillService.importPackage(file)
+    message.success(`Skill 包已导入：${result.name}`)
+    await loadSkills()
+  } catch (err: unknown) {
+    message.error(userMessageFromError(err, '导入 Skill 包失败'))
+  } finally {
+    importing.value = false
+  }
+}
+
+async function exportSkillPackage(skill: SkillDefinition) {
+  packageBusyName.value = skill.name
+  try {
+    const blob = await skillService.exportPackage(skill.name)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${skill.name}-skill.zip`
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('Skill 包已导出')
+  } catch (err: unknown) {
+    message.error(userMessageFromError(err, '导出 Skill 包失败'))
+  } finally {
+    packageBusyName.value = ''
+  }
+}
+
+async function reloadSkill(skill: SkillDefinition) {
+  packageBusyName.value = skill.name
+  try {
+    await skillService.reload(skill.name)
+    message.success('Skill 已重载')
+    await loadSkills()
+  } catch (err: unknown) {
+    message.error(userMessageFromError(err, '重载 Skill 失败'))
+  } finally {
+    packageBusyName.value = ''
+  }
+}
+
+function confirmUninstall(skill: SkillDefinition) {
+  Modal.confirm({
+    title: `卸载 Skill 包：${skill.name}`,
+    content: '卸载后会移除本地安装目录中的 Skill 包，并立即从工具列表中移除。',
+    okText: '卸载',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      packageBusyName.value = skill.name
+      try {
+        await skillService.uninstallPackage(skill.name)
+        message.success('Skill 包已卸载')
+        await loadSkills()
+      } catch (err: unknown) {
+        message.error(userMessageFromError(err, '卸载 Skill 包失败'))
+      } finally {
+        packageBusyName.value = ''
+      }
+    },
+  })
+}
+
 function dependenciesLabel(skill: SkillDefinition) {
   return skill.dependencies?.length ? skill.dependencies.join('、') : '无'
 }
@@ -315,11 +415,22 @@ onMounted(initialize)
         <h1>Skill 管理</h1>
       </div>
       <a-space v-if="skillEnabled" class="header-actions">
+        <input
+          ref="packageInput"
+          accept=".zip,application/zip"
+          class="package-input"
+          type="file"
+          @change="handlePackageFileChange"
+        />
         <a-tooltip title="刷新列表">
           <a-button :loading="loading" @click="loadSkills">
             <ReloadOutlined />
           </a-button>
         </a-tooltip>
+        <a-button :loading="importing" @click="openPackagePicker">
+          <UploadOutlined />
+          导入 Skill 包
+        </a-button>
         <a-button type="primary" @click="openCreate">
           <PlusOutlined />
           新建 Skill
@@ -385,7 +496,7 @@ onMounted(initialize)
           :data-source="filteredSkills"
           :loading="loading"
           :pagination="{ pageSize: 8, hideOnSinglePage: true }"
-          :scroll="{ x: 1080 }"
+          :scroll="{ x: 1320 }"
           row-key="name"
         >
           <template #bodyCell="{ column, record }">
@@ -403,20 +514,56 @@ onMounted(initialize)
             <template v-else-if="column.key === 'parameters'">
               {{ parameterCount(record.parameters) }}
             </template>
+            <template v-else-if="column.key === 'source'">
+              <a-tag :color="sourceColor(record)">
+                {{ sourceLabel(record) }}
+              </a-tag>
+            </template>
             <template v-else-if="column.key === 'actions'">
-              <a-space>
+              <a-space wrap>
                 <a-tooltip title="编辑">
-                  <a-button size="small" @click="openEdit(record.name)">
+                  <a-button size="small" :disabled="isBuiltin(record)" @click="openEdit(record.name)">
                     <EditOutlined />
                   </a-button>
                 </a-tooltip>
                 <a-tooltip :title="record.enabled ? '停用' : '启用'">
-                  <a-button size="small" :danger="record.enabled" @click="toggleSkill(record.name)">
+                  <a-button
+                    size="small"
+                    :danger="record.enabled"
+                    :disabled="isBuiltin(record)"
+                    @click="toggleSkill(record.name)"
+                  >
                     <PoweroffOutlined />
                   </a-button>
                 </a-tooltip>
-                <a-tooltip title="删除">
-                  <a-button size="small" danger @click="confirmDelete(record)">
+                <a-tooltip :title="isBuiltin(record) ? '内置 Skill 不能导出为本地包' : '导出'">
+                  <a-button
+                    size="small"
+                    :disabled="isBuiltin(record)"
+                    :loading="packageBusyName === record.name"
+                    @click="exportSkillPackage(record)"
+                  >
+                    <DownloadOutlined />
+                  </a-button>
+                </a-tooltip>
+                <a-tooltip :title="isBuiltin(record) ? '内置 Skill 随服务启动加载' : '重载'">
+                  <a-button
+                    size="small"
+                    :disabled="isBuiltin(record)"
+                    :loading="packageBusyName === record.name"
+                    @click="reloadSkill(record)"
+                  >
+                    <ReloadOutlined />
+                  </a-button>
+                </a-tooltip>
+                <a-tooltip :title="isBuiltin(record) ? '内置 Skill 不能卸载' : '卸载'">
+                  <a-button
+                    size="small"
+                    danger
+                    :disabled="isBuiltin(record)"
+                    :loading="packageBusyName === record.name"
+                    @click="confirmUninstall(record)"
+                  >
                     <DeleteOutlined />
                   </a-button>
                 </a-tooltip>
@@ -447,19 +594,56 @@ onMounted(initialize)
                 <dt>参数</dt>
                 <dd>{{ parameterCount(skill.parameters) }}</dd>
               </div>
+              <div>
+                <dt>来源</dt>
+                <dd>
+                  <a-tag :color="sourceColor(skill)">
+                    {{ sourceLabel(skill) }}
+                  </a-tag>
+                </dd>
+              </div>
             </dl>
             <a-space class="card-actions">
-              <a-button size="small" @click="openEdit(skill.name)">
+              <a-button size="small" :disabled="isBuiltin(skill)" @click="openEdit(skill.name)">
                 <EditOutlined />
                 编辑
               </a-button>
-              <a-button size="small" :danger="skill.enabled" @click="toggleSkill(skill.name)">
+              <a-button
+                size="small"
+                :danger="skill.enabled"
+                :disabled="isBuiltin(skill)"
+                @click="toggleSkill(skill.name)"
+              >
                 <PoweroffOutlined />
                 {{ skill.enabled ? '停用' : '启用' }}
               </a-button>
-              <a-button size="small" danger @click="confirmDelete(skill)">
+              <a-button
+                size="small"
+                :disabled="isBuiltin(skill)"
+                :loading="packageBusyName === skill.name"
+                @click="exportSkillPackage(skill)"
+              >
+                <DownloadOutlined />
+                导出
+              </a-button>
+              <a-button
+                size="small"
+                :disabled="isBuiltin(skill)"
+                :loading="packageBusyName === skill.name"
+                @click="reloadSkill(skill)"
+              >
+                <ReloadOutlined />
+                重载
+              </a-button>
+              <a-button
+                size="small"
+                danger
+                :disabled="isBuiltin(skill)"
+                :loading="packageBusyName === skill.name"
+                @click="confirmUninstall(skill)"
+              >
                 <DeleteOutlined />
-                删除
+                卸载
               </a-button>
             </a-space>
           </article>
@@ -583,6 +767,11 @@ onMounted(initialize)
 
 .header-actions {
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.package-input {
+  display: none;
 }
 
 .eyebrow {
@@ -761,7 +950,7 @@ onMounted(initialize)
   .skill-card dl {
     display: grid;
     gap: 8px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin: 14px 0;
   }
 

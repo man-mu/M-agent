@@ -98,6 +98,40 @@ public class SkillFileRepository {
         });
     }
 
+    public Optional<SkillDefinition> readLocalDefinition(String name) {
+        validateName(name);
+        return findLocalRootContaining(name).flatMap(root -> {
+            Path jsonFile = skillDir(root, name).resolve(SKILL_JSON);
+            if (!Files.exists(jsonFile)) {
+                return Optional.empty();
+            }
+            try {
+                SkillDefinition definition = objectMapper.readValue(jsonFile.toFile(), SkillDefinition.class);
+                enrichDefinition(definition, root);
+                return Optional.of(definition);
+            } catch (IOException e) {
+                logger.error("Failed to read local skill.json for '{}': {}", name, e.getMessage());
+                return Optional.empty();
+            }
+        });
+    }
+
+    public Optional<String> readLocalPromptTemplate(String name) {
+        validateName(name);
+        return findLocalRootContaining(name).flatMap(root -> {
+            Path mdFile = skillDir(root, name).resolve(SKILL_MD);
+            if (!Files.exists(mdFile)) {
+                return Optional.empty();
+            }
+            try {
+                return Optional.of(Files.readString(mdFile));
+            } catch (IOException e) {
+                logger.error("Failed to read local SKILL.md for '{}': {}", name, e.getMessage());
+                return Optional.empty();
+            }
+        });
+    }
+
     public void writeSkill(String name, SkillDefinition definition, String promptTemplate) throws IOException {
         validateName(name);
         SkillPackageValidator.requireValidDefinition(definition);
@@ -161,6 +195,11 @@ public class SkillFileRepository {
         return writableRoot().path();
     }
 
+    public Path localSkillPath(String name) {
+        validateName(name);
+        return skillDir(writableRoot(), name);
+    }
+
     private boolean validListedName(String name) {
         boolean valid = SkillPackageValidator.isValidSkillName(name);
         if (!valid) {
@@ -171,6 +210,13 @@ public class SkillFileRepository {
 
     private Optional<SkillRoot> findRootContaining(String name) {
         return roots.stream()
+                .filter(root -> Files.isDirectory(skillDir(root, name)))
+                .findFirst();
+    }
+
+    private Optional<SkillRoot> findLocalRootContaining(String name) {
+        return roots.stream()
+                .filter(SkillRoot::writable)
                 .filter(root -> Files.isDirectory(skillDir(root, name)))
                 .findFirst();
     }
