@@ -112,4 +112,27 @@ class McpToolProviderTest {
         assertThat(status.toString()).doesNotContain("secret");
     }
 
+    @Test
+    void connectionTestErrorsAreReadableAndSanitized() {
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        info.setId("local-test");
+        info.setUrl("http://localhost:18090");
+        info.setSseEndpoint("/sse?token=secret-value");
+        info.setAllowedTools(List.of("weather_now"));
+
+        McpToolProvider.McpConnectionTestResult timeout =
+                McpToolProvider.McpConnectionTestResult.failed(info,
+                        "java.util.concurrent.TimeoutException: Did not observe any item or terminal signal",
+                        20_000);
+        McpToolProvider.McpConnectionTestResult refused =
+                McpToolProvider.McpConnectionTestResult.failed(info,
+                        "java.net.ConnectException: Connection refused: token=secret-value",
+                        5);
+
+        assertThat(timeout.error()).isEqualTo("Connection timed out while testing MCP server");
+        assertThat(refused.error()).isEqualTo("MCP server is not reachable");
+        assertThat(timeout.toString()).doesNotContain("secret-value");
+        assertThat(refused.toString()).doesNotContain("secret-value");
+    }
+
 }

@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.web.reactive.function.client.WebClient;
+import top.lanshan.manmu.mcp.McpServerConfigService;
 import top.lanshan.manmu.mcp.McpToolProvider;
 
 @Configuration
@@ -37,12 +38,18 @@ public class McpConfiguration {
     }
 
     @Bean
+    McpServerConfigService mcpServerConfigService(McpProperties.McpServerConfig staticConfig,
+            McpProperties mcpProperties, ObjectMapper objectMapper) {
+        return new McpServerConfigService(staticConfig, mcpProperties, objectMapper);
+    }
+
+    @Bean
     McpToolProvider mcpToolProvider(McpProperties mcpProperties,
-            McpProperties.McpServerConfig staticConfig,
+            McpServerConfigService configService,
             WebClient.Builder webClientBuilder,
             ObjectMapper objectMapper) {
 
-        return new McpToolProvider(mcpProperties, staticConfig, webClientBuilder,
+        return new McpToolProvider(mcpProperties, configService::currentConfig, webClientBuilder,
                 objectMapper, "deepresearch-mvp", "0.1.0");
     }
 }

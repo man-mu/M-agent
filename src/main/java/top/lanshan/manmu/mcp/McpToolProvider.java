@@ -18,21 +18,25 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 public class McpToolProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(McpToolProvider.class);
 
     private final McpProperties mcpProperties;
-    private final McpProperties.McpServerConfig staticConfig;
+    private final Supplier<McpProperties.McpServerConfig> configSupplier;
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
     private final String clientName;
     private final String clientVersion;
     private final Duration initTimeout = Duration.ofMinutes(2);
+    private final Duration connectionTestTimeout = Duration.ofSeconds(30);
 
     private volatile ToolCallback[] cachedCallbacks;
+    private volatile List<McpAsyncClient> cachedClients = List.of();
     private volatile boolean initialized;
     private volatile List<ServerStatus> serverStatuses = List.of();
 
@@ -42,8 +46,17 @@ public class McpToolProvider {
             ObjectMapper objectMapper,
             String clientName,
             String clientVersion) {
+        this(mcpProperties, () -> staticConfig, webClientBuilder, objectMapper, clientName, clientVersion);
+    }
+
+    public McpToolProvider(McpProperties mcpProperties,
+            Supplier<McpProperties.McpServerConfig> configSupplier,
+            WebClient.Builder webClientBuilder,
+            ObjectMapper objectMapper,
+            String clientName,
+            String clientVersion) {
         this.mcpProperties = mcpProperties;
-        this.staticConfig = staticConfig;
+        this.configSupplier = configSupplier;
         this.webClientBuilder = webClientBuilder;
         this.objectMapper = objectMapper;
         this.clientName = clientName;
@@ -74,14 +87,58 @@ public class McpToolProvider {
         return new McpStatus(mcpProperties.isEnabled(), serverStatuses, callbacks.length);
     }
 
+    public McpStatus reload() {
+        clearCache();
+        return getStatus();
+    }
+
+    public synchronized void clearCache() {
+        closeClients(cachedClients);
+        cachedClients = List.of();
+        cachedCallbacks = null;
+        initialized = false;
+        serverStatuses = configuredServerStatuses(currentConfig());
+    }
+
+    public McpConnectionTestResult testConnection(McpProperties.McpServerInfo server) {
+        long started = System.nanoTime();
+        McpAsyncClient client = null;
+        try {
+            McpProperties.McpServerConfig config = new McpProperties.McpServerConfig(List.of(server));
+            List<McpConfigMergeUtil.NamedTransport> transports = McpConfigMergeUtil.createNamedTransports(
+                    config, webClientBuilder, objectMapper);
+            if (transports.isEmpty()) {
+                return McpConnectionTestResult.failed(server, "No transport initialized",
+                        durationMs(started));
+            }
+            McpConfigMergeUtil.NamedTransport transport = transports.get(0);
+            client = McpClient.async(transport.transport())
+                    .clientInfo(new McpSchema.Implementation(clientName, clientVersion))
+                    .build();
+            client.initialize().block(connectionTestTimeout);
+            McpSchema.ListToolsResult tools = client.listTools().block(connectionTestTimeout);
+            List<String> toolNames = tools == null || tools.tools() == null
+                    ? List.of()
+                    : tools.tools().stream().map(McpSchema.Tool::name).toList();
+            return McpConnectionTestResult.connected(server, toolNames, durationMs(started));
+        } catch (Exception e) {
+            return McpConnectionTestResult.failed(server, safeMessage(e), durationMs(started));
+        } finally {
+            if (client != null) {
+                closeClients(List.of(client));
+            }
+        }
+    }
+
     private ToolCallback[] initToolCallbacks() {
+        McpProperties.McpServerConfig currentConfig = currentConfig();
         List<McpConfigMergeUtil.NamedTransport> transports = McpConfigMergeUtil.createNamedTransports(
-                staticConfig, webClientBuilder, objectMapper);
+                currentConfig, webClientBuilder, objectMapper);
         List<ServerStatus> statuses = new ArrayList<>();
 
         if (transports.isEmpty()) {
             logger.info("No enabled MCP servers configured");
-            serverStatuses = configuredServerStatuses();
+            serverStatuses = configuredServerStatuses(currentConfig);
             return new ToolCallback[0];
         }
 
@@ -105,7 +162,8 @@ public class McpToolProvider {
         }
 
         if (clients.isEmpty()) {
-            serverStatuses = withDisabledServers(statuses);
+            cachedClients = List.of();
+            serverStatuses = withDisabledServers(statuses, currentConfig);
             return new ToolCallback[0];
         }
 
@@ -115,16 +173,23 @@ public class McpToolProvider {
                 : new AsyncMcpToolCallbackProvider(
                     (connectionInfo, tool) -> allowedTools.contains(tool.name()), clients);
         ToolCallback[] callbacks = provider.getToolCallbacks();
-        serverStatuses = withDisabledServers(statuses);
+        closeClients(cachedClients);
+        cachedClients = List.copyOf(clients);
+        serverStatuses = withDisabledServers(statuses, currentConfig);
         logger.info("MCP tools ready: {} tools from {} client(s)", callbacks.length, clients.size());
         return callbacks;
     }
 
-    private List<ServerStatus> configuredServerStatuses() {
-        if (staticConfig == null || staticConfig.getMcpServers() == null) {
+    private McpProperties.McpServerConfig currentConfig() {
+        McpProperties.McpServerConfig config = configSupplier.get();
+        return config == null ? new McpProperties.McpServerConfig() : config;
+    }
+
+    private List<ServerStatus> configuredServerStatuses(McpProperties.McpServerConfig config) {
+        if (config == null || config.getMcpServers() == null) {
             return List.of();
         }
-        return staticConfig.getMcpServers().stream()
+        return config.getMcpServers().stream()
                 .map(server -> server.isEnabled()
                         ? ServerStatus.failed(server, "No transport initialized")
                         : ServerStatus.disabled(server))
@@ -145,14 +210,15 @@ public class McpToolProvider {
         return tools;
     }
 
-    private List<ServerStatus> withDisabledServers(List<ServerStatus> activeStatuses) {
-        if (staticConfig == null || staticConfig.getMcpServers() == null) {
+    private List<ServerStatus> withDisabledServers(List<ServerStatus> activeStatuses,
+            McpProperties.McpServerConfig config) {
+        if (config == null || config.getMcpServers() == null) {
             return List.copyOf(activeStatuses);
         }
         List<ServerStatus> all = new ArrayList<>(activeStatuses);
-        for (McpProperties.McpServerInfo server : staticConfig.getMcpServers()) {
+        for (McpProperties.McpServerInfo server : config.getMcpServers()) {
             boolean alreadyTracked = activeStatuses.stream()
-                    .anyMatch(status -> status.url().equals(server.getUrl()));
+                    .anyMatch(status -> Objects.equals(status.id(), server.getId()));
             if (!server.isEnabled() && !alreadyTracked) {
                 all.add(ServerStatus.disabled(server));
             }
@@ -161,36 +227,82 @@ public class McpToolProvider {
     }
 
     private static String safeMessage(Exception e) {
-        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        return sanitizeSensitiveMessage(message);
+    }
+
+    private static String sanitizeSensitiveMessage(String message) {
+        if (message == null) {
+            return "";
+        }
+        String sanitized = message.replaceAll("(?i)(key|token|api[_-]?key|access[_-]?key)=([^&\\s]+)", "$1=***");
+        String lower = sanitized.toLowerCase();
+        if (lower.contains("timeoutexception")
+                || lower.contains("did not observe any item or terminal signal")
+                || lower.contains("timed out")) {
+            return "Connection timed out while testing MCP server";
+        }
+        if (lower.contains("connection refused") || lower.contains("connectexception")) {
+            return "MCP server is not reachable";
+        }
+        return sanitized;
+    }
+
+    private static String sanitizeConfigValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("(?i)([?&](?:key|token|api[_-]?key|access[_-]?key)=)(?!\\$\\{)[^&\\s]+", "$1***");
+    }
+
+    private static long durationMs(long startedNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
+    }
+
+    private void closeClients(List<McpAsyncClient> clients) {
+        for (McpAsyncClient client : clients) {
+            try {
+                client.closeGracefully().block(Duration.ofSeconds(5));
+            } catch (Exception e) {
+                try {
+                    client.close();
+                } catch (Exception ignored) {
+                    // best effort cleanup
+                }
+            }
+        }
     }
 
     public record McpStatus(boolean enabled, List<ServerStatus> servers, int toolCount) {
     }
 
-    public record ServerStatus(String url, String sseEndpoint, String description,
+    public record ServerStatus(String id, String url, String sseEndpoint, String description,
             boolean configuredEnabled, boolean connected, String error,
             List<String> allowedTools, String keyEnvName, Boolean keyConfigured,
-            List<String> requiredEnvVars) {
+            List<String> requiredEnvVars, String source, boolean editable, boolean localOverride) {
 
         static ServerStatus connected(McpProperties.McpServerInfo server) {
-            return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
+            return new ServerStatus(server.getId(), sanitizeConfigValue(server.getUrl()),
+                    sanitizeConfigValue(server.getSseEndpoint()),
                     server.getDescription(), server.isEnabled(), true, "",
                     allowedTools(server), keyEnvName(server), keyConfigured(server),
-                    requiredEnvVars(server));
+                    requiredEnvVars(server), serverSource(server), true, serverLocalOverride(server));
         }
 
         static ServerStatus failed(McpProperties.McpServerInfo server, String error) {
-            return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
-                    server.getDescription(), server.isEnabled(), false, error,
+            return new ServerStatus(server.getId(), sanitizeConfigValue(server.getUrl()),
+                    sanitizeConfigValue(server.getSseEndpoint()),
+                    server.getDescription(), server.isEnabled(), false, sanitizeSensitiveMessage(error),
                     allowedTools(server), keyEnvName(server), keyConfigured(server),
-                    requiredEnvVars(server));
+                    requiredEnvVars(server), serverSource(server), true, serverLocalOverride(server));
         }
 
         static ServerStatus disabled(McpProperties.McpServerInfo server) {
-            return new ServerStatus(server.getUrl(), server.getSseEndpoint(),
+            return new ServerStatus(server.getId(), sanitizeConfigValue(server.getUrl()),
+                    sanitizeConfigValue(server.getSseEndpoint()),
                     server.getDescription(), server.isEnabled(), false, "",
                     allowedTools(server), keyEnvName(server), keyConfigured(server),
-                    requiredEnvVars(server));
+                    requiredEnvVars(server), serverSource(server), true, serverLocalOverride(server));
         }
 
         private static List<String> allowedTools(McpProperties.McpServerInfo server) {
@@ -225,6 +337,39 @@ public class McpToolProvider {
                 return null;
             }
             return names.stream().allMatch(McpConfigMergeUtil::hasConfiguredValue);
+        }
+
+        private static String serverSource(McpProperties.McpServerInfo server) {
+            if (server instanceof McpServerConfigService.ManagedMcpServerInfo managed) {
+                return managed.getSource();
+            }
+            return "BUILTIN";
+        }
+
+        private static boolean serverLocalOverride(McpProperties.McpServerInfo server) {
+            return server instanceof McpServerConfigService.ManagedMcpServerInfo managed
+                    && managed.isLocalOverride();
+        }
+    }
+
+    public record McpConnectionTestResult(String id, String url, String sseEndpoint,
+            boolean connected, int toolCount, List<String> toolNames, String error,
+            long durationMs, List<String> requiredEnvVars, Boolean keyConfigured) {
+
+        static McpConnectionTestResult connected(McpProperties.McpServerInfo server,
+                List<String> toolNames, long durationMs) {
+            List<String> names = toolNames == null ? List.of() : List.copyOf(toolNames);
+            return new McpConnectionTestResult(server.getId(), sanitizeConfigValue(server.getUrl()),
+                    sanitizeConfigValue(server.getSseEndpoint()), true, names.size(), names, "", durationMs,
+                    ServerStatus.requiredEnvVars(server), ServerStatus.keyConfigured(server));
+        }
+
+        static McpConnectionTestResult failed(McpProperties.McpServerInfo server,
+                String error, long durationMs) {
+            return new McpConnectionTestResult(server.getId(), sanitizeConfigValue(server.getUrl()),
+                    sanitizeConfigValue(server.getSseEndpoint()), false, 0, List.of(),
+                    sanitizeSensitiveMessage(error), durationMs,
+                    ServerStatus.requiredEnvVars(server), ServerStatus.keyConfigured(server));
         }
     }
 

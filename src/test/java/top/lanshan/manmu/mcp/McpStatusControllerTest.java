@@ -6,6 +6,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import top.lanshan.manmu.config.McpProperties;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 class McpStatusControllerTest {
@@ -27,7 +29,12 @@ class McpStatusControllerTest {
                 new ObjectMapper(),
                 "test", "1.0");
 
-        WebTestClient.bindToController(new McpStatusController(provider)).build()
+        McpServerConfigService configService = new McpServerConfigService(
+                new McpProperties.McpServerConfig(List.of(info)),
+                tempConfigPath(),
+                new ObjectMapper());
+
+        WebTestClient.bindToController(new McpStatusController(provider, configService)).build()
                 .get()
                 .uri("/api/mcp/status")
                 .exchange()
@@ -38,5 +45,14 @@ class McpStatusControllerTest {
                 .jsonPath("$.servers[0].url").isEqualTo("https://example.com/mcp")
                 .jsonPath("$.servers[0].configuredEnabled").isEqualTo(false)
                 .jsonPath("$.servers[0].connected").isEqualTo(false);
+    }
+
+    private Path tempConfigPath() {
+        try {
+            return Files.createTempDirectory("mcp-status-controller")
+                    .resolve("mcp-servers.json");
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

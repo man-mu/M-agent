@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { mcpServerDisplay } from './mcpTools'
+import {
+  mcpServerAddress,
+  mcpServerDisplay,
+  mcpSourceColor,
+  mcpSourceLabel,
+  normalizeToolNames,
+  testResultSummary,
+  validateMcpServerConfig,
+} from './mcpTools'
 import type { McpServerStatus } from '@/services/api/app'
 
 const baseServer: McpServerStatus = {
@@ -75,5 +83,65 @@ describe('mcpTools display helpers', () => {
     expect(display.tools).toEqual([])
     expect(display.requiredEnvVars).toEqual([])
     expect(display.setupHints).toEqual([])
+  })
+
+  it('normalizes tool lists from form text', () => {
+    expect(normalizeToolNames('weather_now\nmaps_geo，weather_now; maps_text_search')).toEqual([
+      'weather_now',
+      'maps_geo',
+      'maps_text_search',
+    ])
+  })
+
+  it('validates server config before submit', () => {
+    expect(validateMcpServerConfig({
+      id: 'bad id',
+      url: 'http://127.0.0.1:18090',
+      sseEndpoint: '/sse',
+      enabled: true,
+    })).toContain('服务 ID')
+
+    expect(validateMcpServerConfig({
+      id: 'local-qweather',
+      url: 'ftp://127.0.0.1',
+      sseEndpoint: '/sse',
+      enabled: true,
+    })).toContain('http://')
+
+    expect(validateMcpServerConfig({
+      id: 'local-qweather',
+      url: 'https://example.com',
+      sseEndpoint: '/sse?key=secret-value',
+      enabled: true,
+    })).toContain('${ENV_NAME}')
+
+    expect(validateMcpServerConfig({
+      id: 'local-qweather',
+      url: 'https://example.com',
+      sseEndpoint: '/sse?key=${EXAMPLE_API_KEY}',
+      enabled: true,
+    })).toBe('')
+
+    expect(validateMcpServerConfig({
+      id: 'local-qweather',
+      url: 'http://127.0.0.1:18090',
+      sseEndpoint: '/sse',
+      enabled: true,
+    })).toBe('')
+  })
+
+  it('summarizes source and connection test results', () => {
+    expect(mcpServerAddress('http://127.0.0.1:18090', '/sse')).toBe('http://127.0.0.1:18090/sse')
+    expect(mcpSourceLabel({ source: 'LOCAL', localOverride: true })).toBe('本地覆盖')
+    expect(mcpSourceColor({ source: 'LOCAL', localOverride: false })).toBe('green')
+    expect(testResultSummary({
+      id: 'local-qweather',
+      url: 'http://127.0.0.1:18090',
+      sseEndpoint: '/sse',
+      connected: true,
+      toolCount: 1,
+      toolNames: ['weather_now'],
+      durationMs: 15,
+    })).toContain('1 个工具')
   })
 })

@@ -1,4 +1,4 @@
-import type { McpServerStatus } from '@/services/api/app'
+import type { McpConnectionTestResult, McpServerConfig, McpServerStatus } from '@/services/api/app'
 
 export interface McpToolDisplay {
   name: string
@@ -16,6 +16,84 @@ export interface McpServerDisplay {
   keyStatusLabel: string
   keyStatusColor: string
   isLocalQWeather: boolean
+}
+
+export function mcpServerAddress(url: string, endpoint?: string) {
+  return `${url || ''}${endpoint || ''}`
+}
+
+export function mcpSourceLabel(server: Pick<McpServerStatus, 'source' | 'localOverride'>) {
+  if (server.source === 'LOCAL' && server.localOverride) {
+    return '本地覆盖'
+  }
+  if (server.source === 'LOCAL') {
+    return '本地配置'
+  }
+  return '内置配置'
+}
+
+export function mcpSourceColor(server: Pick<McpServerStatus, 'source' | 'localOverride'>) {
+  if (server.source === 'LOCAL' && server.localOverride) {
+    return 'purple'
+  }
+  if (server.source === 'LOCAL') {
+    return 'green'
+  }
+  return 'blue'
+}
+
+export function normalizeToolNames(input: string | string[] | undefined | null): string[] {
+  const raw = Array.isArray(input) ? input.join('\n') : input || ''
+  const names: string[] = []
+  raw
+    .split(/[\n,，;；]/)
+    .map(name => name.trim())
+    .filter(Boolean)
+    .forEach(name => {
+      if (!names.includes(name)) {
+        names.push(name)
+      }
+    })
+  return names
+}
+
+export function toolsText(tools: string[] | undefined | null) {
+  return normalizeToolNames(tools || []).join('\n')
+}
+
+export function validateMcpServerConfig(server: McpServerConfig) {
+  const id = server.id?.trim()
+  if (id && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$/.test(id)) {
+    return '服务 ID 只能包含字母、数字、下划线和短横线，长度为 2-64。'
+  }
+  const url = server.url?.trim()
+  if (!url) {
+    return '服务地址不能为空。'
+  }
+  if (!/^https?:\/\/\S+$/i.test(url)) {
+    return '服务地址必须以 http:// 或 https:// 开头。'
+  }
+  if (hasInlineSecret(url)) {
+    return 'Key/Token 参数必须使用 ${ENV_NAME} 占位符。'
+  }
+  const endpoint = server.sseEndpoint?.trim() || '/sse'
+  if (!endpoint.startsWith('/')) {
+    return 'SSE Endpoint 必须以 / 开头。'
+  }
+  if (hasInlineSecret(endpoint)) {
+    return 'Key/Token 参数必须使用 ${ENV_NAME} 占位符。'
+  }
+  return ''
+}
+
+export function testResultSummary(result: McpConnectionTestResult | undefined) {
+  if (!result) {
+    return ''
+  }
+  if (result.connected) {
+    return `连接成功，发现 ${result.toolCount} 个工具。`
+  }
+  return result.error || '连接失败。'
 }
 
 const knownTools: Record<string, Omit<McpToolDisplay, 'name'>> = {
@@ -155,4 +233,8 @@ function uniqueNames(names: string[]): string[] {
       .map(name => name?.trim())
       .filter((name): name is string => Boolean(name))
   ))
+}
+
+function hasInlineSecret(value: string) {
+  return /[?&](key|token|api[_-]?key|access[_-]?key)=(?!\$\{)[^&\s]+/i.test(value)
 }

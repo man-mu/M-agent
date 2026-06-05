@@ -174,7 +174,10 @@ class SpringAiAgentClientSkillInvocationTest {
         private final ToolCallback[] callbacks;
 
         StaticMcpToolProvider(ToolCallback... callbacks) {
-            super(null, null, null, null, "test", "0.0.0");
+            super(new top.lanshan.manmu.config.McpProperties(),
+                    new top.lanshan.manmu.config.McpProperties.McpServerConfig(),
+                    org.springframework.web.reactive.function.client.WebClient.builder(),
+                    new ObjectMapper(), "test", "0.0.0");
             this.callbacks = callbacks;
         }
 
