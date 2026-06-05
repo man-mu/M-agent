@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.plugin.JarSkillToolCallback;
 import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
@@ -21,18 +22,26 @@ public class SkillToolProvider {
     private final ObjectMapper objectMapper;
     private final SkillPluginRegistry pluginRegistry;
     private final boolean jarPluginsEnabled;
+    private final SkillInvocationHistoryService invocationHistoryService;
 
     public SkillToolProvider(SkillRegistry registry, ObjectMapper objectMapper) {
-        this(registry, null, objectMapper, null, false);
+        this(registry, null, objectMapper, null, false, null);
     }
 
     public SkillToolProvider(SkillRegistry registry, SkillFileRepository fileRepository,
             ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry, boolean jarPluginsEnabled) {
+        this(registry, fileRepository, objectMapper, pluginRegistry, jarPluginsEnabled, null);
+    }
+
+    public SkillToolProvider(SkillRegistry registry, SkillFileRepository fileRepository,
+            ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry, boolean jarPluginsEnabled,
+            SkillInvocationHistoryService invocationHistoryService) {
         this.registry = registry;
         this.fileRepository = fileRepository;
         this.objectMapper = objectMapper;
         this.pluginRegistry = pluginRegistry;
         this.jarPluginsEnabled = jarPluginsEnabled;
+        this.invocationHistoryService = invocationHistoryService;
     }
 
     public ToolCallback[] getToolCallbacks() {
@@ -52,7 +61,7 @@ public class SkillToolProvider {
                 logger.warn("Skill '{}' has no prompt template, skipping", def.getName());
                 continue;
             }
-            callbacks.add(new SkillToolCallback(def, template, objectMapper));
+            callbacks.add(new SkillToolCallback(def, template, objectMapper, invocationHistoryService));
         }
         logger.info("Skill tools ready: {} tools", callbacks.size());
         return callbacks.toArray(new ToolCallback[0]);
@@ -67,7 +76,7 @@ public class SkillToolProvider {
             if (!pluginRegistry.hasPlugin(def.getName())) {
                 pluginRegistry.register(def, fileRepository.packageDirectory(def.getName()));
             }
-            callbacks.add(new JarSkillToolCallback(def, pluginRegistry, objectMapper));
+            callbacks.add(new JarSkillToolCallback(def, pluginRegistry, objectMapper, invocationHistoryService));
         } catch (IOException | RuntimeException e) {
             logger.warn("Jar Skill '{}' failed to load: {}", def.getName(), safeMessage(e));
         }

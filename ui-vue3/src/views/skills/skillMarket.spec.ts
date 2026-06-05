@@ -5,6 +5,9 @@ import {
   isBuiltinSkill,
   skillCategoryLabel,
   skillDisplayTitle,
+  skillHealthColor,
+  skillHealthLabel,
+  invocationSourceLabel,
   skillListLabel,
   skillPackageTypeLabel,
   skillSourceLabel,
@@ -55,6 +58,38 @@ describe('skill market helpers', () => {
     expect(skillStatusLabel(localSkill)).toBe('停用')
     expect(skillListLabel(['mcp-qweather', 'weather_now'])).toBe('mcp-qweather、weather_now')
     expect(skillListLabel([])).toBe('无')
+  })
+
+  it('formats health and invocation labels', () => {
+    expect(skillHealthLabel(null)).toBe('未检查')
+    expect(skillHealthColor(null)).toBe('default')
+    expect(skillHealthLabel({
+      name: 'weather-now',
+      healthy: true,
+      status: 'HEALTHY',
+      checks: [],
+      dependencies: [],
+      validatedAt: '2026-06-05T00:00:00Z',
+    })).toBe('健康')
+    expect(skillHealthColor({
+      name: 'weather-now',
+      healthy: false,
+      status: 'DEGRADED',
+      checks: [],
+      dependencies: [],
+      validatedAt: '2026-06-05T00:00:00Z',
+    })).toBe('orange')
+    expect(invocationSourceLabel({
+      id: '1',
+      skillName: 'weather-now',
+      source: 'EXPLICIT',
+      invokedAt: '2026-06-05T00:00:00Z',
+      success: true,
+      input: {},
+      output: 'ok',
+      error: '',
+      durationMs: 1,
+    })).toBe('显式调用')
   })
 
   it('filters installed and local market views by status and searchable metadata', () => {

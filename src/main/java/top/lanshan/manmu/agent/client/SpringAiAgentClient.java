@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.lanshan.manmu.mcp.McpToolProvider;
 import top.lanshan.manmu.modelprovider.RoutingChatModel;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillService;
@@ -47,6 +48,9 @@ public class SpringAiAgentClient implements AgentClient {
 
 	@Autowired(required = false)
 	private SkillService skillService;
+
+	@Autowired(required = false)
+	private SkillInvocationHistoryService skillInvocationHistoryService;
 
 	public SpringAiAgentClient(RoutingChatModel routingChatModel) {
 		this.routingChatModel = routingChatModel;
@@ -169,6 +173,7 @@ public class SpringAiAgentClient implements AgentClient {
 			rendered = rendered + "\n\n" + toolContext;
 		}
 
+		recordExplicitSkillInvocation(skillName, params, rendered);
 		logger.info("@{} explicitly invoked, template rendered ({} chars)", skillName, rendered.length());
 		return rendered + "\n\n---\n\n" + systemPrompt;
 	}
@@ -304,6 +309,15 @@ public class SpringAiAgentClient implements AgentClient {
 			return "Unknown error";
 		}
 		return ex.getMessage() == null || ex.getMessage().isBlank() ? ex.getClass().getSimpleName() : ex.getMessage();
+	}
+
+	private void recordExplicitSkillInvocation(String skillName, Map<String, Object> params, String output) {
+		if (skillInvocationHistoryService == null) {
+			return;
+		}
+		long started = System.nanoTime();
+		skillInvocationHistoryService.record(skillName, "EXPLICIT", params, output, "",
+				skillInvocationHistoryService.durationMs(started));
 	}
 
 	private Optional<String> explicitSkillText(String userPrompt) {

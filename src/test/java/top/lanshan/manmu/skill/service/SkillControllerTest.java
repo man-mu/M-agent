@@ -5,6 +5,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpStatus;
+import top.lanshan.manmu.skill.health.SkillHealthResult;
+import top.lanshan.manmu.skill.health.SkillHealthService;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -22,6 +25,7 @@ class SkillControllerTest {
     private SkillFileRepository fileRepo;
     private SkillRegistry registry;
     private SkillService service;
+    private SkillInvocationHistoryService invocationHistoryService;
     private SkillController controller;
 
     @BeforeEach
@@ -29,7 +33,10 @@ class SkillControllerTest {
         fileRepo = new SkillFileRepository(tempDir, objectMapper);
         registry = new SkillRegistry(fileRepo);
         service = new SkillService(fileRepo, registry, objectMapper);
-        controller = new SkillController(service);
+        invocationHistoryService = new SkillInvocationHistoryService();
+        controller = new SkillController(service,
+                new SkillHealthService(service, fileRepo, null, objectMapper),
+                invocationHistoryService);
     }
 
     @Test
@@ -114,5 +121,43 @@ class SkillControllerTest {
 
         var getResp = controller.getSkill("original").block();
         assertThat(getResp.getBody().get("promptTemplate")).isEqualTo("new prompt");
+    }
+
+    @Test
+    void returnsHealthAndValidationResult() {
+        SkillDefinition def = new SkillDefinition();
+        def.setName("health-skill");
+        def.setDescription("Health skill");
+        controller.createSkill(new SkillController.CreateSkillRequest(def, "prompt"))
+                .block();
+
+        var healthResp = controller.getSkillHealth("health-skill").block();
+        var validateResp = controller.validateSkill("health-skill").block();
+
+        assertThat(healthResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(validateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        SkillHealthResult result = objectMapper.convertValue(healthResp.getBody(), SkillHealthResult.class);
+        assertThat(result.healthy()).isTrue();
+        assertThat(result.checks()).extracting("name")
+                .contains("enabled", "promptTemplate", "parameterSchema");
+    }
+
+    @Test
+    void returnsRecentInvocationRecords() {
+        SkillDefinition def = new SkillDefinition();
+        def.setName("invoked-skill");
+        def.setDescription("Invocation skill");
+        controller.createSkill(new SkillController.CreateSkillRequest(def, "prompt"))
+                .block();
+        invocationHistoryService.record("invoked-skill", "TOOL",
+                Map.of("token", "secret-token", "topic", "java"),
+                "ok", "", 12);
+
+        var response = controller.getSkillInvocations("invoked-skill", 10).block();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<?>) response.getBody()).hasSize(1);
+        assertThat(response.getBody().toString()).doesNotContain("secret-token");
+        assertThat(response.getBody().toString()).contains("***");
     }
 }

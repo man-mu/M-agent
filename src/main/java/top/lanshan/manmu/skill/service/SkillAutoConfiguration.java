@@ -9,11 +9,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.lanshan.manmu.skill.market.SkillCatalogRepository;
 import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
+import top.lanshan.manmu.skill.health.SkillHealthService;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
 import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
+import top.lanshan.manmu.mcp.McpServerConfigService;
+import top.lanshan.manmu.mcp.McpToolProvider;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import org.springframework.beans.factory.ObjectProvider;
 
 @Configuration
 @ConditionalOnProperty(prefix = "mvp.skill", name = "enabled", havingValue = "true")
@@ -77,8 +82,10 @@ public class SkillAutoConfiguration {
 
     @Bean
     SkillToolProvider skillToolProvider(SkillRegistry registry, SkillFileRepository fileRepository,
-            ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry) {
-        return new SkillToolProvider(registry, fileRepository, objectMapper, pluginRegistry, jarPluginsEnabled);
+            ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry,
+            SkillInvocationHistoryService invocationHistoryService) {
+        return new SkillToolProvider(registry, fileRepository, objectMapper, pluginRegistry, jarPluginsEnabled,
+                invocationHistoryService);
     }
 
     @Bean
@@ -87,6 +94,19 @@ public class SkillAutoConfiguration {
             SkillCatalogRepository catalogRepository, SkillPluginRegistry pluginRegistry) {
         return new SkillService(fileRepository, registry, objectMapper, archiveService, catalogRepository,
                 pluginRegistry, jarPluginsEnabled);
+    }
+
+    @Bean
+    SkillInvocationHistoryService skillInvocationHistoryService() {
+        return new SkillInvocationHistoryService();
+    }
+
+    @Bean
+    SkillHealthService skillHealthService(SkillService skillService, SkillFileRepository fileRepository,
+            ObjectMapper objectMapper, ObjectProvider<McpToolProvider> mcpToolProvider,
+            ObjectProvider<McpServerConfigService> mcpServerConfigService) {
+        return new SkillHealthService(skillService, fileRepository, mcpToolProvider.getIfAvailable(),
+                mcpServerConfigService.getIfAvailable(), objectMapper);
     }
 
     private Path localMarketPath() {

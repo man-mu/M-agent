@@ -8,6 +8,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import top.lanshan.manmu.mcp.McpToolProvider;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
 import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
 import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
@@ -33,6 +34,7 @@ class SpringAiAgentClientSkillInvocationTest {
     Path tempDir;
 
     private SkillService skillService;
+    private SkillInvocationHistoryService invocationHistoryService;
 
     @BeforeEach
     void setUp() {
@@ -69,6 +71,7 @@ class SpringAiAgentClientSkillInvocationTest {
         registry.register(weather, "Weather request for {{location}}.");
 
         skillService = new SkillService(fileRepo, registry, objectMapper);
+        invocationHistoryService = new SkillInvocationHistoryService();
     }
 
     @Test
@@ -111,6 +114,11 @@ class SpringAiAgentClientSkillInvocationTest {
         assertThat(resolved).startsWith("Review in java:");
         assertThat(resolved).contains("public class Foo {}");
         assertThat(resolved).endsWith("base system");
+        assertThat(invocationHistoryService.recent("code-review", 10)).singleElement()
+                .satisfies(record -> {
+                    assertThat(record.source()).isEqualTo("EXPLICIT");
+                    assertThat(record.output()).contains("public class Foo {}");
+                });
     }
 
     @Test
@@ -224,6 +232,9 @@ class SpringAiAgentClientSkillInvocationTest {
             mcpToolProviderField.setAccessible(true);
             mcpToolProviderField.set(client, mcpToolProvider);
         }
+        Field historyField = SpringAiAgentClient.class.getDeclaredField("skillInvocationHistoryService");
+        historyField.setAccessible(true);
+        historyField.set(client, invocationHistoryService);
         return client;
     }
 

@@ -23,7 +23,14 @@ import {
 } from '@ant-design/icons-vue'
 import appService from '@/services/api/app'
 import skillService from '@/services/api/skills'
-import type { CreateSkillRequest, SkillDefinition, SkillDetail, SkillPackageImportResult } from '@/services/api/skills'
+import type {
+  CreateSkillRequest,
+  SkillDefinition,
+  SkillDetail,
+  SkillHealthResult,
+  SkillInvocationRecord,
+  SkillPackageImportResult,
+} from '@/services/api/skills'
 import { userMessageFromError } from '@/utils/errors'
 import {
   defaultParametersSchema,
@@ -42,6 +49,9 @@ import {
   isBuiltinSkill as isBuiltin,
   skillCategoryLabel as categoryLabel,
   skillDisplayTitle as skillTitle,
+  skillHealthColor as healthColor,
+  skillHealthLabel as healthLabel,
+  invocationSourceLabel,
   skillListLabel,
   skillPackageTypeLabel as packageTypeLabel,
   skillSourceColor as sourceColor,
@@ -97,6 +107,9 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const selectedSkill = ref<SkillDefinition | null>(null)
 const selectedSkillDetail = ref<SkillDetail | null>(null)
+const detailHealth = ref<SkillHealthResult | null>(null)
+const detailInvocations = ref<SkillInvocationRecord[]>([])
+const skillHealthMap = ref<Record<string, SkillHealthResult>>({})
 const importRecords = ref<ImportRecord[]>([])
 
 const form = reactive<CreateSkillRequest>({
@@ -118,6 +131,7 @@ const columns = [
   { title: '描述', dataIndex: 'description', key: 'description', width: 280 },
   { title: '版本', dataIndex: 'version', key: 'version', width: 110 },
   { title: '状态', key: 'enabled', width: 96 },
+  { title: '健康', key: 'health', width: 96 },
   { title: '分类', key: 'category', width: 120 },
   { title: '依赖', key: 'dependencies', width: 180 },
   { title: '参数', key: 'parameters', width: 90 },
@@ -189,12 +203,30 @@ async function loadSkills() {
   loadError.value = ''
   try {
     skills.value = await skillService.list()
+    await loadSkillHealthSummaries()
   } catch (err: unknown) {
     loadError.value = userMessageFromError(err, '加载 Skill 列表失败')
     message.error(loadError.value)
   } finally {
     loading.value = false
   }
+}
+
+async function loadSkillHealthSummaries() {
+  const entries = await Promise.all(skills.value.map(async skill => {
+    try {
+      return [skill.name, await skillService.health(skill.name)] as const
+    } catch {
+      return null
+    }
+  }))
+  const next: Record<string, SkillHealthResult> = {}
+  for (const entry of entries) {
+    if (entry) {
+      next[entry[0]] = entry[1]
+    }
+  }
+  skillHealthMap.value = next
 }
 
 function resetForm() {
@@ -356,6 +388,13 @@ function formatTime(value?: string) {
   return date.toLocaleString()
 }
 
+function invocationSummary(record: SkillInvocationRecord) {
+  if (record.error) {
+    return record.error
+  }
+  return record.output || '无输出'
+}
+
 function beforePackageUpload(file: File) {
   void importPackageFile(file)
   return false
@@ -400,10 +439,20 @@ function addImportRecord(file: File, result: SkillPackageImportResult | null, er
 async function openDetail(skill: SkillDefinition) {
   selectedSkill.value = skill
   selectedSkillDetail.value = null
+  detailHealth.value = null
+  detailInvocations.value = []
   detailVisible.value = true
   detailLoading.value = true
   try {
-    selectedSkillDetail.value = await skillService.get(skill.name)
+    const [detail, health, invocations] = await Promise.all([
+      skillService.get(skill.name),
+      skillService.health(skill.name),
+      skillService.invocations(skill.name, 10),
+    ])
+    selectedSkillDetail.value = detail
+    detailHealth.value = health
+    detailInvocations.value = invocations
+    skillHealthMap.value = { ...skillHealthMap.value, [skill.name]: health }
   } catch (err: unknown) {
     message.error(userMessageFromError(err, '读取 Skill 详情失败'))
   } finally {
@@ -416,6 +465,8 @@ const detailPromptTemplate = computed(() => selectedSkillDetail.value?.promptTem
 const detailParametersText = computed(() => prettyJson(detailDefinition.value?.parameters || defaultParametersSchema()))
 const detailDependencies = computed(() => detailDefinition.value?.dependencies || [])
 const detailTags = computed(() => detailDefinition.value?.tags || [])
+const detailHealthChecks = computed(() => detailHealth.value?.checks || [])
+const detailDependencyHealth = computed(() => detailHealth.value?.dependencies || [])
 
 async function exportSkillPackage(skill: SkillDefinition) {
   packageBusyName.value = skill.name
@@ -634,6 +685,11 @@ onMounted(initialize)
                   {{ statusLabel(record) }}
                 </a-tag>
               </template>
+              <template v-else-if="column.key === 'health'">
+                <a-tag :color="healthColor(skillHealthMap[record.name])">
+                  {{ healthLabel(skillHealthMap[record.name]) }}
+                </a-tag>
+              </template>
               <template v-else-if="column.key === 'category'">
                 <span class="muted">{{ categoryLabel(record) }}</span>
               </template>
@@ -712,7 +768,12 @@ onMounted(initialize)
                   <span>{{ skill.name }}</span>
                   <p>{{ skill.description }}</p>
                 </div>
-                <a-tag :color="skill.enabled ? 'green' : 'default'">{{ statusLabel(skill) }}</a-tag>
+                <div class="card-status">
+                  <a-tag :color="skill.enabled ? 'green' : 'default'">{{ statusLabel(skill) }}</a-tag>
+                  <a-tag :color="healthColor(skillHealthMap[skill.name])">
+                    {{ healthLabel(skillHealthMap[skill.name]) }}
+                  </a-tag>
+                </div>
               </div>
               <dl>
                 <div>
@@ -839,12 +900,61 @@ onMounted(initialize)
               <a-tag :color="detailDefinition.enabled ? 'green' : 'default'">
                 {{ statusLabel(detailDefinition) }}
               </a-tag>
+              <a-tag :color="healthColor(detailHealth)">
+                {{ healthLabel(detailHealth) }}
+              </a-tag>
             </a-descriptions-item>
             <a-descriptions-item label="安装时间">{{ formatTime(detailDefinition.installed_at || detailDefinition.created_at) }}</a-descriptions-item>
             <a-descriptions-item label="更新时间">{{ formatTime(detailDefinition.updated_at) }}</a-descriptions-item>
             <a-descriptions-item label="依赖">{{ detailDependencies.length ? detailDependencies.join('、') : '无' }}</a-descriptions-item>
             <a-descriptions-item label="标签">{{ detailTags.length ? detailTags.join('、') : tagsLabel(detailDefinition) }}</a-descriptions-item>
           </a-descriptions>
+
+          <section class="drawer-section">
+            <strong>健康检查</strong>
+            <div class="health-list">
+              <div v-for="check in detailHealthChecks" :key="check.name" class="health-row">
+                <a-tag :color="check.healthy ? 'green' : 'orange'">
+                  {{ check.healthy ? '通过' : '异常' }}
+                </a-tag>
+                <span>{{ check.name }}</span>
+                <em>{{ check.message }}</em>
+              </div>
+              <a-empty v-if="!detailHealthChecks.length" description="暂无健康检查结果" />
+            </div>
+          </section>
+
+          <section class="drawer-section">
+            <strong>依赖健康</strong>
+            <div class="health-list">
+              <div v-for="dependency in detailDependencyHealth" :key="dependency.name" class="health-row">
+                <a-tag :color="dependency.available ? 'green' : 'orange'">
+                  {{ dependency.available ? '可用' : '不可用' }}
+                </a-tag>
+                <span>{{ dependency.name }}</span>
+                <em>{{ dependency.message }}</em>
+              </div>
+              <a-empty v-if="!detailDependencyHealth.length" description="暂无依赖" />
+            </div>
+          </section>
+
+          <section class="drawer-section">
+            <strong>最近调用</strong>
+            <div class="invocation-list">
+              <article v-for="record in detailInvocations" :key="record.id" class="invocation-record">
+                <div>
+                  <a-tag :color="record.success ? 'green' : 'red'">
+                    {{ record.success ? '成功' : '失败' }}
+                  </a-tag>
+                  <span>{{ invocationSourceLabel(record) }}</span>
+                  <time>{{ formatTime(record.invokedAt) }}</time>
+                  <small>{{ record.durationMs }}ms</small>
+                </div>
+                <p>{{ invocationSummary(record) }}</p>
+              </article>
+              <a-empty v-if="!detailInvocations.length" description="暂无调用记录" />
+            </div>
+          </section>
 
           <section class="drawer-section">
             <strong>参数 Schema</strong>
@@ -1115,6 +1225,13 @@ onMounted(initialize)
   overflow-wrap: anywhere;
 }
 
+.card-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .inline-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1179,6 +1296,68 @@ onMounted(initialize)
   padding: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.health-list,
+.invocation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.health-row {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 96px) minmax(0, 1fr);
+  padding: 8px;
+}
+
+.health-row span {
+  color: #111827;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.health-row em {
+  color: #4b5563;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.invocation-record {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.invocation-record > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.invocation-record span {
+  color: #111827;
+  font-weight: 600;
+}
+
+.invocation-record time,
+.invocation-record small {
+  color: #6b7280;
+}
+
+.invocation-record p {
+  color: #374151;
+  margin: 8px 0 0;
+  max-height: 96px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .preview-panel {

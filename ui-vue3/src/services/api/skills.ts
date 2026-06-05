@@ -40,6 +40,43 @@ export interface SkillPackageImportResult {
   message?: string
 }
 
+export interface SkillHealthCheck {
+  name: string
+  healthy: boolean
+  message: string
+}
+
+export interface SkillDependencyHealth {
+  name: string
+  type: string
+  available: boolean
+  message: string
+  matchedServers: string[]
+  requiredEnvVars: string[]
+  keyConfigured?: boolean | null
+}
+
+export interface SkillHealthResult {
+  name: string
+  healthy: boolean
+  status: 'HEALTHY' | 'DEGRADED' | string
+  checks: SkillHealthCheck[]
+  dependencies: SkillDependencyHealth[]
+  validatedAt: string
+}
+
+export interface SkillInvocationRecord {
+  id: string
+  skillName: string
+  source: string
+  invokedAt: string
+  success: boolean
+  input: Record<string, unknown>
+  output: string
+  error: string
+  durationMs: number
+}
+
 class SkillService {
   list(): Promise<SkillDefinition[]> {
     return get<SkillDefinition[]>('/api/skills')
@@ -92,6 +129,18 @@ class SkillService {
 
   uninstallPackage(name: string): Promise<void> {
     return del<void>(`/api/skills/packages/${name}`)
+  }
+
+  health(name: string): Promise<SkillHealthResult> {
+    return get<SkillHealthResult>(`/api/skills/${name}/health`)
+  }
+
+  validate(name: string): Promise<SkillHealthResult> {
+    return post<SkillHealthResult>(`/api/skills/${name}/validate`)
+  }
+
+  invocations(name: string, limit = 20): Promise<SkillInvocationRecord[]> {
+    return get<SkillInvocationRecord[]>(`/api/skills/${name}/invocations?limit=${limit}`)
   }
 }
 

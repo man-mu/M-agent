@@ -1,4 +1,4 @@
-import type { SkillDefinition } from '@/services/api/skills'
+import type { SkillDefinition, SkillHealthResult, SkillInvocationRecord } from '@/services/api/skills'
 
 export function isBuiltinSkill(skill: SkillDefinition) {
   return skill.storageLocation === 'BUILTIN' || skill.source === 'builtin'
@@ -34,6 +34,30 @@ export function skillListLabel(values: string[] | undefined | null) {
 
 export function skillStatusLabel(skill: SkillDefinition) {
   return skill.enabled ? '启用' : '停用'
+}
+
+export function skillHealthLabel(health: SkillHealthResult | undefined | null) {
+  if (!health) {
+    return '未检查'
+  }
+  return health.healthy ? '健康' : '异常'
+}
+
+export function skillHealthColor(health: SkillHealthResult | undefined | null) {
+  if (!health) {
+    return 'default'
+  }
+  return health.healthy ? 'green' : 'orange'
+}
+
+export function invocationSourceLabel(record: SkillInvocationRecord) {
+  if (record.source === 'EXPLICIT') {
+    return '显式调用'
+  }
+  if (record.source === 'TOOL') {
+    return '工具调用'
+  }
+  return record.source || '未知'
 }
 
 export function skillSearchText(skill: SkillDefinition) {

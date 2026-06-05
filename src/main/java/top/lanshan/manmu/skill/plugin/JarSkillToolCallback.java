@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import top.lanshan.manmu.skill.health.SkillInvocationHistoryService;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 
 import java.util.LinkedHashMap;
@@ -19,12 +20,19 @@ public class JarSkillToolCallback implements ToolCallback {
     private final SkillDefinition definition;
     private final SkillPluginRegistry pluginRegistry;
     private final ObjectMapper objectMapper;
+    private final SkillInvocationHistoryService invocationHistoryService;
 
     public JarSkillToolCallback(SkillDefinition definition, SkillPluginRegistry pluginRegistry,
             ObjectMapper objectMapper) {
+        this(definition, pluginRegistry, objectMapper, null);
+    }
+
+    public JarSkillToolCallback(SkillDefinition definition, SkillPluginRegistry pluginRegistry,
+            ObjectMapper objectMapper, SkillInvocationHistoryService invocationHistoryService) {
         this.definition = definition;
         this.pluginRegistry = pluginRegistry;
         this.objectMapper = objectMapper;
+        this.invocationHistoryService = invocationHistoryService;
     }
 
     @Override
@@ -38,14 +46,26 @@ public class JarSkillToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput) {
+        long started = System.nanoTime();
+        Map<String, Object> params = Map.of();
         try {
-            Map<String, Object> params = objectMapper.readValue(toolInput,
+            params = objectMapper.readValue(toolInput,
                     new TypeReference<LinkedHashMap<String, Object>>() {});
-            return pluginRegistry.invoke(definition.getName(), params);
+            String output = pluginRegistry.invoke(definition.getName(), params);
+            record(params, output, "", started);
+            return output;
         } catch (Exception e) {
             String message = "Jar Skill '" + definition.getName() + "' failed: " + safeMessage(e);
             logger.warn(message);
+            record(params, "", message, started);
             return message;
+        }
+    }
+
+    private void record(Map<String, Object> input, String output, String error, long started) {
+        if (invocationHistoryService != null) {
+            invocationHistoryService.record(definition.getName(), "TOOL", input, output, error,
+                    invocationHistoryService.durationMs(started));
         }
     }
 
