@@ -1,4 +1,4 @@
-import type { McpConnectionTestResult, McpServerConfig, McpServerStatus } from '@/services/api/app'
+import type { McpConnectionTestResult, McpServerConfig, McpServerStatus, McpToolInvocationResult } from '@/services/api/app'
 
 export interface McpToolDisplay {
   name: string
@@ -94,6 +94,47 @@ export function testResultSummary(result: McpConnectionTestResult | undefined) {
     return `连接成功，发现 ${result.toolCount} 个工具。`
   }
   return result.error || '连接失败。'
+}
+
+export type ParseMcpJsonResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; error: string }
+
+export function parseMcpJsonObject(text: string): ParseMcpJsonResult {
+  try {
+    const value = JSON.parse(text || '{}')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return { ok: false, error: '请输入 JSON 对象。' }
+    }
+    return { ok: true, value: value as Record<string, unknown> }
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'JSON 格式不正确。' }
+  }
+}
+
+export function prettyMcpJson(value: unknown) {
+  return JSON.stringify(value ?? {}, null, 2)
+}
+
+export function mcpToolExampleInput(toolName: string): Record<string, unknown> {
+  if (toolName === 'weather_now') {
+    return {
+      location: '上海',
+      lang: 'zh',
+      unit: 'm',
+    }
+  }
+  return {}
+}
+
+export function invocationResultSummary(result: McpToolInvocationResult | null | undefined) {
+  if (!result) {
+    return ''
+  }
+  if (result.error) {
+    return result.error
+  }
+  return `调用完成，用时 ${result.durationMs} ms。`
 }
 
 const knownTools: Record<string, Omit<McpToolDisplay, 'name'>> = {

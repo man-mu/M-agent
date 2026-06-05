@@ -54,6 +54,14 @@ export interface McpConnectionTestResult {
   keyConfigured?: boolean
 }
 
+export interface McpToolInvocationResult {
+  toolName: string
+  input: Record<string, unknown>
+  output: string
+  durationMs: number
+  error?: string
+}
+
 export const disabledCapabilities: AppCapabilities = {
   skillEnabled: false,
   ragEnabled: false,
@@ -98,6 +106,10 @@ class AppService {
 
   reloadMcp(): Promise<McpStatus> {
     return post<McpStatus>('/api/mcp/reload')
+  }
+
+  invokeMcpTool(toolName: string, input: Record<string, unknown>): Promise<McpToolInvocationResult> {
+    return post<McpToolInvocationResult>(`/api/mcp/tools/${encodeURIComponent(toolName)}/invoke`, input)
   }
 }
 

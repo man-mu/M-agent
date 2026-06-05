@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  invocationResultSummary,
   mcpServerAddress,
   mcpServerDisplay,
   mcpSourceColor,
   mcpSourceLabel,
+  mcpToolExampleInput,
   normalizeToolNames,
+  parseMcpJsonObject,
+  prettyMcpJson,
   testResultSummary,
   validateMcpServerConfig,
 } from './mcpTools'
@@ -143,5 +147,42 @@ describe('mcpTools display helpers', () => {
       toolNames: ['weather_now'],
       durationMs: 15,
     })).toContain('1 个工具')
+  })
+
+  it('builds and validates MCP tool debug payloads', () => {
+    expect(mcpToolExampleInput('weather_now')).toEqual({
+      location: '上海',
+      lang: 'zh',
+      unit: 'm',
+    })
+    expect(mcpToolExampleInput('unknown_tool')).toEqual({})
+
+    const parsed = parseMcpJsonObject('{"location":"上海"}')
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.value).toEqual({ location: '上海' })
+    }
+
+    expect(parseMcpJsonObject('[1,2]').ok).toBe(false)
+    expect(parseMcpJsonObject('{').ok).toBe(false)
+    expect(prettyMcpJson({ a: 1 })).toContain('\n  "a": 1\n')
+  })
+
+  it('summarizes MCP tool invocation results', () => {
+    expect(invocationResultSummary({
+      toolName: 'weather_now',
+      input: { location: '上海' },
+      output: '上海当前多云',
+      durationMs: 18,
+      error: '',
+    })).toContain('18 ms')
+
+    expect(invocationResultSummary({
+      toolName: 'weather_now',
+      input: {},
+      output: '',
+      durationMs: 0,
+      error: 'MCP server is not reachable',
+    })).toBe('MCP server is not reachable')
   })
 })

@@ -2,6 +2,7 @@
 import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Card from 'ant-design-vue/es/card'
+import Drawer from 'ant-design-vue/es/drawer'
 import Form from 'ant-design-vue/es/form'
 import Modal from 'ant-design-vue/es/modal'
 import Table from 'ant-design-vue/es/table'
@@ -19,15 +20,19 @@ import {
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
 import appService from '@/services/api/app'
-import type { AppCapabilities, McpConnectionTestResult, McpServerConfig, McpServerStatus, McpStatus } from '@/services/api/app'
+import type { AppCapabilities, McpConnectionTestResult, McpServerConfig, McpServerStatus, McpStatus, McpToolInvocationResult } from '@/services/api/app'
 import { userMessageFromError } from '@/utils/errors'
 import { mcpOverallStatusView, mcpServerStatusView } from '@/utils/moduleStatus'
 import {
+  invocationResultSummary,
   mcpServerAddress,
   mcpServerDisplay,
   mcpSourceColor,
   mcpSourceLabel,
+  mcpToolExampleInput,
   normalizeToolNames,
+  parseMcpJsonObject,
+  prettyMcpJson,
   testResultSummary,
   toolsText,
   validateMcpServerConfig,
@@ -39,6 +44,7 @@ if (app && !app.component('ACard')) {
   app.use(Card)
 }
 if (app) {
+  if (!app.component('ADrawer')) app.use(Drawer)
   if (!app.component('AForm')) app.use(Form)
   if (!app.component('AModal')) app.use(Modal)
   if (!app.component('ATable')) app.use(Table)
@@ -57,6 +63,13 @@ const serverModalVisible = ref(false)
 const editingServerId = ref('')
 const allowedToolsText = ref('')
 const connectionResults = ref<Record<string, McpConnectionTestResult>>({})
+const toolDebugVisible = ref(false)
+const debugToolName = ref('')
+const debugToolLabel = ref('')
+const debugToolInputText = ref('{}')
+const debugToolInputError = ref('')
+const invokingTool = ref(false)
+const invocationResult = ref<McpToolInvocationResult | null>(null)
 
 const serverForm = reactive<McpServerConfig>({
   id: '',
@@ -85,6 +98,8 @@ const serverViews = computed(() => (mcpStatus.value?.servers || []).map(server =
   address: mcpServerAddress(server.url, server.sseEndpoint),
 })))
 const modalTitle = computed(() => editingServerId.value ? '编辑 MCP Server' : '新增 MCP Server')
+const invocationSummary = computed(() => invocationResultSummary(invocationResult.value))
+const invocationResultText = computed(() => invocationResult.value ? prettyMcpJson(invocationResult.value) : '')
 
 async function loadData() {
   loading.value = true
@@ -231,6 +246,40 @@ async function testServer(server: McpServerConfig) {
     message.error(userMessageFromError(err, '测试 MCP Server 连接失败'))
   } finally {
     testingServerId.value = ''
+  }
+}
+
+function openToolDebug(tool: { name: string; label: string }) {
+  debugToolName.value = tool.name
+  debugToolLabel.value = tool.label
+  debugToolInputText.value = prettyMcpJson(mcpToolExampleInput(tool.name))
+  debugToolInputError.value = ''
+  invocationResult.value = null
+  toolDebugVisible.value = true
+}
+
+async function invokeDebugTool() {
+  const parsed = parseMcpJsonObject(debugToolInputText.value)
+  if (!parsed.ok) {
+    debugToolInputError.value = parsed.error
+    return
+  }
+
+  invokingTool.value = true
+  debugToolInputError.value = ''
+  invocationResult.value = null
+  try {
+    const result = await appService.invokeMcpTool(debugToolName.value, parsed.value)
+    invocationResult.value = result
+    if (result.error) {
+      message.warning(invocationResultSummary(result))
+    } else {
+      message.success(invocationResultSummary(result))
+    }
+  } catch (err: any) {
+    message.error(userMessageFromError(err, '调试 MCP 工具失败'))
+  } finally {
+    invokingTool.value = false
   }
 }
 
@@ -571,8 +620,18 @@ onMounted(loadData)
                   class="tool-item"
                 >
                   <div class="tool-title">
-                    <strong>{{ tool.label }}</strong>
-                    <a-tag color="blue">{{ tool.name }}</a-tag>
+                    <div class="tool-name">
+                      <strong>{{ tool.label }}</strong>
+                      <a-tag color="blue">{{ tool.name }}</a-tag>
+                    </div>
+                    <a-button
+                      size="small"
+                      :disabled="!view.server.connected"
+                      @click="openToolDebug(tool)"
+                    >
+                      <ToolOutlined />
+                      调试
+                    </a-button>
                   </div>
                   <p>{{ tool.description }}</p>
                 </div>
@@ -674,6 +733,78 @@ onMounted(loadData)
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <a-drawer
+      v-model:open="toolDebugVisible"
+      class="tool-debug-drawer"
+      :title="debugToolLabel || debugToolName || '工具调试'"
+      width="720px"
+    >
+      <div class="debug-panel">
+        <div class="debug-summary">
+          <span class="label">工具名称</span>
+          <strong>{{ debugToolName }}</strong>
+        </div>
+
+        <a-form layout="vertical">
+          <a-form-item
+            label="JSON 参数"
+            :validate-status="debugToolInputError ? 'error' : ''"
+            :help="debugToolInputError || '参数会直接发送给当前已连接的 MCP 工具。'"
+          >
+            <a-textarea
+              v-model:value="debugToolInputText"
+              class="json-editor"
+              :auto-size="{ minRows: 8, maxRows: 14 }"
+            />
+          </a-form-item>
+        </a-form>
+
+        <div class="debug-actions">
+          <a-button @click="debugToolInputText = prettyMcpJson(mcpToolExampleInput(debugToolName))">
+            示例参数
+          </a-button>
+          <a-button
+            type="primary"
+            :loading="invokingTool"
+            @click="invokeDebugTool"
+          >
+            <ToolOutlined />
+            调用工具
+          </a-button>
+        </div>
+
+        <section v-if="invocationResult" class="debug-result">
+          <div class="section-title">
+            <ToolOutlined />
+            <span>调用结果</span>
+          </div>
+          <a-alert
+            :type="invocationResult.error ? 'warning' : 'success'"
+            show-icon
+            :message="invocationSummary"
+          />
+          <a-form layout="vertical">
+            <a-form-item label="返回内容">
+              <a-textarea
+                class="json-editor"
+                :value="invocationResult.error || invocationResult.output || '无输出'"
+                :auto-size="{ minRows: 5, maxRows: 12 }"
+                readonly
+              />
+            </a-form-item>
+            <a-form-item label="完整响应">
+              <a-textarea
+                class="json-editor"
+                :value="invocationResultText"
+                :auto-size="{ minRows: 6, maxRows: 12 }"
+                readonly
+              />
+            </a-form-item>
+          </a-form>
+        </section>
+      </div>
+    </a-drawer>
   </main>
 </template>
 
@@ -965,7 +1096,16 @@ onMounted(loadData)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.tool-name {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .tool-title strong {
@@ -1019,6 +1159,40 @@ onMounted(loadData)
   grid-template-columns: minmax(0, 1fr) 120px;
 }
 
+.debug-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.debug-summary {
+  background: #fbfcff;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.debug-summary strong {
+  color: #172033;
+  word-break: break-all;
+}
+
+.debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.debug-result {
+  display: grid;
+  gap: 12px;
+}
+
+.json-editor {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   .mcp-page {
     padding: 18px 12px;
@@ -1069,6 +1243,10 @@ onMounted(loadData)
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .debug-actions {
+    justify-content: flex-start;
   }
 }
 </style>

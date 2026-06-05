@@ -211,11 +211,20 @@ public class SpringAiAgentClient implements AgentClient {
 	private ToolCallback findToolCallback(String toolName) {
 		for (ToolCallback callback : mcpToolProvider.getToolCallbacks()) {
 			if (callback != null && callback.getToolDefinition() != null
-					&& toolName.equals(callback.getToolDefinition().name())) {
+					&& matchesToolName(toolName, callback.getToolDefinition().name())) {
 				return callback;
 			}
 		}
 		return null;
+	}
+
+	private boolean matchesToolName(String requestedToolName, String callbackToolName) {
+		if (callbackToolName == null || callbackToolName.isBlank()) {
+			return false;
+		}
+		String normalizedCallbackName = callbackToolName.strip();
+		return requestedToolName.equals(normalizedCallbackName)
+				|| normalizedCallbackName.endsWith("_" + requestedToolName);
 	}
 
 	private Map<String, Object> weatherToolInput(Map<String, Object> params) {

@@ -11,6 +11,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.web.reactive.function.client.WebClient;
 import top.lanshan.manmu.mcp.McpServerConfigService;
+import top.lanshan.manmu.mcp.McpToolInvocationService;
 import top.lanshan.manmu.mcp.McpToolProvider;
 
 @Configuration
@@ -51,5 +52,11 @@ public class McpConfiguration {
 
         return new McpToolProvider(mcpProperties, configService::currentConfig, webClientBuilder,
                 objectMapper, "deepresearch-mvp", "0.1.0");
+    }
+
+    @Bean
+    McpToolInvocationService mcpToolInvocationService(McpToolProvider toolProvider,
+            ObjectMapper objectMapper) {
+        return new McpToolInvocationService(toolProvider, objectMapper);
     }
 }

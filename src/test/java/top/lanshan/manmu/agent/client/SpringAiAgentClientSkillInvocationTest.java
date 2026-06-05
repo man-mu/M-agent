@@ -144,6 +144,24 @@ class SpringAiAgentClientSkillInvocationTest {
         assertThat(resolved).endsWith("base system");
     }
 
+    @Test
+    void weatherSkillMatchesSpringAiPrefixedMcpToolName() throws Exception {
+        RecordingWeatherTool weatherTool = new RecordingWeatherTool("deepresearch_mvp_weather_now");
+        SpringAiAgentClient client = clientWithSkillService(new StaticMcpToolProvider(weatherTool));
+        String wrappedPrompt = """
+                User question:
+                @weather-now Shanghai
+
+                Deep research is enabled: false
+                """;
+
+        String resolved = resolveExplicitSkillCall(client, "base system", wrappedPrompt);
+
+        assertThat(weatherTool.lastInput).contains("\"location\":\"Shanghai\"");
+        assertThat(resolved).contains("weather_now");
+        assertThat(resolved).endsWith("base system");
+    }
+
     private SpringAiAgentClient clientWithSkillService() throws Exception {
         return clientWithSkillService(null);
     }
@@ -189,12 +207,21 @@ class SpringAiAgentClientSkillInvocationTest {
 
     private static class RecordingWeatherTool implements ToolCallback {
 
+        private final String name;
         private String lastInput;
+
+        RecordingWeatherTool() {
+            this("weather_now");
+        }
+
+        RecordingWeatherTool(String name) {
+            this.name = name;
+        }
 
         @Override
         public ToolDefinition getToolDefinition() {
             return DefaultToolDefinition.builder()
-                    .name("weather_now")
+                    .name(name)
                     .description("Weather now")
                     .inputSchema("{}")
                     .build();

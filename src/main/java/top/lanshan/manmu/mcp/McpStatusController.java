@@ -26,11 +26,14 @@ public class McpStatusController {
 
     private final McpToolProvider toolProvider;
     private final McpServerConfigService configService;
+    private final McpToolInvocationService invocationService;
 
     public McpStatusController(McpToolProvider toolProvider,
-            McpServerConfigService configService) {
+            McpServerConfigService configService,
+            McpToolInvocationService invocationService) {
         this.toolProvider = toolProvider;
         this.configService = configService;
+        this.invocationService = invocationService;
     }
 
     @GetMapping("/status")
@@ -126,5 +129,17 @@ public class McpStatusController {
     public Mono<McpToolProvider.McpStatus> reload() {
         return Mono.fromCallable(toolProvider::reload)
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @PostMapping("/tools/{toolName}/invoke")
+    public Mono<ResponseEntity<Object>> invokeTool(@PathVariable String toolName,
+            @RequestBody(required = false) Map<String, Object> input) {
+        return Mono.fromCallable(() -> {
+            try {
+                return ResponseEntity.ok((Object) invocationService.invoke(toolName, input));
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body((Object) Map.of("error", e.getMessage()));
+            }
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 }
