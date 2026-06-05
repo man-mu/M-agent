@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import top.lanshan.manmu.mcp.McpToolProvider;
 import top.lanshan.manmu.modelprovider.RoutingChatModel;
+import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillService;
 import top.lanshan.manmu.skill.service.SkillToolProvider;
@@ -158,7 +159,10 @@ public class SpringAiAgentClient implements AgentClient {
 		Map<String, Object> params = extractSkillParams(def, remainingText);
 		String rendered = skillService.renderSkill(skillName, params);
 		if (rendered == null) {
-			return systemPrompt;
+			rendered = explicitJarSkillContext(def, params);
+			if (rendered.isBlank()) {
+				return systemPrompt;
+			}
 		}
 		String toolContext = explicitMcpToolContext(skillName, params);
 		if (!toolContext.isBlank()) {
@@ -167,6 +171,40 @@ public class SpringAiAgentClient implements AgentClient {
 
 		logger.info("@{} explicitly invoked, template rendered ({} chars)", skillName, rendered.length());
 		return rendered + "\n\n---\n\n" + systemPrompt;
+	}
+
+	private String explicitJarSkillContext(SkillDefinition def, Map<String, Object> params) {
+		if (def.getPackageType() != SkillPackageType.JAR || skillToolProvider == null) {
+			return "";
+		}
+		ToolCallback skillTool = findSkillToolCallback(def.getName());
+		if (skillTool == null) {
+			return "";
+		}
+		try {
+			String result = skillTool.call(objectMapper.writeValueAsString(params));
+			return """
+					## %s Skill 工具真实返回
+
+					以下内容来自已加载的 `%s` Jar Skill。请基于这份真实返回回答用户，不要编造或使用 mock 数据。
+
+					```text
+					%s
+					```
+					""".formatted(def.getName(), def.getName(), result);
+		}
+		catch (JsonProcessingException ex) {
+			logger.warn("Failed to serialize Jar Skill '{}' input: {}", def.getName(), safeMessage(ex));
+			return "";
+		}
+		catch (RuntimeException ex) {
+			logger.warn("Jar Skill '{}' tool call failed: {}", def.getName(), safeMessage(ex));
+			return """
+					## %s Skill 工具调用失败
+
+					调用 `%s` Jar Skill 失败：%s。
+					""".formatted(def.getName(), def.getName(), safeMessage(ex));
+		}
 	}
 
 	private String explicitMcpToolContext(String skillName, Map<String, Object> params) {
@@ -210,6 +248,17 @@ public class SpringAiAgentClient implements AgentClient {
 
 	private ToolCallback findToolCallback(String toolName) {
 		for (ToolCallback callback : mcpToolProvider.getToolCallbacks()) {
+			if (callback != null && callback.getToolDefinition() != null
+					&& matchesToolName(toolName, callback.getToolDefinition().name())) {
+				return callback;
+			}
+		}
+		return null;
+	}
+
+	private ToolCallback findSkillToolCallback(String skillName) {
+		String toolName = "skill__" + skillName.replace('-', '_');
+		for (ToolCallback callback : skillToolProvider.getToolCallbacks()) {
 			if (callback != null && callback.getToolDefinition() != null
 					&& matchesToolName(toolName, callback.getToolDefinition().name())) {
 				return callback;

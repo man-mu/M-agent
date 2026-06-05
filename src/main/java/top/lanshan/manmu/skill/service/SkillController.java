@@ -88,6 +88,32 @@ public class SkillController {
                         .body((Object) Map.of("error", "Skill package is too large"))));
     }
 
+    @PostMapping(path = "/packages/import-jar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Mono<ResponseEntity<Object>> importJarPackage(@RequestPart("file") FilePart file) {
+        return DataBufferUtils.join(file.content(), (int) SkillPackageArchiveService.MAX_PACKAGE_BYTES)
+                .flatMap(buffer -> {
+                    try {
+                        byte[] bytes = new byte[buffer.readableByteCount()];
+                        buffer.read(bytes);
+                        SkillPackageImportResult result = skillService.importJarPackage(file.filename(), bytes);
+                        return Mono.just(ResponseEntity.status(HttpStatus.CREATED).body((Object) result));
+                    } catch (SkillService.JarPluginsDisabledException e) {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                .body((Object) Map.of("error", e.getMessage())));
+                    } catch (IllegalArgumentException e) {
+                        return Mono.just(ResponseEntity.badRequest().body((Object) Map.of("error", e.getMessage())));
+                    } catch (IOException e) {
+                        logger.error("Failed to import Jar Skill package: {}", e.getMessage());
+                        return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body((Object) Map.of("error", "Failed to import Jar skill package")));
+                    } finally {
+                        DataBufferUtils.release(buffer);
+                    }
+                })
+                .onErrorResume(DataBufferLimitException.class, e -> Mono.just(ResponseEntity.badRequest()
+                        .body((Object) Map.of("error", "Skill package is too large"))));
+    }
+
     @GetMapping("/{name}/export")
     public Mono<ResponseEntity<Object>> exportPackage(@PathVariable String name) {
         return Mono.fromCallable(() -> {
@@ -165,6 +191,8 @@ public class SkillController {
             try {
                 SkillDefinition def = skillService.toggle(name);
                 return ResponseEntity.ok((Object) def);
+            } catch (SkillService.JarPluginsDisabledException e) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
             } catch (IOException e) {
@@ -181,6 +209,8 @@ public class SkillController {
             try {
                 SkillDefinition def = skillService.reload(name);
                 return ResponseEntity.ok((Object) def);
+            } catch (SkillService.JarPluginsDisabledException e) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
             }

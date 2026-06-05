@@ -8,10 +8,15 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.DefaultToolDefinition;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import top.lanshan.manmu.mcp.McpToolProvider;
+import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
+import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
+import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillFileRepository;
 import top.lanshan.manmu.skill.service.SkillRegistry;
 import top.lanshan.manmu.skill.service.SkillService;
+import top.lanshan.manmu.skill.service.SkillToolProvider;
+import top.lanshan.manmu.skill.testsupport.JarSkillPackageTestSupport;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -162,15 +167,58 @@ class SpringAiAgentClientSkillInvocationTest {
         assertThat(resolved).endsWith("base system");
     }
 
+    @Test
+    void jarSkillExplicitInvocationCallsLoadedJarTool() throws Exception {
+        SkillFileRepository fileRepo = new SkillFileRepository(tempDir.resolve("builtin"),
+                tempDir.resolve("local"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(fileRepo);
+        SkillPluginRegistry pluginRegistry = new SkillPluginRegistry(
+                new JarSkillPackageLoader(SkillPluginRegistry.class.getClassLoader()));
+        try {
+            SkillService jarSkillService = new SkillService(fileRepo, registry, objectMapper,
+                    new SkillPackageArchiveService(objectMapper), null, pluginRegistry, true);
+            jarSkillService.importJarPackage("echo-json-skill.zip",
+                    JarSkillPackageTestSupport.jarSkillPackage(objectMapper, tempDir, "echo-json-skill", true));
+            SkillToolProvider jarSkillToolProvider =
+                    new SkillToolProvider(registry, fileRepo, objectMapper, pluginRegistry, true);
+            SpringAiAgentClient client = clientWithSkillService(jarSkillService, jarSkillToolProvider, null);
+            String wrappedPrompt = """
+                    User question:
+                    @echo-json-skill hello from chat
+
+                    Deep research is enabled: false
+                    """;
+
+            String resolved = resolveExplicitSkillCall(client, "base system", wrappedPrompt);
+
+            assertThat(resolved).contains("echo-json-skill Skill 工具真实返回");
+            assertThat(resolved).contains("echo:hello from chat");
+            assertThat(resolved).contains("SkillPluginClassLoader");
+            assertThat(resolved).endsWith("base system");
+        } finally {
+            pluginRegistry.close();
+        }
+    }
+
     private SpringAiAgentClient clientWithSkillService() throws Exception {
         return clientWithSkillService(null);
     }
 
     private SpringAiAgentClient clientWithSkillService(McpToolProvider mcpToolProvider) throws Exception {
+        return clientWithSkillService(skillService, null, mcpToolProvider);
+    }
+
+    private SpringAiAgentClient clientWithSkillService(SkillService service,
+            SkillToolProvider toolProvider, McpToolProvider mcpToolProvider) throws Exception {
         SpringAiAgentClient client = new SpringAiAgentClient(null);
         Field skillServiceField = SpringAiAgentClient.class.getDeclaredField("skillService");
         skillServiceField.setAccessible(true);
-        skillServiceField.set(client, skillService);
+        skillServiceField.set(client, service);
+        if (toolProvider != null) {
+            Field skillToolProviderField = SpringAiAgentClient.class.getDeclaredField("skillToolProvider");
+            skillToolProviderField.setAccessible(true);
+            skillToolProviderField.set(client, toolProvider);
+        }
         if (mcpToolProvider != null) {
             Field mcpToolProviderField = SpringAiAgentClient.class.getDeclaredField("mcpToolProvider");
             mcpToolProviderField.setAccessible(true);

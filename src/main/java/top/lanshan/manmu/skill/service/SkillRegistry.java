@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import top.lanshan.manmu.skill.market.SkillPackageType;
 
 public class SkillRegistry {
 
@@ -28,9 +29,13 @@ public class SkillRegistry {
             fileRepository.readDefinition(name).ifPresentOrElse(
                 def -> {
                     definitions.put(name, def);
-                    fileRepository.readPromptTemplate(name).ifPresentOrElse(
-                        tmpl -> promptTemplates.put(name, tmpl),
-                        () -> logger.warn("Skill '{}' missing SKILL.md", name));
+                    if (isJarSkill(def)) {
+                        promptTemplates.remove(name);
+                    } else {
+                        fileRepository.readPromptTemplate(name).ifPresentOrElse(
+                            tmpl -> promptTemplates.put(name, tmpl),
+                            () -> logger.warn("Skill '{}' missing SKILL.md", name));
+                    }
                     logger.info("Skill loaded: {} (enabled={})", name, def.isEnabled());
                 },
                 () -> logger.warn("Skill directory '{}' missing skill.json, skipped", name));
@@ -62,11 +67,24 @@ public class SkillRegistry {
 
     public void register(SkillDefinition definition, String promptTemplate) {
         definitions.put(definition.getName(), definition);
-        promptTemplates.put(definition.getName(), promptTemplate);
+        if (promptTemplate == null) {
+            promptTemplates.remove(definition.getName());
+        } else {
+            promptTemplates.put(definition.getName(), promptTemplate);
+        }
+    }
+
+    public void register(SkillDefinition definition) {
+        definitions.put(definition.getName(), definition);
+        promptTemplates.remove(definition.getName());
     }
 
     public void unregister(String name) {
         definitions.remove(name);
         promptTemplates.remove(name);
+    }
+
+    private boolean isJarSkill(SkillDefinition definition) {
+        return definition.getPackageType() == SkillPackageType.JAR;
     }
 }

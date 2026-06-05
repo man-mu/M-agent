@@ -22,6 +22,7 @@ public class SkillFileRepository {
     private static final Logger logger = LoggerFactory.getLogger(SkillFileRepository.class);
     private static final String SKILL_JSON = "skill.json";
     private static final String SKILL_MD = "SKILL.md";
+    private static final String PLUGIN_JAR = "plugin.jar";
 
     private final List<SkillRoot> roots;
     private final ObjectMapper objectMapper;
@@ -152,6 +153,48 @@ public class SkillFileRepository {
         logger.info("Skill '{}' written to {}", name, skillDir);
     }
 
+    public void writeJarSkill(String name, SkillDefinition definition, byte[] pluginJar, String readme)
+            throws IOException {
+        validateName(name);
+        SkillPackageValidator.requireValidDefinition(definition);
+        if (!name.equals(definition.getName())) {
+            throw new IllegalArgumentException("Skill path name must match definition name");
+        }
+        if (pluginJar == null || pluginJar.length == 0) {
+            throw new IllegalArgumentException("Jar Skill package must contain plugin.jar");
+        }
+        SkillRoot root = findRootContaining(name)
+                .orElseGet(this::writableRoot);
+        ensureWritable(root, name);
+        Path skillDir = skillDir(root, name);
+        Files.createDirectories(skillDir);
+
+        enrichDefinitionForWrite(definition, root);
+        definition.setPackageType(SkillPackageType.JAR);
+        objectMapper.writerWithDefaultPrettyPrinter()
+                .writeValue(skillDir.resolve(SKILL_JSON).toFile(), definition);
+        Files.write(skillDir.resolve(PLUGIN_JAR), pluginJar);
+        if (readme != null) {
+            Files.writeString(skillDir.resolve("README.md"), readme);
+        }
+        Files.deleteIfExists(skillDir.resolve(SKILL_MD));
+        logger.info("Jar Skill '{}' written to {}", name, skillDir);
+    }
+
+    public void writeDefinition(String name, SkillDefinition definition) throws IOException {
+        validateName(name);
+        SkillPackageValidator.requireValidDefinition(definition);
+        if (!name.equals(definition.getName())) {
+            throw new IllegalArgumentException("Skill path name must match definition name");
+        }
+        SkillRoot root = findRootContaining(name)
+                .orElseThrow(() -> new IllegalArgumentException("Skill '" + name + "' not found"));
+        ensureWritable(root, name);
+        enrichDefinitionForWrite(definition, root);
+        objectMapper.writerWithDefaultPrettyPrinter()
+                .writeValue(skillDir(root, name).resolve(SKILL_JSON).toFile(), definition);
+    }
+
     public void deleteSkill(String name) throws IOException {
         validateName(name);
         Optional<SkillRoot> root = findRootContaining(name);
@@ -198,6 +241,13 @@ public class SkillFileRepository {
     public Path localSkillPath(String name) {
         validateName(name);
         return skillDir(writableRoot(), name);
+    }
+
+    public Path packageDirectory(String name) {
+        validateName(name);
+        return findRootContaining(name)
+                .map(root -> skillDir(root, name))
+                .orElseThrow(() -> new IllegalArgumentException("Skill '" + name + "' not found"));
     }
 
     private boolean validListedName(String name) {

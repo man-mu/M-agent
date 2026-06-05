@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
+import top.lanshan.manmu.skill.market.SkillPackageType;
+import top.lanshan.manmu.skill.plugin.JarSkillToolCallback;
+import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,11 +17,22 @@ public class SkillToolProvider {
     private static final Logger logger = LoggerFactory.getLogger(SkillToolProvider.class);
 
     private final SkillRegistry registry;
+    private final SkillFileRepository fileRepository;
     private final ObjectMapper objectMapper;
+    private final SkillPluginRegistry pluginRegistry;
+    private final boolean jarPluginsEnabled;
 
     public SkillToolProvider(SkillRegistry registry, ObjectMapper objectMapper) {
+        this(registry, null, objectMapper, null, false);
+    }
+
+    public SkillToolProvider(SkillRegistry registry, SkillFileRepository fileRepository,
+            ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry, boolean jarPluginsEnabled) {
         this.registry = registry;
+        this.fileRepository = fileRepository;
         this.objectMapper = objectMapper;
+        this.pluginRegistry = pluginRegistry;
+        this.jarPluginsEnabled = jarPluginsEnabled;
     }
 
     public ToolCallback[] getToolCallbacks() {
@@ -28,6 +43,10 @@ public class SkillToolProvider {
 
         List<ToolCallback> callbacks = new ArrayList<>();
         for (SkillDefinition def : enabled) {
+            if (def.getPackageType() == SkillPackageType.JAR) {
+                addJarSkillCallback(callbacks, def);
+                continue;
+            }
             String template = registry.getPromptTemplate(def.getName()).orElse(null);
             if (template == null || template.isBlank()) {
                 logger.warn("Skill '{}' has no prompt template, skipping", def.getName());
@@ -37,6 +56,21 @@ public class SkillToolProvider {
         }
         logger.info("Skill tools ready: {} tools", callbacks.size());
         return callbacks.toArray(new ToolCallback[0]);
+    }
+
+    private void addJarSkillCallback(List<ToolCallback> callbacks, SkillDefinition def) {
+        if (!jarPluginsEnabled || pluginRegistry == null || fileRepository == null) {
+            logger.warn("Jar Skill '{}' skipped because Jar plugins are disabled", def.getName());
+            return;
+        }
+        try {
+            if (!pluginRegistry.hasPlugin(def.getName())) {
+                pluginRegistry.register(def, fileRepository.packageDirectory(def.getName()));
+            }
+            callbacks.add(new JarSkillToolCallback(def, pluginRegistry, objectMapper));
+        } catch (IOException | RuntimeException e) {
+            logger.warn("Jar Skill '{}' failed to load: {}", def.getName(), safeMessage(e));
+        }
     }
 
     /**
@@ -63,5 +97,14 @@ public class SkillToolProvider {
         }
         sb.append("\n");
         return sb.toString();
+    }
+
+    private String safeMessage(Throwable e) {
+        if (e == null) {
+            return "Unknown error";
+        }
+        return e.getMessage() == null || e.getMessage().isBlank()
+                ? e.getClass().getSimpleName()
+                : e.getMessage();
     }
 }

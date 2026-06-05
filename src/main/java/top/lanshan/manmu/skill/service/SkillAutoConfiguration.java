@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import top.lanshan.manmu.skill.market.SkillCatalogRepository;
 import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
+import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
+import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,6 +29,9 @@ public class SkillAutoConfiguration {
 
     @Value("${mvp.skill.local-market-path:}")
     private String configuredLocalMarketPath;
+
+    @Value("${mvp.skill.jar-plugins.enabled:false}")
+    private boolean jarPluginsEnabled;
 
     @Bean
     SkillFileRepository skillFileRepository(ObjectMapper objectMapper) {
@@ -66,15 +71,22 @@ public class SkillAutoConfiguration {
     }
 
     @Bean
-    SkillToolProvider skillToolProvider(SkillRegistry registry, ObjectMapper objectMapper) {
-        return new SkillToolProvider(registry, objectMapper);
+    SkillPluginRegistry skillPluginRegistry() {
+        return new SkillPluginRegistry(new JarSkillPackageLoader(SkillPluginRegistry.class.getClassLoader()));
+    }
+
+    @Bean
+    SkillToolProvider skillToolProvider(SkillRegistry registry, SkillFileRepository fileRepository,
+            ObjectMapper objectMapper, SkillPluginRegistry pluginRegistry) {
+        return new SkillToolProvider(registry, fileRepository, objectMapper, pluginRegistry, jarPluginsEnabled);
     }
 
     @Bean
     SkillService skillService(SkillFileRepository fileRepository, SkillRegistry registry,
             ObjectMapper objectMapper, SkillPackageArchiveService archiveService,
-            SkillCatalogRepository catalogRepository) {
-        return new SkillService(fileRepository, registry, objectMapper, archiveService, catalogRepository);
+            SkillCatalogRepository catalogRepository, SkillPluginRegistry pluginRegistry) {
+        return new SkillService(fileRepository, registry, objectMapper, archiveService, catalogRepository,
+                pluginRegistry, jarPluginsEnabled);
     }
 
     private Path localMarketPath() {

@@ -19,6 +19,7 @@ public class SkillPackageArchiveService {
     private static final String SKILL_JSON = "skill.json";
     private static final String SKILL_MD = "SKILL.md";
     private static final String README_MD = "README.md";
+    private static final String PLUGIN_JAR = "plugin.jar";
 
     private final ObjectMapper objectMapper;
 
@@ -84,6 +85,52 @@ public class SkillPackageArchiveService {
         }
     }
 
+    public JarSkillPackage readJarPackage(String filename, byte[] zipBytes) throws IOException {
+        validatePackageInput(filename, zipBytes);
+        byte[] skillJson = null;
+        byte[] pluginJar = null;
+        byte[] readme = null;
+        long extractedBytes = 0;
+
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    zip.closeEntry();
+                    continue;
+                }
+                String entryName = normalizeEntryName(entry.getName());
+                requireAllowedJarEntry(entryName);
+                byte[] content = readEntryBytes(zip, MAX_PACKAGE_BYTES - extractedBytes);
+                extractedBytes += content.length;
+                if (SKILL_JSON.equals(entryName)) {
+                    skillJson = content;
+                } else if (PLUGIN_JAR.equals(entryName)) {
+                    pluginJar = content;
+                } else if (README_MD.equals(entryName)) {
+                    readme = content;
+                }
+                zip.closeEntry();
+            }
+        }
+
+        if (skillJson == null) {
+            throw new IllegalArgumentException("Jar Skill package must contain skill.json");
+        }
+        if (pluginJar == null || pluginJar.length == 0) {
+            throw new IllegalArgumentException("Jar Skill package must contain plugin.jar");
+        }
+
+        SkillDefinition definition = objectMapper.readValue(skillJson, SkillDefinition.class);
+        SkillPackageValidator.requireValidDefinition(definition);
+        if (definition.getPackageType() != null && definition.getPackageType() != SkillPackageType.JAR) {
+            throw new IllegalArgumentException("Only Jar Skill zip packages are supported");
+        }
+        definition.setPackageType(SkillPackageType.JAR);
+        String readmeText = readme == null ? null : new String(readme, StandardCharsets.UTF_8);
+        return new JarSkillPackage(definition, pluginJar, readmeText);
+    }
+
     private void validatePackageInput(String filename, byte[] zipBytes) {
         if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".zip")) {
             throw new IllegalArgumentException("Skill package must be a .zip file");
@@ -130,6 +177,13 @@ public class SkillPackageArchiveService {
         throw new IllegalArgumentException("Skill package contains unsupported file: " + entryName);
     }
 
+    private void requireAllowedJarEntry(String entryName) {
+        if (SKILL_JSON.equals(entryName) || PLUGIN_JAR.equals(entryName) || README_MD.equals(entryName)) {
+            return;
+        }
+        throw new IllegalArgumentException("Jar Skill package contains unsupported file: " + entryName);
+    }
+
     private byte[] readEntryBytes(ZipInputStream zip, long remainingLimit) throws IOException {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
@@ -147,5 +201,8 @@ public class SkillPackageArchiveService {
     }
 
     public record PromptSkillPackage(SkillDefinition definition, String promptTemplate) {
+    }
+
+    public record JarSkillPackage(SkillDefinition definition, byte[] pluginJar, String readme) {
     }
 }

@@ -6,9 +6,13 @@ import org.junit.jupiter.api.io.TempDir;
 import top.lanshan.manmu.skill.market.SkillCatalogRepository;
 import top.lanshan.manmu.skill.market.SkillPackageArchiveService;
 import top.lanshan.manmu.skill.market.SkillPackageType;
+import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
+import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
+import top.lanshan.manmu.skill.testsupport.JarSkillPackageTestSupport;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -147,6 +151,95 @@ class SkillServiceTest {
         assertThatThrownBy(() -> service.uninstallPackage("builtin-skill"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("read-only");
+    }
+
+    @Test
+    void rejectsJarPackageImportWhenDisabled() throws Exception {
+        SkillFileRepository repository = new SkillFileRepository(tempDir.resolve("skills"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(repository);
+        SkillService service = new SkillService(repository, registry, objectMapper);
+        byte[] zip = JarSkillPackageTestSupport.jarSkillPackage(objectMapper, tempDir, "echo-json-skill", true);
+
+        assertThatThrownBy(() -> service.importJarPackage("echo-json-skill.zip", zip))
+                .isInstanceOf(SkillService.JarPluginsDisabledException.class)
+                .hasMessageContaining("disabled");
+        assertThat(repository.exists("echo-json-skill")).isFalse();
+        assertThat(registry.getDefinition("echo-json-skill")).isEmpty();
+    }
+
+    @Test
+    void importsInvokesTogglesReloadsAndUninstallsJarPackage() throws Exception {
+        Path builtin = tempDir.resolve("builtin");
+        Path local = tempDir.resolve("local");
+        Path market = tempDir.resolve("market");
+        Path closeMarker = tempDir.resolve("jar-close-marker.txt");
+        System.setProperty("jarSkillCloseMarker", closeMarker.toString());
+        SkillPluginRegistry pluginRegistry = new SkillPluginRegistry(
+                new JarSkillPackageLoader(SkillPluginRegistry.class.getClassLoader()));
+        try {
+            SkillFileRepository repository = new SkillFileRepository(builtin, local, objectMapper);
+            SkillRegistry registry = new SkillRegistry(repository);
+            SkillCatalogRepository catalogRepository = new SkillCatalogRepository(market, objectMapper);
+            SkillService service = new SkillService(repository, registry, objectMapper,
+                    archiveService, catalogRepository, pluginRegistry, true);
+            byte[] zip = JarSkillPackageTestSupport.jarSkillPackage(objectMapper, tempDir,
+                    "echo-json-skill", true);
+
+            var result = service.importJarPackage("echo-json-skill.zip", zip);
+
+            assertThat(result.getName()).isEqualTo("echo-json-skill");
+            assertThat(result.getPackageType()).isEqualTo(SkillPackageType.JAR);
+            assertThat(repository.localSkillPath("echo-json-skill").resolve("plugin.jar")).exists();
+            assertThat(repository.localSkillPath("echo-json-skill").resolve("SKILL.md")).doesNotExist();
+            assertThat(registry.getDefinition("echo-json-skill")).isPresent();
+            assertThat(pluginRegistry.hasPlugin("echo-json-skill")).isTrue();
+            assertThat(pluginRegistry.invoke("echo-json-skill", Map.of("message", "hello")))
+                    .contains("echo:hello")
+                    .contains("SkillPluginClassLoader");
+            assertThat(service.renderSkill("echo-json-skill", Map.of("message", "hello"))).isNull();
+
+            service.toggle("echo-json-skill");
+            assertThat(registry.getDefinition("echo-json-skill").orElseThrow().isEnabled()).isFalse();
+            assertThat(pluginRegistry.hasPlugin("echo-json-skill")).isFalse();
+            assertThat(closeMarker).exists();
+
+            Files.deleteIfExists(closeMarker);
+            service.toggle("echo-json-skill");
+            assertThat(registry.getDefinition("echo-json-skill").orElseThrow().isEnabled()).isTrue();
+            assertThat(pluginRegistry.invoke("echo-json-skill", Map.of("message", "again")))
+                    .contains("echo:again");
+
+            service.reload("echo-json-skill");
+            assertThat(pluginRegistry.hasPlugin("echo-json-skill")).isTrue();
+
+            service.uninstallPackage("echo-json-skill");
+            assertThat(repository.exists("echo-json-skill")).isFalse();
+            assertThat(registry.getDefinition("echo-json-skill")).isEmpty();
+            assertThat(pluginRegistry.hasPlugin("echo-json-skill")).isFalse();
+            assertThat(catalogRepository.load()).isEmpty();
+            assertThat(closeMarker).exists();
+        } finally {
+            pluginRegistry.close();
+            System.clearProperty("jarSkillCloseMarker");
+        }
+    }
+
+    @Test
+    void rejectsInvalidJarPackageAndCleansInstallDirectory() throws Exception {
+        SkillFileRepository repository = new SkillFileRepository(tempDir.resolve("skills"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(repository);
+        SkillPluginRegistry pluginRegistry = new SkillPluginRegistry(
+                new JarSkillPackageLoader(SkillPluginRegistry.class.getClassLoader()));
+        SkillService service = new SkillService(repository, registry, objectMapper,
+                archiveService, null, pluginRegistry, true);
+        byte[] zip = JarSkillPackageTestSupport.invalidJarSkillPackage(objectMapper, "broken-jar-skill");
+
+        assertThatThrownBy(() -> service.importJarPackage("broken-jar-skill.zip", zip))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must declare");
+        assertThat(repository.exists("broken-jar-skill")).isFalse();
+        assertThat(registry.getDefinition("broken-jar-skill")).isEmpty();
+        assertThat(pluginRegistry.hasPlugin("broken-jar-skill")).isFalse();
     }
 
     private void writeRawSkill(Path skillDir, SkillDefinition definition, String prompt) throws Exception {
