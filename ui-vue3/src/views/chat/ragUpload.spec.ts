@@ -4,6 +4,10 @@ import {
   cleanRagUploadError,
   completeRagUploadItem,
   createRagUploadItem,
+  ragUploadAvailabilityText,
+  ragUploadDisabledReason,
+  ragUploadStatusLabel,
+  resolveRagUploadSession,
   ragFileTypeLabel,
   sessionBindingText,
   validateRagUploadFile,
@@ -87,5 +91,32 @@ describe('chat RAG upload helpers', () => {
     expect(ragFileTypeLabel(new File(['pdf'], 'guide.pdf', { type: 'application/pdf' }))).toBe('PDF')
     expect(sessionBindingText('session-1')).toContain('session-1')
     expect(sessionBindingText('')).toContain('上传前')
+  })
+
+  it('resolves upload sessions from route or draft creation', () => {
+    expect(resolveRagUploadSession({
+      routeSessionId: 'route-session',
+      createSession: () => 'new-session',
+    })).toEqual({
+      sessionId: 'route-session',
+      created: false,
+      title: '',
+    })
+
+    expect(resolveRagUploadSession({
+      draftTitle: '资料会话',
+      createSession: title => `${title}-id`,
+    })).toEqual({
+      sessionId: '资料会话-id',
+      created: true,
+      title: '资料会话',
+    })
+  })
+
+  it('returns RAG availability and upload status labels', () => {
+    expect(ragUploadAvailabilityText(false)).toBe('RAG 未启用')
+    expect(ragUploadDisabledReason(false)).toBe('RAG 未启用')
+    expect(ragUploadAvailabilityText(true)).toContain('Markdown')
+    expect(ragUploadStatusLabel({ status: 'success', chunks: 4 })).toBe('已切块 4')
   })
 })

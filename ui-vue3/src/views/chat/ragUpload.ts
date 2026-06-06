@@ -22,6 +22,64 @@ export interface RagUploadValidation {
   error?: string
 }
 
+export function ragUploadAvailabilityText(ragEnabled: boolean, loading = false, error = '') {
+  if (loading) return '正在读取 RAG 状态'
+  if (error) return 'RAG 状态读取失败'
+  if (!ragEnabled) return 'RAG 未启用'
+  return RAG_UPLOAD_FORMAT_HINT
+}
+
+export function ragUploadDisabledReason(ragEnabled: boolean, loading = false, error = '') {
+  if (loading) return '正在读取 RAG 状态'
+  if (error) return '无法确认 RAG 状态，请稍后重试'
+  if (!ragEnabled) return 'RAG 未启用'
+  return ''
+}
+
+export function ragUploadStatusLabel(item: Pick<RagUploadItem, 'status' | 'chunks'>) {
+  if (item.status === 'uploading') return '上传中'
+  if (item.status === 'success') return `已切块 ${item.chunks ?? 0}`
+  return '上传失败'
+}
+
+export function ragUploadStatusColor(status: RagUploadStatus) {
+  if (status === 'success') return 'green'
+  if (status === 'error') return 'red'
+  return 'blue'
+}
+
+export interface RagUploadSessionOptions {
+  routeSessionId?: string | string[]
+  currentSessionId?: string
+  draftTitle?: string
+  createSession: (title: string) => string
+}
+
+export interface RagUploadSessionResolution {
+  sessionId: string
+  created: boolean
+  title: string
+}
+
+export function resolveRagUploadSession(options: RagUploadSessionOptions): RagUploadSessionResolution {
+  const routeSessionId = firstText(options.routeSessionId)
+  if (routeSessionId) {
+    return { sessionId: routeSessionId, created: false, title: '' }
+  }
+
+  const currentSessionId = options.currentSessionId?.trim()
+  if (currentSessionId) {
+    return { sessionId: currentSessionId, created: false, title: '' }
+  }
+
+  const title = options.draftTitle?.trim() || '上传资料'
+  const sessionId = options.createSession(title).trim()
+  if (!sessionId) {
+    throw new Error('上传前需要先绑定当前会话')
+  }
+  return { sessionId, created: true, title }
+}
+
 export function validateRagUploadFile(file: File, maxBytes = RAG_UPLOAD_MAX_BYTES): RagUploadValidation {
   if (file.size <= 0) {
     return { valid: false, error: '文件为空，请选择包含内容的文档。' }
@@ -129,6 +187,11 @@ export function cleanRagUploadError(error: unknown) {
 
 function createUploadId(file: Pick<File, 'name' | 'size'>, now: Date) {
   return `${now.getTime()}-${safeFileName(file.name)}-${file.size}`
+}
+
+function firstText(value: string | string[] | undefined) {
+  const text = Array.isArray(value) ? value[0] : value
+  return text?.trim() || ''
 }
 
 function safeFileName(name: string) {

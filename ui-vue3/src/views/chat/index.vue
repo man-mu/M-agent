@@ -176,6 +176,54 @@
           <a-divider type="vertical" />
           <span class="thread" v-if="messageStore.threadId">Thread: {{ messageStore.threadId }}</span>
         </div>
+        <div class="rag-upload-panel" data-testid="rag-upload-panel">
+          <div class="rag-upload-bar">
+            <div class="rag-upload-copy">
+              <div class="rag-upload-title">
+                <span>上传资料</span>
+                <a-tag :color="ragCapabilityColor">{{ ragCapabilityLabel }}</a-tag>
+              </div>
+              <p>{{ ragUploadHint }}</p>
+            </div>
+            <a-tooltip :title="ragUploadTooltip">
+              <span class="rag-upload-button-wrap">
+                <a-upload
+                  accept=".txt,.md,.markdown,.pdf,.doc,.docx,text/plain,text/markdown,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  :before-upload="beforeRagUpload"
+                  :disabled="ragUploadDisabled"
+                  :show-upload-list="false"
+                >
+                  <a-button
+                    :disabled="ragUploadDisabled"
+                    :loading="ragUploading"
+                    data-testid="rag-upload-button"
+                  >
+                    <UploadOutlined />
+                    上传资料
+                  </a-button>
+                </a-upload>
+              </span>
+            </a-tooltip>
+          </div>
+          <div v-if="ragUploadItems.length" class="rag-upload-list" data-testid="rag-upload-list">
+            <div
+              v-for="item in ragUploadItems"
+              :key="item.id"
+              class="rag-upload-item"
+              :class="item.status"
+            >
+              <div class="rag-upload-file">
+                <strong>{{ item.fileName }}</strong>
+                <span>{{ item.typeLabel }} · {{ formatFileSize(item.size) }}</span>
+                <span class="rag-upload-session">Session: {{ item.sessionId }}</span>
+              </div>
+              <a-tag :color="ragUploadStatusColor(item.status)">
+                {{ ragUploadStatusLabel(item) }}
+              </a-tag>
+              <p v-if="item.error" class="rag-upload-error">{{ item.error }}</p>
+            </div>
+          </div>
+        </div>
         <a-textarea
           v-model:value="draft"
           :auto-size="{ minRows: 2, maxRows: 5 }"
@@ -242,17 +290,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import Upload from 'ant-design-vue/es/upload'
 import {
   FileTextOutlined,
   PauseCircleOutlined,
   SendOutlined,
   SettingOutlined,
+  UploadOutlined,
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
 import PlanReview from '@/components/plan-review/index.vue'
-import { chatService } from '@/services'
+import { chatService, ragService } from '@/services'
 import appService from '@/services/api/app'
 import type { ChatStreamResponse } from '@/services/api/chat'
 import modelService from '@/services/api/model'
@@ -263,9 +313,28 @@ import { useConversationStore } from '@/store/ConversationStore'
 import { useMessageStore } from '@/store/MessageStore'
 import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
 import { filterSkillCandidates, findSkillTrigger, replaceSkillTrigger } from './skillPicker'
+import {
+  completeRagUploadItem,
+  createRagUploadItem,
+  failRagUploadItem,
+  formatFileSize,
+  ragUploadAvailabilityText,
+  ragUploadDisabledReason,
+  ragUploadStatusColor,
+  ragUploadStatusLabel,
+  resolveRagUploadSession,
+  sessionBindingText,
+  validateRagUploadFile,
+  type RagUploadItem,
+} from './ragUpload'
 
 const Report = defineAsyncComponent(() => import('@/components/report/index.vue'))
 const MD = defineAsyncComponent(() => import('@/components/md/index.vue'))
+
+const app = getCurrentInstance()?.appContext.app
+if (app && !app.component('AUpload')) {
+  app.use(Upload)
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -286,6 +355,11 @@ const skillEnabled = ref(false)
 const skills = ref<SkillDefinition[]>([])
 const skillPickerVisible = ref(false)
 const skillQuery = ref('')
+const ragEnabled = ref(false)
+const ragCapabilityLoading = ref(true)
+const ragCapabilityError = ref('')
+const ragUploadItems = ref<RagUploadItem[]>([])
+const pendingLocalRouteSession = ref('')
 let closeSkillPickerTimer: number | undefined
 
 const activePlan = computed(() => (messageStore.planWaiting || messageStore.resuming) ? messageStore.plan : null)
@@ -336,6 +410,40 @@ const currentConversation = computed(() =>
 const filteredSkills = computed(() => {
   return filterSkillCandidates(skills.value, skillQuery.value)
 })
+const ragUploading = computed(() => ragUploadItems.value.some(item => item.status === 'uploading'))
+const currentRagSessionId = computed(() => {
+  const routeId = route.params.convId as string | undefined
+  return routeId || messageStore.convId || ''
+})
+const ragDisabledReason = computed(() =>
+  ragUploadDisabledReason(ragEnabled.value, ragCapabilityLoading.value, ragCapabilityError.value),
+)
+const ragUploadDisabled = computed(() =>
+  Boolean(ragDisabledReason.value) || messageStore.loading || ragUploading.value,
+)
+const ragCapabilityLabel = computed(() => {
+  if (ragCapabilityLoading.value) return '读取中'
+  if (ragCapabilityError.value) return '状态未知'
+  return ragEnabled.value ? 'RAG 可用' : 'RAG 未启用'
+})
+const ragCapabilityColor = computed(() => {
+  if (ragCapabilityLoading.value) return 'blue'
+  if (ragCapabilityError.value) return 'orange'
+  return ragEnabled.value ? 'green' : 'default'
+})
+const hasSuccessfulRagUpload = computed(() => ragUploadItems.value.some(item => item.status === 'success'))
+const ragUploadHint = computed(() => {
+  if (ragDisabledReason.value) {
+    return ragDisabledReason.value
+  }
+  if (hasSuccessfulRagUpload.value && !messageStore.deepResearch) {
+    return '已上传资料会在深度研究流程中用于补充上下文。开启深度研究可读取上传资料。'
+  }
+  return sessionBindingText(currentRagSessionId.value)
+})
+const ragUploadTooltip = computed(() =>
+  ragDisabledReason.value || ragUploadAvailabilityText(ragEnabled.value, ragCapabilityLoading.value, ragCapabilityError.value),
+)
 
 function ensureConversation(query: string) {
   const routeId = route.params.convId as string | undefined
@@ -344,8 +452,13 @@ function ensureConversation(query: string) {
     conversationStore.activate(routeId)
     return routeId
   }
-  const item = conversationStore.newOne(query, 1)
+  return createLocalConversation(query, 1)
+}
+
+function createLocalConversation(title: string, messageCount = 0) {
+  const item = conversationStore.newOne(title, messageCount)
   messageStore.prepareLocalSession(item.key)
+  pendingLocalRouteSession.value = item.key
   router.replace(`/chat/${item.key}`)
   return item.key
 }
@@ -547,6 +660,75 @@ function scheduleCloseSkillPicker() {
   }, 150)
 }
 
+function beforeRagUpload(file: File) {
+  void uploadRagDocument(file)
+  return false
+}
+
+async function uploadRagDocument(file: File) {
+  if (ragUploadDisabled.value && ragDisabledReason.value) {
+    message.warning(ragDisabledReason.value)
+    return
+  }
+  if (ragUploading.value) {
+    message.warning('当前已有资料上传中')
+    return
+  }
+
+  const validation = validateRagUploadFile(file)
+  if (!validation.valid) {
+    message.error(validation.error || '文件不符合上传要求')
+    return
+  }
+
+  let sessionId = ''
+  try {
+    sessionId = ensureUploadSession(file)
+  } catch (error) {
+    message.error(userMessageFromError(error, '上传前需要先绑定当前会话'))
+    return
+  }
+
+  const item = createRagUploadItem(file, sessionId)
+  ragUploadItems.value = [item, ...ragUploadItems.value].slice(0, 6)
+
+  try {
+    const result = await ragService.uploadDocument(file, sessionId)
+    const completed = completeRagUploadItem(item, result)
+    updateRagUploadItem(completed)
+    message.success(`${completed.fileName} 上传成功`)
+  } catch (error) {
+    const failed = failRagUploadItem(item, error)
+    updateRagUploadItem(failed)
+    message.error(failed.error || '上传失败')
+  }
+}
+
+function ensureUploadSession(file: File) {
+  const resolution = resolveRagUploadSession({
+    routeSessionId: route.params.convId as string | string[] | undefined,
+    currentSessionId: messageStore.convId,
+    draftTitle: draft.value.trim() || file.name.replace(/\.[^.]+$/, ''),
+    createSession: title => createLocalConversation(title, 0),
+  })
+  if (!resolution.created) {
+    conversationStore.upsert(resolution.sessionId)
+    conversationStore.activate(resolution.sessionId)
+    if (!messageStore.convId) {
+      messageStore.prepareLocalSession(resolution.sessionId)
+    }
+  }
+  return resolution.sessionId
+}
+
+function updateRagUploadItem(nextItem: RagUploadItem) {
+  ragUploadItems.value = ragUploadItems.value.map(item => item.id === nextItem.id ? nextItem : item)
+}
+
+function keepRagUploadItemsForSession(sessionId: string) {
+  ragUploadItems.value = ragUploadItems.value.filter(item => item.sessionId === sessionId)
+}
+
 async function stop() {
   activeStreamController.value?.abort()
   activeStreamController.value = null
@@ -581,6 +763,7 @@ async function retryLoad() {
 
 function startDraft() {
   localTerminalStatus.value = ''
+  ragUploadItems.value = []
   conversationStore.startDraft()
   messageStore.reset()
   router.push('/chat')
@@ -596,18 +779,30 @@ async function loadCurrentModel() {
   }
 }
 
-async function loadSkillsForComposer() {
+async function loadCapabilitiesForComposer() {
+  ragCapabilityLoading.value = true
+  ragCapabilityError.value = ''
   try {
     const capabilities = await appService.getCapabilities()
     skillEnabled.value = capabilities.skillEnabled
-    if (capabilities.skillEnabled) {
-      skills.value = await skillService.list()
-    } else {
+    ragEnabled.value = capabilities.ragEnabled
+    if (!capabilities.skillEnabled) {
       skills.value = []
+      return
     }
-  } catch {
+    try {
+      skills.value = await skillService.list()
+    } catch {
+      skills.value = []
+      skillEnabled.value = false
+    }
+  } catch (error) {
     skillEnabled.value = false
+    ragEnabled.value = false
     skills.value = []
+    ragCapabilityError.value = userMessageFromError(error, 'RAG 状态读取失败')
+  } finally {
+    ragCapabilityLoading.value = false
   }
 }
 
@@ -675,12 +870,22 @@ watch(
     localTerminalStatus.value = ''
     const sessionId = value as string | undefined
     if (sessionId) {
+      keepRagUploadItemsForSession(sessionId)
+      if (pendingLocalRouteSession.value === sessionId) {
+        pendingLocalRouteSession.value = ''
+        conversationStore.activate(sessionId)
+        if (messageStore.convId !== sessionId) {
+          messageStore.prepareLocalSession(sessionId)
+        }
+        return
+      }
       if (messageStore.running && messageStore.convId === sessionId) {
         conversationStore.activate(sessionId)
         return
       }
       await loadConversation(sessionId)
     } else {
+      ragUploadItems.value = []
       conversationStore.startDraft()
       messageStore.reset()
     }
@@ -696,7 +901,7 @@ watch(
 
 onMounted(() => {
   loadCurrentModel()
-  loadSkillsForComposer()
+  loadCapabilitiesForComposer()
   if (!route.params.convId) {
     conversationStore.startDraft()
   }
@@ -1009,6 +1214,112 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.rag-upload-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.rag-upload-bar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.rag-upload-copy {
+  min-width: 0;
+}
+
+.rag-upload-title {
+  align-items: center;
+  color: #1d2b42;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rag-upload-copy p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-upload-button-wrap {
+  flex: 0 0 auto;
+}
+
+.rag-upload-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rag-upload-item {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #2356f6;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.rag-upload-item.success {
+  border-left-color: #2f9e44;
+}
+
+.rag-upload-item.error {
+  border-left-color: #d9363e;
+}
+
+.rag-upload-file {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rag-upload-file strong,
+.rag-upload-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-upload-file strong {
+  color: #1d2b42;
+  font-size: 13px;
+}
+
+.rag-upload-file span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.rag-upload-session {
+  max-width: 100%;
+}
+
+.rag-upload-error {
+  color: #d9363e;
+  font-size: 12px;
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .composer-actions {
   display: flex;
   gap: 10px;
@@ -1155,6 +1466,26 @@ onMounted(() => {
 
   .composer {
     padding: 12px;
+  }
+
+  .rag-upload-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rag-upload-copy p {
+    white-space: normal;
+  }
+
+  .rag-upload-button-wrap,
+  .rag-upload-button-wrap :deep(.ant-upload),
+  .rag-upload-button-wrap :deep(.ant-btn) {
+    width: 100%;
+  }
+
+  .rag-upload-item {
+    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .skill-picker {
