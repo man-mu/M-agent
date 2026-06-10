@@ -80,18 +80,22 @@ curl.exe http://localhost:18080/api/model/current
 录制步骤：
 
 1. 打开 `/skills`。
-2. 展示内置 Skill 列表：`weather-now`、`location-analyzer`、`code-review`。
-3. 打开 `weather-now` 详情，展示参数 schema、依赖和健康状态。
-4. 停用再启用一个 Skill。
-5. 回到 `/chat`，输入：
+2. 展示内置 Skill 列表，重点展示 3 个方向：`weather-now` 天气、`calculator` 计算器、`web-search` 网络搜索。
+3. 打开 `weather-now`、`calculator`、`web-search` 详情，展示参数 schema、依赖和健康状态。
+4. 停用再启用一个本地导入 Skill；内置 Skill 是只读内容目录，不从页面修改。
+5. 回到 `/chat`，分别输入：
 
 ```text
 @weather-now 查询上海实时天气
+@calculator 计算 (128 + 256) * 3 / 6
+@web-search 搜索并总结 Spring Boot 3 WebFlux SSE 的关键注意事项
 ```
 
 注意：
 
 - 天气结果必须来自本地 MCP 和真实和风天气 API。
+- 计算器是 Prompt Skill，走真实模型链路输出步骤和结果。
+- 网络搜索 Skill 是研究模式任务模板，应开启深度研究，让后端使用已有 Bocha 搜索路径；如果缺少 `BOCHA_API_KEY`，录制清晰错误提示。
 - 如果天气 Key 不可用或供应商限流，可以录制清晰错误提示，不要编造结果。
 
 ## 片段 3：MCP 管理与工具调试
@@ -191,7 +195,7 @@ Get-NetTCPConnection -LocalPort 18090 -ErrorAction SilentlyContinue
 ## 验收清单
 
 - 展示模型供应商和运行时切换。
-- 展示 Skill 市场、元数据、启停和调用。
+- 展示 Skill 市场、三类内置 Skill 元数据、健康检查和显式调用。
 - 展示 MCP 连接和工具调用。
 - 展示 SSE 深度研究过程。
 - 展示 PostgreSQL 持久化查询。

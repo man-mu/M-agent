@@ -5,13 +5,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.web.reactive.function.client.WebClient;
 import top.lanshan.manmu.config.McpProperties;
+import top.lanshan.manmu.mcp.McpServerConfigService;
 import top.lanshan.manmu.mcp.McpToolProvider;
+import top.lanshan.manmu.modelprovider.ModelProviderKeyStore;
+import top.lanshan.manmu.search.BochaSearchProperties;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillFileRepository;
 import top.lanshan.manmu.skill.service.SkillRegistry;
 import top.lanshan.manmu.skill.service.SkillService;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -105,6 +109,73 @@ class SkillHealthServiceTest {
                 });
     }
 
+    @Test
+    void usesShortConnectionTestForConfiguredMcpDependencyHealth() throws Exception {
+        SkillFileRepository repository = new SkillFileRepository(tempDir, objectMapper);
+        SkillRegistry registry = new SkillRegistry(repository);
+        SkillService skillService = new SkillService(repository, registry, objectMapper);
+        SkillDefinition definition = new SkillDefinition();
+        definition.setName("weather-now");
+        definition.setDescription("Weather now");
+        definition.setDependencies(List.of("mcp-qweather"));
+        skillService.create(definition, "Weather {{location}}");
+
+        McpProperties.McpServerInfo server = new McpProperties.McpServerInfo();
+        server.setId("local-qweather");
+        server.setUrl("http://127.0.0.1:18090");
+        server.setSseEndpoint("/sse");
+        server.setDescription("本地和风天气 MCP");
+        server.setAllowedTools(List.of("weather_now"));
+        McpServerConfigService configService = new McpServerConfigService(
+                new McpProperties.McpServerConfig(List.of(server)),
+                tempDir.resolve("mcp-servers.json"), objectMapper);
+        ConfiguredMcpToolProvider mcpProvider = new ConfiguredMcpToolProvider();
+
+        SkillHealthResult result = new SkillHealthService(skillService, repository, mcpProvider,
+                configService, objectMapper).health("weather-now");
+
+        assertThat(result.healthy()).isFalse();
+        assertThat(result.dependencies()).singleElement()
+                .satisfies(dependency -> {
+                    assertThat(dependency.name()).isEqualTo("mcp-qweather");
+                    assertThat(dependency.message()).isEqualTo("MCP server is not reachable");
+                    assertThat(dependency.requiredEnvVars()).contains("QWEATHER_API_KEY");
+                });
+        assertThat(mcpProvider.lastTimeout).isEqualTo(Duration.ofSeconds(3));
+    }
+
+    @Test
+    void reportsSearchDependencyAvailabilityWithoutExposingSecrets() throws Exception {
+        SkillFileRepository repository = new SkillFileRepository(tempDir.resolve("skills"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(repository);
+        SkillService skillService = new SkillService(repository, registry, objectMapper);
+        SkillDefinition definition = new SkillDefinition();
+        definition.setName("web-search");
+        definition.setDescription("Search the web");
+        definition.setEnabled(true);
+        definition.setDependencies(List.of("search-bocha"));
+        skillService.create(definition, "Search {{query}}");
+
+        BochaSearchProperties properties = new BochaSearchProperties();
+        properties.setEndpoint("https://api.bochaai.com/v1/web-search");
+        properties.setApiKey("secret-bocha-key");
+        ModelProviderKeyStore keyStore = new ModelProviderKeyStore(tempDir.resolve("keys.json"), objectMapper);
+
+        SkillHealthResult result = new SkillHealthService(skillService, repository, null, null,
+                properties, keyStore, objectMapper).health("web-search");
+
+        assertThat(result.healthy()).isTrue();
+        assertThat(result.dependencies()).singleElement()
+                .satisfies(dependency -> {
+                    assertThat(dependency.name()).isEqualTo("search-bocha");
+                    assertThat(dependency.type()).isEqualTo("SEARCH");
+                    assertThat(dependency.available()).isTrue();
+                    assertThat(dependency.requiredEnvVars()).contains("BOCHA_API_KEY");
+                    assertThat(dependency.keyConfigured()).isTrue();
+                    assertThat(dependency.toString()).doesNotContain("secret-bocha-key");
+                });
+    }
+
     private static class StaticMcpToolProvider extends McpToolProvider {
 
         private final List<ServerStatus> statuses;
@@ -118,6 +189,24 @@ class SkillHealthServiceTest {
         @Override
         public McpStatus getStatus() {
             return new McpStatus(true, statuses, 1);
+        }
+    }
+
+    private static class ConfiguredMcpToolProvider extends McpToolProvider {
+
+        private Duration lastTimeout;
+
+        ConfiguredMcpToolProvider() {
+            super(new McpProperties(), new McpProperties.McpServerConfig(),
+                    WebClient.builder(), new ObjectMapper(), "test", "0.0.0");
+        }
+
+        @Override
+        public McpConnectionTestResult testConnection(McpProperties.McpServerInfo server, Duration timeout) {
+            this.lastTimeout = timeout;
+            return new McpConnectionTestResult(server.getId(), server.getUrl(), server.getSseEndpoint(),
+                    false, 0, List.of(), "MCP server is not reachable", 10,
+                    List.of("QWEATHER_API_KEY"), false);
         }
     }
 }

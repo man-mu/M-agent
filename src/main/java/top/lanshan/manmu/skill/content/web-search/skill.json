@@ -1,0 +1,39 @@
+{
+  "name": "web-search",
+  "description": "把用户问题转成需要真实网络检索的研究任务，要求 DeepResearch 流程使用已有 Bocha 搜索路径收集来源并总结",
+  "version": "1.0.0",
+  "enabled": true,
+  "displayName": "网络搜索",
+  "category": "research",
+  "author": "M-Agent",
+  "tags": ["搜索", "研究", "Bocha", "DeepResearch"],
+  "packageType": "PROMPT",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "需要搜索、调研或总结的主题"
+      },
+      "freshness": {
+        "type": "string",
+        "description": "时效要求，例如 noLimit、oneDay、oneWeek、oneMonth",
+        "default": "noLimit"
+      },
+      "source_count": {
+        "type": "integer",
+        "description": "期望参考来源数量",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 10
+      },
+      "output_style": {
+        "type": "string",
+        "description": "输出风格，例如 concise、bullet、report",
+        "default": "concise"
+      }
+    },
+    "required": ["query"]
+  },
+  "dependencies": ["search-bocha"]
+}

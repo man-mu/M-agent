@@ -1,0 +1,32 @@
+{
+  "name": "calculator",
+  "description": "计算数学表达式并输出清晰步骤和最终结果，适合四则运算、百分比、单位换算和简单公式推导",
+  "version": "1.0.0",
+  "enabled": true,
+  "displayName": "计算器",
+  "category": "calculation",
+  "author": "M-Agent",
+  "tags": ["计算", "数学", "公式", "Prompt Skill"],
+  "packageType": "PROMPT",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "expression": {
+        "type": "string",
+        "description": "需要计算或推导的表达式，例如 (128 + 256) * 3 / 6"
+      },
+      "precision": {
+        "type": "string",
+        "description": "结果保留精度，例如 exact、2 decimals、4 significant digits",
+        "default": "exact when possible, otherwise 4 significant digits"
+      },
+      "show_steps": {
+        "type": "boolean",
+        "description": "是否展示关键计算步骤",
+        "default": true
+      }
+    },
+    "required": ["expression"]
+  },
+  "dependencies": []
+}

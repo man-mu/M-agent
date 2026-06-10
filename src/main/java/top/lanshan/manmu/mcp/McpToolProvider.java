@@ -101,8 +101,15 @@ public class McpToolProvider {
     }
 
     public McpConnectionTestResult testConnection(McpProperties.McpServerInfo server) {
+        return testConnection(server, connectionTestTimeout);
+    }
+
+    public McpConnectionTestResult testConnection(McpProperties.McpServerInfo server, Duration timeout) {
         long started = System.nanoTime();
         McpAsyncClient client = null;
+        Duration effectiveTimeout = timeout == null || timeout.isNegative() || timeout.isZero()
+                ? connectionTestTimeout
+                : timeout;
         try {
             McpProperties.McpServerConfig config = new McpProperties.McpServerConfig(List.of(server));
             List<McpConfigMergeUtil.NamedTransport> transports = McpConfigMergeUtil.createNamedTransports(
@@ -115,8 +122,8 @@ public class McpToolProvider {
             client = McpClient.async(transport.transport())
                     .clientInfo(new McpSchema.Implementation(clientName, clientVersion))
                     .build();
-            client.initialize().block(connectionTestTimeout);
-            McpSchema.ListToolsResult tools = client.listTools().block(connectionTestTimeout);
+            client.initialize().block(effectiveTimeout);
+            McpSchema.ListToolsResult tools = client.listTools().block(effectiveTimeout);
             List<String> toolNames = tools == null || tools.tools() == null
                     ? List.of()
                     : tools.tools().stream().map(McpSchema.Tool::name).toList();

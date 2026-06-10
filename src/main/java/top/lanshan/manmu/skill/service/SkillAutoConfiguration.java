@@ -15,6 +15,8 @@ import top.lanshan.manmu.skill.plugin.JarSkillPackageLoader;
 import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
 import top.lanshan.manmu.mcp.McpServerConfigService;
 import top.lanshan.manmu.mcp.McpToolProvider;
+import top.lanshan.manmu.modelprovider.ModelProviderKeyStore;
+import top.lanshan.manmu.search.BochaSearchProperties;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -104,9 +106,12 @@ public class SkillAutoConfiguration {
     @Bean
     SkillHealthService skillHealthService(SkillService skillService, SkillFileRepository fileRepository,
             ObjectMapper objectMapper, ObjectProvider<McpToolProvider> mcpToolProvider,
-            ObjectProvider<McpServerConfigService> mcpServerConfigService) {
+            ObjectProvider<McpServerConfigService> mcpServerConfigService,
+            ObjectProvider<BochaSearchProperties> bochaSearchProperties,
+            ObjectProvider<ModelProviderKeyStore> keyStore) {
         return new SkillHealthService(skillService, fileRepository, mcpToolProvider.getIfAvailable(),
-                mcpServerConfigService.getIfAvailable(), objectMapper);
+                mcpServerConfigService.getIfAvailable(), bochaSearchProperties.getIfAvailable(),
+                keyStore.getIfAvailable(), objectMapper);
     }
 
     private Path localMarketPath() {

@@ -14,6 +14,16 @@ const skills: SkillDefinition[] = [
     enabled: true,
   },
   {
+    name: 'calculator',
+    description: '计算数学表达式',
+    enabled: true,
+  },
+  {
+    name: 'web-search',
+    description: '网络搜索研究模板',
+    enabled: true,
+  },
+  {
     name: 'disabled-skill',
     description: '不可用',
     enabled: false,
@@ -30,7 +40,14 @@ describe('chat skill picker helpers', () => {
   it('filters enabled skills by name or description', () => {
     expect(filterSkillCandidates(skills, 'code').map(skill => skill.name)).toEqual(['code-review'])
     expect(filterSkillCandidates(skills, '地点').map(skill => skill.name)).toEqual(['location-analyzer'])
-    expect(filterSkillCandidates(skills, '').map(skill => skill.name)).toEqual(['code-review', 'location-analyzer'])
+    expect(filterSkillCandidates(skills, 'calc').map(skill => skill.name)).toEqual(['calculator'])
+    expect(filterSkillCandidates(skills, '网络').map(skill => skill.name)).toEqual(['web-search'])
+    expect(filterSkillCandidates(skills, '').map(skill => skill.name)).toEqual([
+      'code-review',
+      'location-analyzer',
+      'calculator',
+      'web-search',
+    ])
   })
 
   it('replaces the active trigger with the selected skill name', () => {

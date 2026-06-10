@@ -23,6 +23,7 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 - PostgreSQL 会话消息、报告、事件历史、用户画像和历史报告上下文。
 - 短期对话窗口已接入 Coordinator、Planner、Reporter 的模型推理上下文，用于理解追问和用户偏好。
 - Skill 注册、发现、创建、更新、导入、导出、启用/禁用、重载、卸载、健康检查和调用历史。
+- 内置 3 个方向 Skill 演示：`weather-now` 天气、`calculator` 计算器、`web-search` 网络搜索研究模板。
 - Jar Skill 上传热加载的后端能力，但默认关闭，仅建议本地可信启用。
 - MCP Server 管理、连接测试、reload 和工具调试调用。
 - Vue 控制台：`/chat`、`/skills`、`/mcp`、`/settings`。
@@ -30,7 +31,6 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 
 待补齐：
 
-- 3 个方向 Skill 演示需要补齐计算器和网络搜索 Skill；当前内置 Skill 为天气、地点分析、代码审查。
 - Agent Team 高分项目前是研究图工作流能力，仍需独立活动策划 Demo、Reviewer 语义和展示说明。
 - Demo 视频不在仓库中，本仓库先提供可复现录制脚本。
 
@@ -203,6 +203,8 @@ curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http
 ```powershell
 curl.exe http://localhost:18080/api/skills
 curl.exe http://localhost:18080/api/skills/weather-now/health
+curl.exe http://localhost:18080/api/skills/calculator/health
+curl.exe http://localhost:18080/api/skills/web-search/health
 curl.exe -X PATCH http://localhost:18080/api/skills/weather-now/toggle
 curl.exe -X PATCH http://localhost:18080/api/skills/weather-now/toggle
 ```
@@ -222,6 +224,12 @@ curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http
 New-Item -ItemType Directory -Force target/http-check | Out-Null
 '{"query":"@weather-now 查询上海实时天气","session_id":"demo-session","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/chat-weather.json
 curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/chat-weather.json" http://localhost:18080/chat/stream > target/http-check/chat-weather.sse
+
+'{"query":"@calculator 计算 (128 + 256) * 3 / 6","session_id":"demo-session","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/chat-calculator.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/chat-calculator.json" http://localhost:18080/chat/stream > target/http-check/chat-calculator.sse
+
+'{"query":"@web-search 搜索并总结 Spring Boot 3 WebFlux SSE 的关键注意事项","session_id":"demo-session","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/chat-web-search.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/chat-web-search.json" http://localhost:18080/chat/stream > target/http-check/chat-web-search.sse
 ```
 
 ### 深度研究 SSE 与持久化

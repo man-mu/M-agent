@@ -11,6 +11,7 @@ import top.lanshan.manmu.skill.plugin.SkillPluginRegistry;
 import top.lanshan.manmu.skill.testsupport.JarSkillPackageTestSupport;
 
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +74,27 @@ class SkillToolProviderTest {
         ToolCallback[] callbacks = provider.getToolCallbacks();
 
         assertThat(callbacks).isEmpty();
+    }
+
+    @Test
+    void exposesBuiltInDemoPromptSkillsAsTools() {
+        SkillFileRepository fileRepo = new SkillFileRepository(
+                Path.of("src/main/java/top/lanshan/manmu/skill/content"), tempDir.resolve("local"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(fileRepo);
+        registry.loadAll();
+
+        SkillToolProvider provider = new SkillToolProvider(registry, fileRepo, objectMapper, null, false);
+        ToolCallback[] callbacks = provider.getToolCallbacks();
+
+        assertThat(Arrays.stream(callbacks)
+                .map(callback -> callback.getToolDefinition().name()))
+                .contains("skill__weather_now", "skill__calculator", "skill__web_search");
+        assertThat(Arrays.stream(callbacks)
+                .filter(callback -> "skill__calculator".equals(callback.getToolDefinition().name()))
+                .findFirst()
+                .orElseThrow()
+                .call("{\"expression\":\"(128 + 256) * 3 / 6\"}"))
+                .contains("(128 + 256) * 3 / 6");
     }
 
     @Test

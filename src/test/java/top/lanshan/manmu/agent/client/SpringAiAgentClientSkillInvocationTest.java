@@ -137,6 +137,20 @@ class SpringAiAgentClientSkillInvocationTest {
     }
 
     @Test
+    void explicitPromptSkillDoesNotAttachDuplicateSkillCallbacks() throws Exception {
+        SpringAiAgentClient client = clientWithSkillService();
+        String wrappedPrompt = """
+                User question:
+                @code-review public class Foo {}
+
+                Deep research is enabled: false
+                """;
+
+        assertThat(shouldAttachSkillCallbacks(client, wrappedPrompt)).isFalse();
+        assertThat(shouldAttachSkillCallbacks(client, "Please answer normally")).isTrue();
+    }
+
+    @Test
     void weatherSkillCallsMcpToolAndInjectsResult() throws Exception {
         RecordingWeatherTool weatherTool = new RecordingWeatherTool();
         SpringAiAgentClient client = clientWithSkillService(new StaticMcpToolProvider(weatherTool));
@@ -244,6 +258,13 @@ class SpringAiAgentClientSkillInvocationTest {
                 .getDeclaredMethod("resolveExplicitSkillCall", String.class, String.class);
         method.setAccessible(true);
         return (String) method.invoke(client, systemPrompt, userPrompt);
+    }
+
+    private boolean shouldAttachSkillCallbacks(SpringAiAgentClient client, String userPrompt) throws Exception {
+        Method method = SpringAiAgentClient.class
+                .getDeclaredMethod("shouldAttachSkillCallbacks", String.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(client, userPrompt);
     }
 
     private static class StaticMcpToolProvider extends McpToolProvider {

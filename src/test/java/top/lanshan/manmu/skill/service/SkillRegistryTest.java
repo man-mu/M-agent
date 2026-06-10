@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,5 +77,38 @@ class SkillRegistryTest {
         registry.reload();
         assertThat(registry.getDefinition("reloadable").orElseThrow().getDescription())
                 .isEqualTo("updated");
+    }
+
+    @Test
+    void builtInDemoSkillsCoverWeatherCalculationAndWebSearch() {
+        Path builtin = Path.of("src/main/java/top/lanshan/manmu/skill/content");
+        SkillFileRepository repository = new SkillFileRepository(builtin, tempDir.resolve("local"), objectMapper);
+        SkillRegistry builtInRegistry = new SkillRegistry(repository);
+
+        builtInRegistry.loadAll();
+
+        assertThat(builtInRegistry.listAll()).extracting(SkillDefinition::getName)
+                .contains("weather-now", "calculator", "web-search");
+
+        List<SkillDefinition> demoSkills = builtInRegistry.listAll().stream()
+                .filter(skill -> List.of("weather-now", "calculator", "web-search").contains(skill.getName()))
+                .toList();
+        assertThat(demoSkills).hasSize(3)
+                .allSatisfy(skill -> {
+                    assertThat(skill.isEnabled()).isTrue();
+                    assertThat(skill.getVersion()).isNotBlank();
+                    assertThat(skill.getDescription()).isNotBlank();
+                    assertThat(skill.getCategory()).isNotBlank();
+                    assertThat(skill.getTags()).isNotEmpty();
+                    assertThat(skill.getParameters()).containsEntry("type", "object");
+                    assertThat(builtInRegistry.getPromptTemplate(skill.getName())).isPresent();
+                });
+
+        assertThat(builtInRegistry.getDefinition("weather-now").orElseThrow().getDependencies())
+                .contains("mcp-qweather");
+        assertThat(builtInRegistry.getDefinition("web-search").orElseThrow().getDependencies())
+                .contains("search-bocha");
+        assertThat(builtInRegistry.getDefinition("calculator").orElseThrow().getDependencies())
+                .isEmpty();
     }
 }

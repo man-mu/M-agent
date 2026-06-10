@@ -3,6 +3,11 @@
   "description": "查询指定城市实时天气，优先使用本地和风天气 MCP 工具获取真实天气数据",
   "version": "1.0.0",
   "enabled": true,
+  "displayName": "实时天气",
+  "category": "weather",
+  "author": "M-Agent",
+  "tags": ["天气", "MCP", "和风天气", "实时数据"],
+  "packageType": "PROMPT",
   "parameters": {
     "type": "object",
     "properties": {

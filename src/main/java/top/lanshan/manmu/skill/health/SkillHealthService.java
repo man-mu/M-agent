@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import top.lanshan.manmu.config.McpProperties;
 import top.lanshan.manmu.mcp.McpServerConfigService;
 import top.lanshan.manmu.mcp.McpToolProvider;
+import top.lanshan.manmu.modelprovider.ModelProviderKeyStore;
+import top.lanshan.manmu.search.BochaSearchProperties;
 import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillFileRepository;
@@ -11,18 +13,24 @@ import top.lanshan.manmu.skill.service.SkillService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 public class SkillHealthService {
+
+    private static final Duration MCP_HEALTH_TEST_TIMEOUT = Duration.ofSeconds(3);
 
     private final SkillService skillService;
     private final SkillFileRepository fileRepository;
     private final McpToolProvider mcpToolProvider;
     private final McpServerConfigService mcpServerConfigService;
+    private final BochaSearchProperties bochaSearchProperties;
+    private final ModelProviderKeyStore keyStore;
     private final ObjectMapper objectMapper;
 
     public SkillHealthService(SkillService skillService, SkillFileRepository fileRepository,
@@ -33,10 +41,19 @@ public class SkillHealthService {
     public SkillHealthService(SkillService skillService, SkillFileRepository fileRepository,
             McpToolProvider mcpToolProvider, McpServerConfigService mcpServerConfigService,
             ObjectMapper objectMapper) {
+        this(skillService, fileRepository, mcpToolProvider, mcpServerConfigService, null, null, objectMapper);
+    }
+
+    public SkillHealthService(SkillService skillService, SkillFileRepository fileRepository,
+            McpToolProvider mcpToolProvider, McpServerConfigService mcpServerConfigService,
+            BochaSearchProperties bochaSearchProperties, ModelProviderKeyStore keyStore,
+            ObjectMapper objectMapper) {
         this.skillService = skillService;
         this.fileRepository = fileRepository;
         this.mcpToolProvider = mcpToolProvider;
         this.mcpServerConfigService = mcpServerConfigService;
+        this.bochaSearchProperties = bochaSearchProperties;
+        this.keyStore = keyStore;
         this.objectMapper = objectMapper;
     }
 
@@ -93,7 +110,11 @@ public class SkillHealthService {
         if (dependencies.isEmpty()) {
             return List.of();
         }
-        List<McpToolProvider.ServerStatus> mcpStatuses = currentMcpStatuses();
+        List<McpToolProvider.ServerStatus> mcpStatuses = dependencies.stream()
+                .filter(dependency -> dependency != null
+                        && dependency.strip().toLowerCase(Locale.ROOT).startsWith("mcp-"))
+                .findAny()
+                .isPresent() ? currentMcpStatuses() : List.of();
         List<SkillDependencyHealth> result = new ArrayList<>();
         for (String dependency : dependencies) {
             if (dependency == null || dependency.isBlank()) {
@@ -102,12 +123,48 @@ public class SkillHealthService {
             String normalized = dependency.strip();
             if (normalized.toLowerCase(Locale.ROOT).startsWith("mcp-")) {
                 result.add(mcpDependencyHealth(normalized, mcpStatuses));
+            } else if (normalized.toLowerCase(Locale.ROOT).startsWith("search-")) {
+                result.add(searchDependencyHealth(normalized));
             } else {
                 result.add(new SkillDependencyHealth(normalized, "UNKNOWN", false,
                         "Unsupported dependency type", List.of(), List.of(), null));
             }
         }
         return List.copyOf(result);
+    }
+
+    private SkillDependencyHealth searchDependencyHealth(String dependency) {
+        String suffix = dependency.toLowerCase(Locale.ROOT).substring("search-".length());
+        if (!"bocha".equals(suffix)) {
+            return new SkillDependencyHealth(dependency, "SEARCH", false,
+                    "Unsupported search dependency", List.of(), List.of(), null);
+        }
+
+        boolean endpointConfigured = bochaSearchProperties == null
+                || hasText(bochaSearchProperties.getEndpoint());
+        boolean keyConfigured = bochaApiKey().isPresent();
+        boolean available = endpointConfigured && keyConfigured;
+        String message;
+        if (!endpointConfigured) {
+            message = "Bocha search endpoint is not configured";
+        } else if (!keyConfigured) {
+            message = "Bocha API key is not configured";
+        } else {
+            message = "Bocha search dependency is configured";
+        }
+        List<String> matchedServers = bochaSearchProperties == null
+                ? List.of("bocha")
+                : List.of(firstPresent(bochaSearchProperties.getEndpoint(), "bocha"));
+        return new SkillDependencyHealth(dependency, "SEARCH", available, message,
+                matchedServers, List.of("BOCHA_API_KEY"), keyConfigured);
+    }
+
+    private Optional<String> bochaApiKey() {
+        return Optional.ofNullable(bochaSearchProperties)
+                .map(BochaSearchProperties::getApiKey)
+                .filter(this::hasText)
+                .or(() -> Optional.ofNullable(System.getenv("BOCHA_API_KEY")).filter(this::hasText))
+                .or(() -> keyStore == null ? Optional.empty() : keyStore.getApiKey("bocha").filter(this::hasText));
     }
 
     private SkillDependencyHealth mcpDependencyHealth(String dependency,
@@ -206,7 +263,7 @@ public class SkillHealthService {
                     server.getSseEndpoint(), false, 0, List.of(), "MCP provider is not available",
                     0, List.of(), null);
         }
-        return mcpToolProvider.testConnection(server);
+        return mcpToolProvider.testConnection(server, MCP_HEALTH_TEST_TIMEOUT);
     }
 
     private List<McpToolProvider.ServerStatus> currentMcpStatuses() {
@@ -262,6 +319,10 @@ public class SkillHealthService {
     private boolean contains(String value, String fragment) {
         return value != null && fragment != null
                 && value.toLowerCase(Locale.ROOT).contains(fragment.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String firstPresent(String... values) {

@@ -58,6 +58,7 @@ public class SpringAiAgentClient implements AgentClient {
 
 	@Override
 	public String call(String systemPrompt, String userPrompt) {
+		boolean attachSkillCallbacks = shouldAttachSkillCallbacks(userPrompt);
 		String effectiveSystem = resolveExplicitSkillCall(systemPrompt, userPrompt);
 		effectiveSystem = appendSkillSummary(effectiveSystem);
 
@@ -78,7 +79,7 @@ public class SpringAiAgentClient implements AgentClient {
 			}
 		}
 
-		if (skillToolProvider != null) {
+		if (skillToolProvider != null && attachSkillCallbacks) {
 			ToolCallback[] skillCallbacks = skillToolProvider.getToolCallbacks();
 			if (skillCallbacks.length > 0) {
 				for (ToolCallback cb : skillCallbacks) {
@@ -131,6 +132,10 @@ public class SpringAiAgentClient implements AgentClient {
 		return systemPrompt + "\n\n" + summary;
 	}
 
+	private boolean shouldAttachSkillCallbacks(String userPrompt) {
+		return explicitSkillDefinition(userPrompt).isEmpty();
+	}
+
 	/**
 	 * Detects {@code @skill-name} prefix in the user message and renders the
 	 * skill template directly into the system prompt. LLM follows the skill
@@ -141,25 +146,14 @@ public class SpringAiAgentClient implements AgentClient {
 			return systemPrompt;
 		}
 
-		Optional<String> explicitText = explicitSkillText(userPrompt);
-		if (explicitText.isEmpty()) {
+		Optional<ExplicitSkillCall> explicitSkill = explicitSkillDefinition(userPrompt);
+		if (explicitSkill.isEmpty()) {
 			return systemPrompt;
 		}
 
-		Matcher m = SKILL_AT_PREFIX.matcher(explicitText.get());
-		if (!m.find()) {
-			return systemPrompt;
-		}
-
-		String skillName = m.group(1);
-		String remainingText = m.group(2);
-
-		SkillDefinition def = skillService.getDefinition(skillName).orElse(null);
-		if (def == null || !def.isEnabled()) {
-			logger.debug("@{}: skill not found or disabled, treating as normal message", skillName);
-			return systemPrompt;
-		}
-
+		String skillName = explicitSkill.get().definition().getName();
+		String remainingText = explicitSkill.get().remainingText();
+		SkillDefinition def = explicitSkill.get().definition();
 		Map<String, Object> params = extractSkillParams(def, remainingText);
 		String rendered = skillService.renderSkill(skillName, params);
 		if (rendered == null) {
@@ -176,6 +170,25 @@ public class SpringAiAgentClient implements AgentClient {
 		recordExplicitSkillInvocation(skillName, params, rendered);
 		logger.info("@{} explicitly invoked, template rendered ({} chars)", skillName, rendered.length());
 		return rendered + "\n\n---\n\n" + systemPrompt;
+	}
+
+	private Optional<ExplicitSkillCall> explicitSkillDefinition(String userPrompt) {
+		if (skillService == null) {
+			return Optional.empty();
+		}
+		Optional<String> explicitText = explicitSkillText(userPrompt);
+		if (explicitText.isEmpty()) {
+			return Optional.empty();
+		}
+		Matcher m = SKILL_AT_PREFIX.matcher(explicitText.get());
+		if (!m.find()) {
+			return Optional.empty();
+		}
+		String skillName = m.group(1);
+		String remainingText = m.group(2);
+		return skillService.getDefinition(skillName)
+				.filter(SkillDefinition::isEnabled)
+				.map(definition -> new ExplicitSkillCall(definition, remainingText));
 	}
 
 	private String explicitJarSkillContext(SkillDefinition def, Map<String, Object> params) {
@@ -397,6 +410,9 @@ public class SpringAiAgentClient implements AgentClient {
 				}
 			}
 		}
+	}
+
+	private record ExplicitSkillCall(SkillDefinition definition, String remainingText) {
 	}
 
 }
