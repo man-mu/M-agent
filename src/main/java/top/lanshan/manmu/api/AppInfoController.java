@@ -13,8 +13,9 @@ public class AppInfoController {
 
 	public AppInfoController(@Value("${mvp.skill.enabled:false}") boolean skillEnabled,
 			@Value("${mvp.rag.enabled:false}") boolean ragEnabled,
-			@Value("${mvp.mcp.enabled:false}") boolean mcpEnabled) {
-		this.capabilities = new AppCapabilities(skillEnabled, ragEnabled, mcpEnabled);
+			@Value("${mvp.mcp.enabled:false}") boolean mcpEnabled,
+			@Value("${mvp.skill.jar-plugins.enabled:false}") boolean jarPluginsEnabled) {
+		this.capabilities = new AppCapabilities(skillEnabled, ragEnabled, mcpEnabled, jarPluginsEnabled);
 	}
 
 	@GetMapping("/capabilities")
@@ -22,7 +23,8 @@ public class AppInfoController {
 		return capabilities;
 	}
 
-	public record AppCapabilities(boolean skillEnabled, boolean ragEnabled, boolean mcpEnabled) {
+	public record AppCapabilities(boolean skillEnabled, boolean ragEnabled, boolean mcpEnabled,
+			boolean jarPluginsEnabled) {
 	}
 
 }

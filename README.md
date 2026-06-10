@@ -24,7 +24,7 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 - 短期对话窗口已接入 Coordinator、Planner、Reporter 的模型推理上下文，用于理解追问和用户偏好。
 - Skill 注册、发现、创建、更新、导入、导出、启用/禁用、重载、卸载、健康检查和调用历史。
 - 内置 3 个方向 Skill 演示：`weather-now` 天气、`calculator` 计算器、`web-search` 网络搜索研究模板。
-- Jar Skill 上传热加载的后端能力，但默认关闭，仅建议本地可信启用。
+- Jar Skill 上传热加载的后端与控制台演示能力，默认关闭，仅建议本地可信启用。
 - MCP Server 管理、连接测试、reload 和工具调试调用。
 - Vue 控制台：`/chat`、`/skills`、`/mcp`、`/settings`。
 - DeepResearch 风格图工作流，包含 Coordinator、Planner、Research Team、Parallel Executor、Researcher、Coder、Reporter 等节点。
@@ -218,6 +218,29 @@ curl.exe -X POST http://localhost:18080/api/mcp/reload
 curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http-check/weather-now-request.json" http://localhost:18080/api/mcp/tools/weather_now/invoke
 ```
 
+### Jar Skill 热加载演示
+
+Jar Skill 默认关闭。控制台 `/skills` 会展示 Jar 插件开关状态；默认关闭时上传 Jar 包会返回 `Jar Skill plugins are disabled`。生成演示包：
+
+```powershell
+$env:JAVA_HOME='C:\WorkResources\JDKs\JDK17'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+mvn '-Dtest=JarSkillDemoPackageGeneratorTest' '-Dmvp.demo.jar-skill-package=true' test
+```
+
+启用可信本地 Jar 插件后启动后端，再验证导入、健康、重载、启停和卸载：
+
+```powershell
+mvn spring-boot:run "-Dspring-boot.run.arguments=--server.port=18080 --mvp.skill.jar-plugins.enabled=true"
+curl.exe -F "file=@target/demo-packages/echo-json-skill.zip" http://localhost:18080/api/skills/packages/import-jar > target/http-check/jar-import.json
+curl.exe http://localhost:18080/api/skills/echo-json-skill > target/http-check/jar-detail.json
+curl.exe http://localhost:18080/api/skills/echo-json-skill/health > target/http-check/jar-health.json
+curl.exe -X POST http://localhost:18080/api/skills/echo-json-skill/reload > target/http-check/jar-reload.json
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle > target/http-check/jar-toggle-off.json
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle > target/http-check/jar-toggle-on.json
+curl.exe -X DELETE http://localhost:18080/api/skills/packages/echo-json-skill
+```
+
 ### 聊天 SSE
 
 ```powershell
@@ -275,6 +298,8 @@ npm run build
 
 - Prompt Skill：`skill.json + SKILL.md`，适合模板化任务说明。
 - Jar Skill：`skill.json + plugin.jar`，通过 `SkillPlugin` 和 `ServiceLoader` 接入，默认关闭，仅用于本地可信插件。
+
+Jar Skill 不是安全沙箱。它通过独立 `SkillPluginClassLoader` 做依赖和生命周期隔离，但仍然只能上传自己编译、可审计、可信的本地 Jar 包。
 
 ## MCP 配置
 

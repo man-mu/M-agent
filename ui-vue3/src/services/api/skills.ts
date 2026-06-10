@@ -115,6 +115,16 @@ class SkillService {
     })
   }
 
+  importJarPackage(file: File): Promise<SkillPackageImportResult> {
+    const data = new FormData()
+    data.append('file', file)
+    return apiRequest<SkillPackageImportResult>({
+      method: 'POST',
+      url: '/api/skills/packages/import-jar',
+      data,
+    })
+  }
+
   exportPackage(name: string): Promise<Blob> {
     return apiRequest<Blob>({
       method: 'GET',

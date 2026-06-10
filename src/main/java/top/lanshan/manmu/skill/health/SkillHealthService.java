@@ -32,6 +32,7 @@ public class SkillHealthService {
     private final BochaSearchProperties bochaSearchProperties;
     private final ModelProviderKeyStore keyStore;
     private final ObjectMapper objectMapper;
+    private final boolean jarPluginsEnabled;
 
     public SkillHealthService(SkillService skillService, SkillFileRepository fileRepository,
             McpToolProvider mcpToolProvider, ObjectMapper objectMapper) {
@@ -48,6 +49,14 @@ public class SkillHealthService {
             McpToolProvider mcpToolProvider, McpServerConfigService mcpServerConfigService,
             BochaSearchProperties bochaSearchProperties, ModelProviderKeyStore keyStore,
             ObjectMapper objectMapper) {
+        this(skillService, fileRepository, mcpToolProvider, mcpServerConfigService,
+                bochaSearchProperties, keyStore, objectMapper, false);
+    }
+
+    public SkillHealthService(SkillService skillService, SkillFileRepository fileRepository,
+            McpToolProvider mcpToolProvider, McpServerConfigService mcpServerConfigService,
+            BochaSearchProperties bochaSearchProperties, ModelProviderKeyStore keyStore,
+            ObjectMapper objectMapper, boolean jarPluginsEnabled) {
         this.skillService = skillService;
         this.fileRepository = fileRepository;
         this.mcpToolProvider = mcpToolProvider;
@@ -55,6 +64,7 @@ public class SkillHealthService {
         this.bochaSearchProperties = bochaSearchProperties;
         this.keyStore = keyStore;
         this.objectMapper = objectMapper;
+        this.jarPluginsEnabled = jarPluginsEnabled;
     }
 
     public SkillHealthResult health(String name) {
@@ -64,6 +74,9 @@ public class SkillHealthService {
         checks.add(new SkillHealthCheck("enabled", definition.isEnabled(),
                 definition.isEnabled() ? "Skill is enabled" : "Skill is disabled"));
         checks.add(packageCheck(definition));
+        if (definition.getPackageType() == SkillPackageType.JAR) {
+            checks.add(jarPluginsCheck());
+        }
         checks.add(parameterSchemaCheck(definition));
 
         List<SkillDependencyHealth> dependencies = dependencyHealth(definition);
@@ -89,6 +102,11 @@ public class SkillHealthService {
         boolean present = prompt != null && !prompt.isBlank();
         return new SkillHealthCheck("promptTemplate", present,
                 present ? "Prompt template is present" : "Prompt template is missing");
+    }
+
+    private SkillHealthCheck jarPluginsCheck() {
+        return new SkillHealthCheck("jarPlugins", jarPluginsEnabled,
+                jarPluginsEnabled ? "Jar Skill plugins are enabled" : "Jar Skill plugins are disabled");
     }
 
     private SkillHealthCheck parameterSchemaCheck(SkillDefinition definition) {

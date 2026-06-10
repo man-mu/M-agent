@@ -9,6 +9,7 @@ import top.lanshan.manmu.mcp.McpServerConfigService;
 import top.lanshan.manmu.mcp.McpToolProvider;
 import top.lanshan.manmu.modelprovider.ModelProviderKeyStore;
 import top.lanshan.manmu.search.BochaSearchProperties;
+import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 import top.lanshan.manmu.skill.service.SkillFileRepository;
 import top.lanshan.manmu.skill.service.SkillRegistry;
@@ -174,6 +175,30 @@ class SkillHealthServiceTest {
                     assertThat(dependency.keyConfigured()).isTrue();
                     assertThat(dependency.toString()).doesNotContain("secret-bocha-key");
                 });
+    }
+
+    @Test
+    void reportsJarPluginSwitchForJarSkills() throws Exception {
+        SkillFileRepository repository = new SkillFileRepository(tempDir.resolve("skills"), objectMapper);
+        SkillRegistry registry = new SkillRegistry(repository);
+        SkillService skillService = new SkillService(repository, registry, objectMapper);
+        SkillDefinition definition = new SkillDefinition();
+        definition.setName("echo-json-skill");
+        definition.setDescription("Echo JSON Jar Skill");
+        definition.setEnabled(true);
+        definition.setPackageType(SkillPackageType.JAR);
+        repository.writeJarSkill("echo-json-skill", definition, new byte[] { 1, 2, 3 }, "Trusted local demo");
+        registry.loadAll();
+
+        SkillHealthResult result = new SkillHealthService(skillService, repository, null, null,
+                null, null, objectMapper, false).health("echo-json-skill");
+
+        assertThat(result.healthy()).isFalse();
+        assertThat(result.checks()).anySatisfy(check -> {
+            assertThat(check.name()).isEqualTo("jarPlugins");
+            assertThat(check.healthy()).isFalse();
+            assertThat(check.message()).isEqualTo("Jar Skill plugins are disabled");
+        });
     }
 
     private static class StaticMcpToolProvider extends McpToolProvider {

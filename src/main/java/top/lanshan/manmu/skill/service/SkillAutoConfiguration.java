@@ -111,7 +111,7 @@ public class SkillAutoConfiguration {
             ObjectProvider<ModelProviderKeyStore> keyStore) {
         return new SkillHealthService(skillService, fileRepository, mcpToolProvider.getIfAvailable(),
                 mcpServerConfigService.getIfAvailable(), bochaSearchProperties.getIfAvailable(),
-                keyStore.getIfAvailable(), objectMapper);
+                keyStore.getIfAvailable(), objectMapper, jarPluginsEnabled);
     }
 
     private Path localMarketPath() {

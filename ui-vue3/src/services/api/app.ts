@@ -4,6 +4,7 @@ export interface AppCapabilities {
   skillEnabled: boolean
   ragEnabled: boolean
   mcpEnabled: boolean
+  jarPluginsEnabled: boolean
 }
 
 export interface McpServerStatus {
@@ -66,6 +67,7 @@ export const disabledCapabilities: AppCapabilities = {
   skillEnabled: false,
   ragEnabled: false,
   mcpEnabled: false,
+  jarPluginsEnabled: false,
 }
 
 class AppService {

@@ -83,12 +83,15 @@ curl.exe http://localhost:18080/api/model/current
 2. 展示内置 Skill 列表，重点展示 3 个方向：`weather-now` 天气、`calculator` 计算器、`web-search` 网络搜索。
 3. 打开 `weather-now`、`calculator`、`web-search` 详情，展示参数 schema、依赖和健康状态。
 4. 停用再启用一个本地导入 Skill；内置 Skill 是只读内容目录，不从页面修改。
-5. 回到 `/chat`，分别输入：
+5. 切到“本地市场”，展示 Prompt Skill Zip 和 Jar Skill Zip 两个导入入口。
+6. 如未启用 Jar 插件，上传 Jar Skill Zip 会显示 `Jar Skill plugins are disabled`；如启用了可信本地 Jar 插件，导入 `echo-json-skill.zip`，展示详情、健康检查、重载、停用、启用和卸载。
+7. 回到 `/chat`，分别输入：
 
 ```text
 @weather-now 查询上海实时天气
 @calculator 计算 (128 + 256) * 3 / 6
 @web-search 搜索并总结 Spring Boot 3 WebFlux SSE 的关键注意事项
+@echo-json-skill --message=JarSkillWorks 请基于 Jar Skill 返回作答
 ```
 
 注意：
@@ -96,7 +99,22 @@ curl.exe http://localhost:18080/api/model/current
 - 天气结果必须来自本地 MCP 和真实和风天气 API。
 - 计算器是 Prompt Skill，走真实模型链路输出步骤和结果。
 - 网络搜索 Skill 是研究模式任务模板，应开启深度研究，让后端使用已有 Bocha 搜索路径；如果缺少 `BOCHA_API_KEY`，录制清晰错误提示。
+- Jar Skill 默认关闭，只在本地可信演示时通过 `--mvp.skill.jar-plugins.enabled=true` 启用；ClassLoader 隔离不是安全沙箱。
 - 如果天气 Key 不可用或供应商限流，可以录制清晰错误提示，不要编造结果。
+
+Jar Skill 演示包生成和接口证据：
+
+```powershell
+$env:JAVA_HOME='C:\WorkResources\JDKs\JDK17'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+mvn '-Dtest=JarSkillDemoPackageGeneratorTest' '-Dmvp.demo.jar-skill-package=true' test
+curl.exe -F "file=@target/demo-packages/echo-json-skill.zip" http://localhost:18080/api/skills/packages/import-jar
+curl.exe http://localhost:18080/api/skills/echo-json-skill/health
+curl.exe -X POST http://localhost:18080/api/skills/echo-json-skill/reload
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle
+curl.exe -X DELETE http://localhost:18080/api/skills/packages/echo-json-skill
+```
 
 ## 片段 3：MCP 管理与工具调试
 

@@ -122,6 +122,8 @@ mvp:
 mvn spring-boot:run "-Dspring-boot.run.arguments=--server.port=18080 --mvp.skill.jar-plugins.enabled=true"
 ```
 
+控制台 `/skills` 会展示 Jar 插件运行时状态。默认关闭时，选择 “Jar Skill Zip” 上传会失败并显示后端返回的 `Jar Skill plugins are disabled`，这是预期的安全默认行为。
+
 ### 包结构
 
 Jar Skill 上传包是 zip，根目录包含：
@@ -133,6 +135,22 @@ README.md   # 可选
 ```
 
 `skill.json` 中 `packageType` 可以省略，导入后会被设置为 `JAR`。
+
+### 生成演示包
+
+仓库内提供一个测试支持生成器，用于生成本地可信的 echo Jar Skill 演示包；生成产物写入 `target/demo-packages/`，不提交：
+
+```powershell
+$env:JAVA_HOME='C:\WorkResources\JDKs\JDK17'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+mvn '-Dtest=JarSkillDemoPackageGeneratorTest' '-Dmvp.demo.jar-skill-package=true' test
+```
+
+生成后得到：
+
+```text
+target/demo-packages/echo-json-skill.zip
+```
 
 ### 插件接口
 
@@ -185,6 +203,7 @@ example.EchoSkill
 - ClassLoader 隔离不是安全沙箱。
 - 不要上传不可信 Jar。
 - 插件不要读取或输出 `.local/` 中的敏感 Key。
+- 停用、重载和卸载 Jar Skill 时，后端会释放对应插件实例和类加载器。
 
 ## 管理接口
 
@@ -204,6 +223,18 @@ curl.exe http://localhost:18080/api/skills/weather-now
 
 ```powershell
 curl.exe http://localhost:18080/api/skills/weather-now/health
+```
+
+Jar Skill 导入和生命周期演示：
+
+```powershell
+curl.exe -F "file=@target/demo-packages/echo-json-skill.zip" http://localhost:18080/api/skills/packages/import-jar
+curl.exe http://localhost:18080/api/skills/echo-json-skill
+curl.exe http://localhost:18080/api/skills/echo-json-skill/health
+curl.exe -X POST http://localhost:18080/api/skills/echo-json-skill/reload
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle
+curl.exe -X PATCH http://localhost:18080/api/skills/echo-json-skill/toggle
+curl.exe -X DELETE http://localhost:18080/api/skills/packages/echo-json-skill
 ```
 
 启停：

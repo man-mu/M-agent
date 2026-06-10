@@ -62,10 +62,12 @@ import {
 
 type StatusFilter = 'all' | 'enabled' | 'disabled'
 type ActiveTab = 'installed' | 'market' | 'imports'
+type ImportPackageType = 'PROMPT' | 'JAR'
 
 interface ImportRecord {
   id: string
   fileName: string
+  packageType: ImportPackageType
   name: string
   version?: string
   status: 'success' | 'failed'
@@ -88,6 +90,7 @@ if (app) {
 const skills = ref<SkillDefinition[]>([])
 const capabilityLoading = ref(true)
 const skillEnabled = ref(false)
+const jarPluginsEnabled = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const importing = ref(false)
@@ -142,6 +145,7 @@ const columns = [
 const importColumns = [
   { title: '时间', key: 'importedAt', width: 180 },
   { title: '包文件', dataIndex: 'fileName', key: 'fileName', width: 220 },
+  { title: '类型', key: 'packageType', width: 100 },
   { title: 'Skill', key: 'name', width: 190 },
   { title: '结果', key: 'status', width: 110 },
   { title: '说明', dataIndex: 'message', key: 'message' },
@@ -158,6 +162,7 @@ const enabledCount = computed(() => skills.value.filter(skill => skill.enabled).
 const disabledCount = computed(() => totalCount.value - enabledCount.value)
 const builtinCount = computed(() => skills.value.filter(isBuiltin).length)
 const localCount = computed(() => skills.value.filter(skill => !isBuiltin(skill)).length)
+const jarSkillCount = computed(() => skills.value.filter(skill => skill.packageType === 'JAR').length)
 const moduleStatus = computed(() => {
   if (capabilityLoading.value) {
     return { label: '加载中', color: 'processing' }
@@ -166,6 +171,14 @@ const moduleStatus = computed(() => {
     ? { label: '已启用', color: 'green' }
     : { label: '未启用', color: 'default' }
 })
+const jarPluginStatus = computed(() => {
+  if (capabilityLoading.value) {
+    return { label: '加载中', color: 'processing' }
+  }
+  return jarPluginsEnabled.value
+    ? { label: '可信本地已启用', color: 'green' }
+    : { label: '默认关闭', color: 'default' }
+})
 const filteredSkills = computed(() => {
   return filterSkillMarket(skills.value, {
     tab: activeTab.value === 'market' ? 'market' : 'installed',
@@ -173,6 +186,20 @@ const filteredSkills = computed(() => {
     status: statusFilter.value,
   })
 })
+const canEditSkill = (skill: SkillDefinition) => !isBuiltin(skill) && skill.packageType !== 'JAR'
+const canExportSkill = (skill: SkillDefinition) => !isBuiltin(skill) && skill.packageType !== 'JAR'
+const editActionTitle = (skill: SkillDefinition) => {
+  if (isBuiltin(skill)) {
+    return '内置 Skill 只读'
+  }
+  return skill.packageType === 'JAR' ? 'Jar Skill 通过上传包管理' : '编辑'
+}
+const exportActionTitle = (skill: SkillDefinition) => {
+  if (isBuiltin(skill)) {
+    return '内置 Skill 不能导出为本地包'
+  }
+  return skill.packageType === 'JAR' ? 'Jar Skill 暂不支持从页面导出' : '导出'
+}
 
 const parsedParameters = computed(() => parseJsonObject(parametersText.value))
 const parsedPreviewParams = computed(() => parseJsonObject(previewParamsText.value))
@@ -377,6 +404,10 @@ function tagsLabel(skill: SkillDefinition) {
   return skillListLabel(skill.tags)
 }
 
+function importPackageTypeLabel(packageType: ImportPackageType) {
+  return packageType === 'JAR' ? 'Jar' : 'Prompt'
+}
+
 function formatTime(value?: string) {
   if (!value) {
     return '未记录'
@@ -395,12 +426,17 @@ function invocationSummary(record: SkillInvocationRecord) {
   return record.output || '无输出'
 }
 
-function beforePackageUpload(file: File) {
-  void importPackageFile(file)
+function beforePromptPackageUpload(file: File) {
+  void importPackageFile(file, 'PROMPT')
   return false
 }
 
-async function importPackageFile(file: File) {
+function beforeJarPackageUpload(file: File) {
+  void importPackageFile(file, 'JAR')
+  return false
+}
+
+async function importPackageFile(file: File, packageType: ImportPackageType) {
   if (!file) {
     return
   }
@@ -410,24 +446,33 @@ async function importPackageFile(file: File) {
   }
   importing.value = true
   try {
-    const result = await skillService.importPackage(file)
-    addImportRecord(file, result)
-    message.success(`Skill 包已导入：${result.name}`)
+    const result = packageType === 'JAR'
+      ? await skillService.importJarPackage(file)
+      : await skillService.importPackage(file)
+    addImportRecord(file, packageType, result)
+    message.success(`${packageType === 'JAR' ? 'Jar' : 'Prompt'} Skill 包已导入：${result.name}`)
     await loadSkills()
     activeTab.value = 'market'
   } catch (err: unknown) {
-    const errorMessage = userMessageFromError(err, '导入 Skill 包失败')
-    addImportRecord(file, null, errorMessage)
+    const fallback = packageType === 'JAR' ? '导入 Jar Skill 包失败' : '导入 Prompt Skill 包失败'
+    const errorMessage = userMessageFromError(err, fallback)
+    addImportRecord(file, packageType, null, errorMessage)
     message.error(errorMessage)
   } finally {
     importing.value = false
   }
 }
 
-function addImportRecord(file: File, result: SkillPackageImportResult | null, errorMessage = '') {
+function addImportRecord(
+  file: File,
+  packageType: ImportPackageType,
+  result: SkillPackageImportResult | null,
+  errorMessage = '',
+) {
   importRecords.value.unshift({
     id: `${Date.now()}-${file.name}`,
     fileName: file.name,
+    packageType: result?.packageType || packageType,
     name: result?.name || '-',
     version: result?.version,
     status: result ? 'success' : 'failed',
@@ -535,11 +580,13 @@ async function initialize() {
   try {
     const capabilities = await appService.getCapabilities()
     skillEnabled.value = capabilities.skillEnabled
+    jarPluginsEnabled.value = capabilities.jarPluginsEnabled
     if (capabilities.skillEnabled) {
       await loadSkills()
     }
   } catch (err: unknown) {
     skillEnabled.value = false
+    jarPluginsEnabled.value = false
     loadError.value = userMessageFromError(err, '加载应用能力信息失败')
     message.error(loadError.value)
   } finally {
@@ -565,13 +612,13 @@ onMounted(initialize)
         </a-tooltip>
         <a-upload
           accept=".zip,application/zip"
-          :before-upload="beforePackageUpload"
+          :before-upload="beforePromptPackageUpload"
           :disabled="importing"
           :show-upload-list="false"
         >
           <a-button :loading="importing">
             <UploadOutlined />
-            导入 Skill 包
+            导入 Prompt 包
           </a-button>
         </a-upload>
         <a-button type="primary" @click="openCreate">
@@ -609,6 +656,14 @@ onMounted(initialize)
           <span>已停用</span>
           <strong>{{ disabledCount }}</strong>
         </div>
+        <div class="summary-item">
+          <span>Jar 插件</span>
+          <strong><a-tag :color="jarPluginStatus.color">{{ jarPluginStatus.label }}</a-tag></strong>
+        </div>
+        <div class="summary-item">
+          <span>Jar Skill</span>
+          <strong>{{ jarSkillCount }}</strong>
+        </div>
       </section>
 
       <a-alert
@@ -638,15 +693,30 @@ onMounted(initialize)
         </a-tabs>
 
         <section v-if="activeTab === 'market'" class="upload-panel">
-          <a-upload-dragger
-            accept=".zip,application/zip"
-            :before-upload="beforePackageUpload"
-            :disabled="importing"
-            :show-upload-list="false"
-          >
-            <p class="upload-icon"><InboxOutlined /></p>
-            <p class="upload-title">Prompt Skill Zip</p>
-          </a-upload-dragger>
+          <div class="upload-grid">
+            <a-upload-dragger
+              accept=".zip,application/zip"
+              :before-upload="beforePromptPackageUpload"
+              :disabled="importing"
+              :show-upload-list="false"
+            >
+              <p class="upload-icon"><InboxOutlined /></p>
+              <p class="upload-title">Prompt Skill Zip</p>
+              <p class="upload-hint">包含 skill.json 和 SKILL.md</p>
+            </a-upload-dragger>
+            <a-upload-dragger
+              accept=".zip,application/zip"
+              :before-upload="beforeJarPackageUpload"
+              :disabled="importing"
+              :show-upload-list="false"
+            >
+              <p class="upload-icon"><InboxOutlined /></p>
+              <p class="upload-title">Jar Skill Zip</p>
+              <p class="upload-hint">
+                {{ jarPluginsEnabled ? '可信本地已启用，可上传 plugin.jar' : '默认关闭，上传会显示后端禁用原因' }}
+              </p>
+            </a-upload-dragger>
+          </div>
         </section>
 
         <template v-if="activeTab !== 'imports'">
@@ -709,8 +779,8 @@ onMounted(initialize)
                       <EyeOutlined />
                     </a-button>
                   </a-tooltip>
-                  <a-tooltip :title="isBuiltin(record) ? '内置 Skill 只读' : '编辑'">
-                    <a-button size="small" :disabled="isBuiltin(record)" @click="openEdit(record.name)">
+                  <a-tooltip :title="editActionTitle(record)">
+                    <a-button size="small" :disabled="!canEditSkill(record)" @click="openEdit(record.name)">
                       <EditOutlined />
                     </a-button>
                   </a-tooltip>
@@ -724,10 +794,10 @@ onMounted(initialize)
                       <PoweroffOutlined />
                     </a-button>
                   </a-tooltip>
-                  <a-tooltip :title="isBuiltin(record) ? '内置 Skill 不能导出为本地包' : '导出'">
+                  <a-tooltip :title="exportActionTitle(record)">
                     <a-button
                       size="small"
-                      :disabled="isBuiltin(record)"
+                      :disabled="!canExportSkill(record)"
                       :loading="packageBusyName === record.name"
                       @click="exportSkillPackage(record)"
                     >
@@ -802,7 +872,7 @@ onMounted(initialize)
                   <EyeOutlined />
                   详情
                 </a-button>
-                <a-button size="small" :disabled="isBuiltin(skill)" @click="openEdit(skill.name)">
+                <a-button size="small" :disabled="!canEditSkill(skill)" @click="openEdit(skill.name)">
                   <EditOutlined />
                   编辑
                 </a-button>
@@ -817,7 +887,7 @@ onMounted(initialize)
                 </a-button>
                 <a-button
                   size="small"
-                  :disabled="isBuiltin(skill)"
+                  :disabled="!canExportSkill(skill)"
                   :loading="packageBusyName === skill.name"
                   @click="exportSkillPackage(skill)"
                 >
@@ -866,6 +936,9 @@ onMounted(initialize)
               <strong>{{ record.name }}</strong>
               <span v-if="record.version" class="record-version">v{{ record.version }}</span>
             </template>
+            <template v-else-if="column.key === 'packageType'">
+              <a-tag>{{ importPackageTypeLabel(record.packageType) }}</a-tag>
+            </template>
             <template v-else-if="column.key === 'status'">
               <a-tag :color="record.status === 'success' ? 'green' : 'red'">
                 {{ record.status === 'success' ? '成功' : '失败' }}
@@ -895,6 +968,12 @@ onMounted(initialize)
             <a-descriptions-item label="来源">
               <a-tag :color="sourceColor(detailDefinition)">{{ sourceLabel(detailDefinition) }}</a-tag>
               <a-tag>{{ storageLabel(detailDefinition) }}</a-tag>
+            </a-descriptions-item>
+            <a-descriptions-item label="包类型">
+              <a-tag>{{ packageTypeLabel(detailDefinition) }}</a-tag>
+              <a-tag v-if="detailDefinition.packageType === 'JAR'" :color="jarPluginStatus.color">
+                {{ jarPluginStatus.label }}
+              </a-tag>
             </a-descriptions-item>
             <a-descriptions-item label="状态">
               <a-tag :color="detailDefinition.enabled ? 'green' : 'default'">
@@ -962,8 +1041,8 @@ onMounted(initialize)
           </section>
 
           <section class="drawer-section">
-            <strong>Prompt 预览</strong>
-            <pre>{{ detailPromptTemplate || 'Prompt 模板为空。' }}</pre>
+            <strong>{{ detailDefinition.packageType === 'JAR' ? 'Jar 插件说明' : 'Prompt 预览' }}</strong>
+            <pre>{{ detailDefinition.packageType === 'JAR' ? 'Jar Skill 通过 plugin.jar 执行；启用可信本地 Jar 插件后可重载、启停和卸载。' : (detailPromptTemplate || 'Prompt 模板为空。') }}</pre>
           </section>
         </template>
       </a-spin>
@@ -1125,7 +1204,7 @@ onMounted(initialize)
   border-radius: 8px;
   display: grid;
   gap: 1px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 16px;
   overflow: hidden;
 }
@@ -1179,10 +1258,17 @@ onMounted(initialize)
   margin-bottom: 14px;
 }
 
+.upload-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .upload-panel :deep(.ant-upload-drag) {
   background: #f8fafc;
   border-color: #d8e0ea;
   border-radius: 8px;
+  height: 100%;
 }
 
 .upload-icon {
@@ -1196,6 +1282,11 @@ onMounted(initialize)
   color: #111827;
   font-weight: 600;
   margin: 0;
+}
+
+.upload-hint {
+  color: #6b7280;
+  margin: 6px 0 0;
 }
 
 .skill-table {
@@ -1424,6 +1515,10 @@ onMounted(initialize)
 
   .summary-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .upload-grid {
+    grid-template-columns: 1fr;
   }
 
   .summary-item {
