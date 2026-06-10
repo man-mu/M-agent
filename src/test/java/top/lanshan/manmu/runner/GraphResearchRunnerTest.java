@@ -121,6 +121,28 @@ class GraphResearchRunnerTest {
 	}
 
 	@Test
+	void runChatLoadsConversationHistoryAfterSavingUserMessage() {
+		RecordingConversationMemoryService memoryService = new RecordingConversationMemoryService();
+		memoryService.saveMessage("session-memory-context", "thread-previous", "USER",
+				"I prefer concise Chinese answers.").block();
+		ConversationContextCoordinatorNodeStub coordinatorNode = new ConversationContextCoordinatorNodeStub();
+		GraphResearchRunner runner = newRunner(List.of(coordinatorNode,
+				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new RecordingSessionHistoryService(), new RecordingSessionContextService(), memoryService);
+
+		var events = runner.runChat(new ResearchRequest("What style did I ask for?", "thread-memory-context", 2,
+				null, false), "session-memory-context").collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "__END__");
+		assertThat(coordinatorNode.conversationHistoryContext())
+			.contains("I prefer concise Chinese answers.")
+			.contains("What style did I ask for?");
+	}
+
+	@Test
 	void conversationMemoryFailureDoesNotPreventCompletionEvent() {
 		GraphResearchRunner runner = newRunner(List.of(new DirectAnswerCoordinatorNodeStub(),
 				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
@@ -138,6 +160,26 @@ class GraphResearchRunnerTest {
 			assertThat(event.done()).isTrue();
 			assertThat(event.payload()).isEqualTo("Direct answer");
 		});
+	}
+
+	@Test
+	void conversationHistoryReadFailureDoesNotPreventCompletionEvent() {
+		FailingConversationHistoryMemoryService memoryService = new FailingConversationHistoryMemoryService();
+		ConversationContextCoordinatorNodeStub coordinatorNode = new ConversationContextCoordinatorNodeStub();
+		GraphResearchRunner runner = newRunner(List.of(coordinatorNode,
+				new PlanValidatorNodeStub(), new HumanFeedbackNodeStub(), new QueryRewriteNodeStub(),
+				new BackgroundInvestigatorNodeStub(), new PlanningNode(), new InformationNode(), new TeamNode(),
+				new ParallelExecutorNodeStub(), new ReporterNode()), new RecordingReportService(),
+				new RecordingSessionHistoryService(), new RecordingSessionContextService(), memoryService);
+
+		var events = runner.runChat(new ResearchRequest("Say hello.", "thread-memory-read-failure", 2,
+				null, false), "session-memory-read-failure").collectList().block();
+
+		assertThat(events).isNotNull();
+		assertThat(events).extracting(ResearchEvent::node).containsExactly("coordinator", "__END__");
+		assertThat(coordinatorNode.conversationHistoryContext()).isEqualTo("");
+		assertThat(memoryService.messages()).extracting(ConversationMessageRecord::role)
+			.containsExactly("USER", "ASSISTANT");
 	}
 
 	@Test
@@ -647,6 +689,36 @@ class GraphResearchRunnerTest {
 			state.report("Direct answer");
 			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "routed",
 					state.coordinatorDecision()));
+		}
+
+	}
+
+	private static class ConversationContextCoordinatorNodeStub implements ResearchNode {
+
+		private String conversationHistoryContext;
+
+		@Override
+		public int order() {
+			return 1;
+		}
+
+		@Override
+		public String name() {
+			return "coordinator";
+		}
+
+		@Override
+		public Flux<ResearchEvent> run(ResearchState state) {
+			conversationHistoryContext = state.conversationHistoryContext();
+			state.coordinatorDecision(new CoordinatorDecision(CoordinatorRoute.DIRECT_ANSWER, false,
+					"Direct answer", "Simple."));
+			state.report("Direct answer");
+			return Flux.just(ResearchEvent.message(state.threadId(), name(), "decision", "routed",
+					state.coordinatorDecision()));
+		}
+
+		String conversationHistoryContext() {
+			return conversationHistoryContext;
 		}
 
 	}
@@ -1212,6 +1284,15 @@ class GraphResearchRunnerTest {
 		@Override
 		public Mono<String> formatConversationHistory(String sessionId) {
 			return Mono.just("");
+		}
+
+	}
+
+	private static class FailingConversationHistoryMemoryService extends RecordingConversationMemoryService {
+
+		@Override
+		public Mono<String> formatConversationHistory(String sessionId) {
+			return Mono.error(new IllegalStateException("memory read unavailable"));
 		}
 
 	}

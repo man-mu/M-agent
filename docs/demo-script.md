@@ -144,7 +144,7 @@ curl.exe -X POST http://localhost:18080/api/mcp/reload
 
 ```powershell
 New-Item -ItemType Directory -Force target/http-check | Out-Null
-'{"message":"解释为什么 Agent 工作流要区分 Planner、Researcher 和 Reporter。","session_id":"demo-video","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/demo-video.json
+'{"query":"解释为什么 Agent 工作流要区分 Planner、Researcher 和 Reporter。","session_id":"demo-video","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/demo-video.json
 curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/demo-video.json" http://localhost:18080/chat/stream > target/http-check/demo-video.sse
 curl.exe http://localhost:18080/api/sessions/demo-video/history
 curl.exe http://localhost:18080/api/reports/session/demo-video

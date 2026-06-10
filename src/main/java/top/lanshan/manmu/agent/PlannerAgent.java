@@ -26,4 +26,10 @@ public interface PlannerAgent {
 		return plan(query, maxSteps, feedbackContent, backgroundContext, optimizedQueries);
 	}
 
+	default ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+			List<String> optimizedQueries, String backgroundInvestigationContext, String conversationHistoryContext) {
+		return plan(query, maxSteps, feedbackContent, backgroundContext, optimizedQueries,
+				backgroundInvestigationContext);
+	}
+
 }

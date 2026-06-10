@@ -21,6 +21,7 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 - 模型供应商列表、API Key 保存、运行时模型切换和连通性测试。
 - WebFlux SSE 对话与研究流接口。
 - PostgreSQL 会话消息、报告、事件历史、用户画像和历史报告上下文。
+- 短期对话窗口已接入 Coordinator、Planner、Reporter 的模型推理上下文，用于理解追问和用户偏好。
 - Skill 注册、发现、创建、更新、导入、导出、启用/禁用、重载、卸载、健康检查和调用历史。
 - Jar Skill 上传热加载的后端能力，但默认关闭，仅建议本地可信启用。
 - MCP Server 管理、连接测试、reload 和工具调试调用。
@@ -29,7 +30,6 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 
 待补齐：
 
-- 根需求中的“短期对话窗口进入模型推理上下文”仍需 Phase 2 完成；当前已保存并可格式化会话历史。
 - 3 个方向 Skill 演示需要补齐计算器和网络搜索 Skill；当前内置 Skill 为天气、地点分析、代码审查。
 - Agent Team 高分项目前是研究图工作流能力，仍需独立活动策划 Demo、Reviewer 语义和展示说明。
 - Demo 视频不在仓库中，本仓库先提供可复现录制脚本。
@@ -64,7 +64,7 @@ flowchart LR
 
   Runner --> Pg["PostgreSQL"]
   Pg --> Reports["报告 / 会话历史 / 事件历史"]
-  Pg --> Memory["对话消息 / 用户画像"]
+  Pg --> Memory["短期对话窗口 / 用户画像"]
 ```
 
 ## Agent 工作流
@@ -166,6 +166,23 @@ npm run dev
 
 ## 常用验证
 
+### 短期记忆与长期记忆
+
+短期记忆来自同一 `session_id` 下最近的对话消息。后端会在保存当前用户消息后读取会话窗口，并将其传入 Coordinator、Planner 和 Reporter 的 prompt，用于理解上下文、追问和偏好；prompt 中明确要求不要把历史对话当成外部事实证据。
+
+长期记忆由 PostgreSQL 中的会话消息、用户画像、历史报告和事件历史体现，可通过会话历史、报告和对话接口验证。
+
+```powershell
+New-Item -ItemType Directory -Force target/http-check | Out-Null
+'{"query":"我偏好简洁中文回答，请记住。","session_id":"memory-demo","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/memory-1.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/memory-1.json" http://localhost:18080/chat/stream > target/http-check/memory-1.sse
+
+'{"query":"刚才我说我偏好什么风格？","session_id":"memory-demo","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/memory-2.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/memory-2.json" http://localhost:18080/chat/stream > target/http-check/memory-2.sse
+
+curl.exe http://localhost:18080/api/conversations/memory-demo > target/http-check/memory-conversation.json
+```
+
 ### 能力开关
 
 ```powershell
@@ -203,14 +220,14 @@ curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http
 
 ```powershell
 New-Item -ItemType Directory -Force target/http-check | Out-Null
-'{"message":"@weather-now 查询上海实时天气","session_id":"demo-session","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/chat-weather.json
+'{"query":"@weather-now 查询上海实时天气","session_id":"demo-session","enable_deepresearch":false}' | Set-Content -Encoding UTF8 target/http-check/chat-weather.json
 curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/chat-weather.json" http://localhost:18080/chat/stream > target/http-check/chat-weather.sse
 ```
 
 ### 深度研究 SSE 与持久化
 
 ```powershell
-'{"message":"解释为什么 Agent 工作流要区分 Planner、Researcher 和 Reporter。","session_id":"research-demo","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/research.json
+'{"query":"解释为什么 Agent 工作流要区分 Planner、Researcher 和 Reporter。","session_id":"research-demo","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/research.json
 curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/research.json" http://localhost:18080/chat/stream > target/http-check/research.sse
 curl.exe http://localhost:18080/api/sessions/research-demo/history > target/http-check/research-history.json
 curl.exe http://localhost:18080/api/reports/session/research-demo > target/http-check/research-reports.json

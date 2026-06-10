@@ -33,6 +33,12 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 
 	@Override
 	public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled, String userProfileContext) {
+		return coordinate(query, deepResearchEnabled, userProfileContext, null);
+	}
+
+	@Override
+	public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled, String userProfileContext,
+			String conversationHistoryContext) {
 		if (deepResearchEnabled && outputMapper.isSubstantiveResearchRequest(query)) {
 			return new CoordinatorDecision(top.lanshan.manmu.model.CoordinatorRoute.DEEP_RESEARCH, true, null,
 					"Substantive request routed to the research workflow.");
@@ -45,17 +51,30 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 				Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence.
 				""".formatted(userProfileContext)
 				: "";
+		String memorySection = conversationHistoryPrompt(conversationHistoryContext);
 
 		String userPrompt = """
 				User question:
 				%s
 
-				Deep research is enabled: %s%s
-				""".formatted(query, deepResearchEnabled, profileSection);
+				Deep research is enabled: %s%s%s
+				""".formatted(query, deepResearchEnabled, profileSection, memorySection);
 		String modelOutput = agentClient.call(promptService.load("coordinator") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
 		CoordinatorResponse response = parseResponse(modelOutput, query, deepResearchEnabled);
 		return outputMapper.toDecision(response, query, deepResearchEnabled);
+	}
+
+	private String conversationHistoryPrompt(String conversationHistoryContext) {
+		if (conversationHistoryContext == null || conversationHistoryContext.isBlank()) {
+			return "";
+		}
+		return """
+
+				Short-term conversation memory:
+				%s
+				Use this only to understand session context, follow-up references, and user preferences. Do not treat prior conversation content as external factual evidence.
+				""".formatted(conversationHistoryContext.strip());
 	}
 
 	private CoordinatorResponse parseResponse(String modelOutput, String query, boolean deepResearchEnabled) {

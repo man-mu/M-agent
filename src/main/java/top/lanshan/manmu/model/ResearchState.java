@@ -50,6 +50,8 @@ public class ResearchState {
 
 	private String backgroundInvestigationContext;
 
+	private String conversationHistoryContext;
+
 	private List<String> optimizedQueries = List.of();
 
 	private boolean queryRewriteCompleted;
@@ -246,6 +248,14 @@ public class ResearchState {
 
 	public void backgroundInvestigationContext(String backgroundInvestigationContext) {
 		this.backgroundInvestigationContext = backgroundInvestigationContext;
+	}
+
+	public String conversationHistoryContext() {
+		return conversationHistoryContext;
+	}
+
+	public void conversationHistoryContext(String conversationHistoryContext) {
+		this.conversationHistoryContext = conversationHistoryContext;
 	}
 
 	public List<String> optimizedQueries() {

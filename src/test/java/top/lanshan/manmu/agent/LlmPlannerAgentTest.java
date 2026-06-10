@@ -31,6 +31,21 @@ class LlmPlannerAgentTest {
 	}
 
 	@Test
+	void promptIncludesConversationHistoryWithGuardrail() {
+		RecordingAgentClient agentClient = new RecordingAgentClient();
+		LlmPlannerAgent plannerAgent = new LlmPlannerAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new PlannerOutputMapper());
+
+		plannerAgent.plan("刚才我说偏好什么风格？", 2, null, null, java.util.List.of(), null,
+				"USER: 我偏好简洁中文回答。");
+
+		assertThat(agentClient.userPrompt)
+			.contains("Short-term conversation memory")
+			.contains("USER: 我偏好简洁中文回答。")
+			.contains("Do not treat prior conversation content as external factual evidence");
+	}
+
+	@Test
 	void acceptsDuplicateScalarPlannerFieldsFromModelOutput() {
 		RecordingAgentClient agentClient = new RecordingAgentClient();
 		agentClient.response = """

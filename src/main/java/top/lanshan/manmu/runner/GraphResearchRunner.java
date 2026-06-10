@@ -81,7 +81,10 @@ public class GraphResearchRunner implements ResearchRunner {
 	public Flux<ResearchEvent> runChat(ResearchRequest request, String sessionId) {
 		ResearchState state = ResearchState.from(request, sessionId);
 		return sequenceEvents(state.threadId(), true,
-				withRunningStop(state.threadId(), saveUserMessage(state).thenMany(startHistoryThenRun(state))));
+				withRunningStop(state.threadId(),
+						saveUserMessage(state)
+							.then(loadConversationHistory(state))
+							.thenMany(startHistoryThenRun(state))));
 	}
 
 	@Override
@@ -91,6 +94,7 @@ public class GraphResearchRunner implements ResearchRunner {
 		return sequenceEvents(state.threadId(), true,
 				withRunningStop(state.threadId(),
 						saveUserMessage(state)
+							.then(loadConversationHistory(state))
 							.then(sessionHistoryService.start(state.threadId(), state.sessionId(), state.query()))
 							.thenMany(runPlanGateGraph(state))
 							.onErrorResume(error -> markFailedThenReturnError(state, error))));
@@ -314,6 +318,19 @@ public class GraphResearchRunner implements ResearchRunner {
 			.then()
 			.onErrorResume(error -> {
 				logger.warn("Failed to save {} conversation memory for thread {}: {}", role, threadId,
+						errorMessage(error));
+				return Mono.empty();
+			});
+	}
+
+	private Mono<Void> loadConversationHistory(ResearchState state) {
+		return conversationMemoryService.formatConversationHistory(state.sessionId())
+			.defaultIfEmpty("")
+			.doOnNext(state::conversationHistoryContext)
+			.then()
+			.onErrorResume(error -> {
+				state.conversationHistoryContext("");
+				logger.warn("Failed to load conversation memory for thread {}: {}", state.threadId(),
 						errorMessage(error));
 				return Mono.empty();
 			});

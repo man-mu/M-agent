@@ -113,6 +113,27 @@ class LlmCoordinatorAgentTest {
 	}
 
 	@Test
+	void injectsConversationHistoryContextWithGuardrail() {
+		RecordingAgentClient agentClient = new RecordingAgentClient("""
+				{
+				  "next_route": "DIRECT_ANSWER",
+				  "direct_answer": "You prefer concise Chinese answers.",
+				  "thought": "Used session memory."
+				}
+				""");
+		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),
+				new CoordinatorOutputMapper());
+
+		agent.coordinate("What style did I ask for?", false, "",
+				"USER: I prefer concise Chinese answers.");
+
+		assertThat(agentClient.userPrompt)
+			.contains("Short-term conversation memory")
+			.contains("USER: I prefer concise Chinese answers.")
+			.contains("Do not treat prior conversation content as external factual evidence");
+	}
+
+	@Test
 	void keepsSubstantiveRequestsOnDeepResearchWhenEnabled() {
 		RecordingAgentClient agentClient = new RecordingAgentClient(null);
 		LlmCoordinatorAgent agent = new LlmCoordinatorAgent(agentClient, new PromptService(new DefaultResourceLoader()),

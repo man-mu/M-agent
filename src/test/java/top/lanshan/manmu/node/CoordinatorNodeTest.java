@@ -3,6 +3,7 @@ package top.lanshan.manmu.node;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import top.lanshan.manmu.agent.CoordinatorAgent;
 import top.lanshan.manmu.memory.UserProfileService;
 import top.lanshan.manmu.model.CoordinatorDecision;
 import top.lanshan.manmu.model.CoordinatorRoute;
@@ -55,6 +56,36 @@ class CoordinatorNodeTest {
 
         assertThat(state.directAnswerRoute()).isTrue();
         assertThat(state.report()).isEqualTo("A concise answer.");
+    }
+
+    @Test
+    void passesConversationHistoryContextToCoordinatorAgent() {
+        RecordingCoordinatorAgent agent = new RecordingCoordinatorAgent();
+        CoordinatorNode node = new CoordinatorNode(agent, NOOP_PROFILE_SERVICE);
+        ResearchState state = ResearchState.from(new ResearchRequest("What did I prefer?", "thread-1", 2));
+        state.conversationHistoryContext("USER: I prefer concise Chinese answers.");
+
+        StepVerifier.create(node.run(state)).expectNextCount(1).verifyComplete();
+
+        assertThat(agent.conversationHistoryContext).isEqualTo("USER: I prefer concise Chinese answers.");
+    }
+
+    private static class RecordingCoordinatorAgent implements CoordinatorAgent {
+
+        private String conversationHistoryContext;
+
+        @Override
+        public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled, String userProfileContext) {
+            return new CoordinatorDecision(CoordinatorRoute.DEEP_RESEARCH, true, null, "Needs investigation.");
+        }
+
+        @Override
+        public CoordinatorDecision coordinate(String query, boolean deepResearchEnabled, String userProfileContext,
+                String conversationHistoryContext) {
+            this.conversationHistoryContext = conversationHistoryContext;
+            return coordinate(query, deepResearchEnabled, userProfileContext);
+        }
+
     }
 
 }

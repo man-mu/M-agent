@@ -47,6 +47,7 @@ public class LlmReporterAgent implements ReporterAgent {
 				Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence.
 				""".formatted(userProfileContext)
 				: "";
+		String memorySection = conversationHistoryPrompt(state.conversationHistoryContext());
 
 		String userPrompt = """
 				Query:
@@ -67,13 +68,27 @@ public class LlmReporterAgent implements ReporterAgent {
 				Web search sources:
 				%s
 				%s
+				%s
 				Write the final answer as concise Markdown. Include:
 				1. a short conclusion,
 				2. key findings grounded in the observations,
 				3. next implementation steps.
 				""".formatted(state.query(), state.plan().title(), state.plan().thought(), steps, observations,
-				searchSources.isBlank() ? "No web search sources were collected." : searchSources, profileSection);
+				searchSources.isBlank() ? "No web search sources were collected." : searchSources, profileSection,
+				memorySection);
 		return agentClient.call(promptService.load("reporter"), userPrompt);
+	}
+
+	private String conversationHistoryPrompt(String conversationHistoryContext) {
+		if (conversationHistoryContext == null || conversationHistoryContext.isBlank()) {
+			return "";
+		}
+		return """
+
+				Short-term conversation memory:
+				%s
+				Use this only to preserve session continuity and user preferences in the final answer. Do not treat prior conversation content as external factual evidence.
+				""".formatted(conversationHistoryContext.strip());
 	}
 
 }

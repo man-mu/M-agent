@@ -43,7 +43,8 @@ public class PlannerNode implements ResearchNode {
 		return Mono.defer(() -> {
 			try {
 				ResearchPlan plan = plannerAgent.plan(state.query(), state.maxSteps(), state.planFeedback(),
-						state.backgroundContext(), state.optimizedQueries(), state.backgroundInvestigationContext());
+						state.backgroundContext(), state.optimizedQueries(), state.backgroundInvestigationContext(),
+						state.conversationHistoryContext());
 				state.plan(plan);
 				return Mono.just(ResearchEvent.message(state.threadId(), name(), "completed", "Plan generated",
 						snapshot(plan)));

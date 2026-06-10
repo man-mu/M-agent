@@ -35,7 +35,8 @@ public class CoordinatorNode implements ResearchNode {
 		return Flux.defer(() -> {
 			String userProfileContext = userProfileService.getOrCreateProfile(state.sessionId());
 			CoordinatorDecision decision = coordinatorAgent.coordinate(
-					state.query(), state.deepResearchEnabled(), userProfileContext);
+					state.query(), state.deepResearchEnabled(), userProfileContext,
+					state.conversationHistoryContext());
 			state.coordinatorDecision(decision);
 			if (decision.directAnswerRoute()) {
 				state.report(decision.directAnswer());

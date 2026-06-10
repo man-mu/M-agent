@@ -52,6 +52,13 @@ public class LlmPlannerAgent implements PlannerAgent {
 	@Override
 	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
 			List<String> optimizedQueries, String backgroundInvestigationContext) {
+		return plan(query, maxSteps, feedbackContent, backgroundContext, optimizedQueries,
+				backgroundInvestigationContext, null);
+	}
+
+	@Override
+	public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+			List<String> optimizedQueries, String backgroundInvestigationContext, String conversationHistoryContext) {
 		String userPrompt = """
 				User question:
 				%s
@@ -61,9 +68,10 @@ public class LlmPlannerAgent implements PlannerAgent {
 				%s
 				%s
 				%s
+				%s
 				""".formatted(query, maxSteps, optimizedQueriesPrompt(optimizedQueries),
 				backgroundInvestigationPrompt(backgroundInvestigationContext), backgroundContextPrompt(backgroundContext),
-				feedbackPrompt(feedbackContent));
+				conversationHistoryPrompt(conversationHistoryContext), feedbackPrompt(feedbackContent));
 
 		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
 				userPrompt);
@@ -109,6 +117,18 @@ public class LlmPlannerAgent implements PlannerAgent {
 				%s
 				Use this prior session context to avoid repeating work and to plan the next research run with continuity.
 				""".formatted(backgroundContext.strip());
+	}
+
+	private String conversationHistoryPrompt(String conversationHistoryContext) {
+		if (conversationHistoryContext == null || conversationHistoryContext.isBlank()) {
+			return "";
+		}
+		return """
+
+				Short-term conversation memory:
+				%s
+				Use this only to understand follow-up references and user preferences for the current plan. Do not treat prior conversation content as external factual evidence.
+				""".formatted(conversationHistoryContext.strip());
 	}
 
 	private String feedbackPrompt(String feedbackContent) {

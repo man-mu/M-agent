@@ -35,6 +35,26 @@ class LlmReporterAgentTest {
 			.contains("Do not infer facts not present in research evidence");
 	}
 
+	@Test
+	void injectsConversationHistoryContextWithEvidenceGuardrail() {
+		RecordingAgentClient agentClient = new RecordingAgentClient("report");
+		LlmReporterAgent agent = new LlmReporterAgent(agentClient, new PromptService(new DefaultResourceLoader()));
+		ResearchState state = ResearchState.from(new ResearchRequest("Summarize the plan.", "thread-1", 2));
+		ResearchStep step = new ResearchStep("Step", "Do work", false, StepType.RESEARCH, "Findings",
+				ResearchStep.STATUS_COMPLETED);
+		state.plan(new ResearchPlan("Plan", true, "Think", List.of(step)));
+		state.addObservation("Evidence from research.");
+		state.conversationHistoryContext("USER: 我偏好简洁中文回答。");
+
+		String report = agent.report(state, "");
+
+		assertThat(report).isEqualTo("report");
+		assertThat(agentClient.userPrompt)
+			.contains("Short-term conversation memory")
+			.contains("USER: 我偏好简洁中文回答。")
+			.contains("Do not treat prior conversation content as external factual evidence");
+	}
+
 	private static class RecordingAgentClient implements AgentClient {
 
 		private final String response;

@@ -24,6 +24,7 @@ class PlannerNodeTest {
 		state.planFeedback("Prefer implementation details.");
 		state.backgroundContext("Previous report context");
 		state.backgroundInvestigationContext("Current web background context");
+		state.conversationHistoryContext("USER: Prefer concise Chinese.");
 		state.optimizedQueries(List.of("Continue research.", "Continue research implementation risks"));
 
 		plannerNode.run(state).collectList().block();
@@ -33,6 +34,7 @@ class PlannerNodeTest {
 		assertThat(plannerAgent.lastFeedback).isEqualTo("Prefer implementation details.");
 		assertThat(plannerAgent.lastBackgroundContext).isEqualTo("Previous report context");
 		assertThat(plannerAgent.lastBackgroundInvestigationContext).isEqualTo("Current web background context");
+		assertThat(plannerAgent.lastConversationHistoryContext).isEqualTo("USER: Prefer concise Chinese.");
 		assertThat(plannerAgent.lastOptimizedQueries)
 			.containsExactly("Continue research.", "Continue research implementation risks");
 		assertThat(state.plan()).isNotNull();
@@ -64,6 +66,8 @@ class PlannerNodeTest {
 
 		private String lastBackgroundInvestigationContext;
 
+		private String lastConversationHistoryContext;
+
 		private List<String> lastOptimizedQueries;
 
 		@Override
@@ -85,11 +89,20 @@ class PlannerNodeTest {
 		@Override
 		public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
 				List<String> optimizedQueries, String backgroundInvestigationContext) {
+			return plan(query, maxSteps, feedbackContent, backgroundContext, optimizedQueries,
+					backgroundInvestigationContext, null);
+		}
+
+		@Override
+		public ResearchPlan plan(String query, int maxSteps, String feedbackContent, String backgroundContext,
+				List<String> optimizedQueries, String backgroundInvestigationContext,
+				String conversationHistoryContext) {
 			lastQuery = query;
 			lastMaxSteps = maxSteps;
 			lastFeedback = feedbackContent;
 			lastBackgroundContext = backgroundContext;
 			lastBackgroundInvestigationContext = backgroundInvestigationContext;
+			lastConversationHistoryContext = conversationHistoryContext;
 			lastOptimizedQueries = optimizedQueries;
 			return new ResearchPlan("Plan", true, "Use context.",
 					List.of(new ResearchStep("Step", "Do work.", false, StepType.RESEARCH, null,
