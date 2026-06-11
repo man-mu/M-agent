@@ -192,9 +192,10 @@ export function mcpServerDisplay(server: McpServerStatus): McpServerDisplay {
       requiredEnvVars,
       optionalEnvVars: ['QWEATHER_API_HOST'],
       setupHints: [
-        'PowerShell 当前会话设置 QWEATHER_API_KEY',
-        '如使用专属和风 Host，可设置 QWEATHER_API_HOST',
-        '启动 tools/local-qweather-mcp 后刷新状态',
+        '通过 .local/mcp-keys.json 或当前 PowerShell 会话设置 QWEATHER_API_KEY',
+        '启动 tools/local-qweather-mcp，确认 http://127.0.0.1:18090/health 返回 ok',
+        '后端启动后点击重载工具，再执行连接测试和 weather_now 调试',
+        '如果 Key 无效、供应商限流或网络失败，保留错误提示，不使用示例天气',
       ],
       ...keyStatus(server, requiredEnvVars),
       isLocalQWeather,

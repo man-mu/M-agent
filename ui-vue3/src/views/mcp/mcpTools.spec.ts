@@ -39,6 +39,8 @@ describe('mcpTools display helpers', () => {
     }])
     expect(display.requiredEnvVars).toContain('QWEATHER_API_KEY')
     expect(display.optionalEnvVars).toContain('QWEATHER_API_HOST')
+    expect(display.setupHints).toContain('启动 tools/local-qweather-mcp，确认 http://127.0.0.1:18090/health 返回 ok')
+    expect(display.setupHints.join('\n')).toContain('不使用示例天气')
     expect(display.keyStatusLabel).toBe('缺少 Key')
   })
 

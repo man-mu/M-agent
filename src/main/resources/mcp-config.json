@@ -1,6 +1,7 @@
 {
     "mcp-servers": [
         {
+            "id": "mcp-amap",
             "url": "https://mcp.amap.com",
             "sse-endpoint": "/sse?key=${AMAP_MAPS_API_KEY}",
             "description": "高德地图 MCP - 天气、地址解析、POI 搜索、路线规划和距离测量",
@@ -19,6 +20,7 @@
             ]
         },
         {
+            "id": "mcp-qweather",
             "url": "http://127.0.0.1:18090",
             "sse-endpoint": "/sse",
             "description": "本地和风天气 MCP - 查询城市实时天气",

@@ -139,7 +139,11 @@ curl.exe -X DELETE http://localhost:18080/api/skills/packages/echo-json-skill
 
 ```powershell
 curl.exe http://localhost:18080/api/mcp/status
+curl.exe http://localhost:18080/api/mcp/servers
+curl.exe -X POST http://localhost:18080/api/mcp/servers/mcp-qweather/test
 curl.exe -X POST http://localhost:18080/api/mcp/reload
+'{"location":"上海","lang":"zh","unit":"m"}' | Set-Content -Encoding UTF8 target/http-check/weather-now-request.json
+curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http-check/weather-now-request.json" http://localhost:18080/api/mcp/tools/weather_now/invoke
 ```
 
 ## 片段 4：深度研究工作流

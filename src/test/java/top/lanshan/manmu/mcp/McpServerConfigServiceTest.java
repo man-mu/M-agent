@@ -30,6 +30,51 @@ class McpServerConfigServiceTest {
     }
 
     @Test
+    void keepsConfiguredBuiltinIdsStableForSkillDependenciesAndApiCalls() throws Exception {
+        McpServerConfigService service = serviceWithBuiltin(
+                server("mcp-qweather", "http://127.0.0.1:18090", "/sse",
+                        "本地和风天气 MCP", true, List.of("weather_now")),
+                server("mcp-amap", "https://mcp.amap.com", "/sse?key=${AMAP_MAPS_API_KEY}",
+                        "高德地图 MCP", false, List.of("maps_weather", "maps_geo")));
+
+        List<McpServerConfigService.ManagedMcpServerInfo> servers = service.listServers();
+
+        assertThat(servers).extracting(McpServerConfigService.ManagedMcpServerInfo::getId)
+                .containsExactly("mcp-qweather", "mcp-amap");
+        assertThat(service.getServer("mcp-qweather")).isPresent()
+                .get()
+                .satisfies(server -> {
+                    assertThat(server.getSource()).isEqualTo("BUILTIN");
+                    assertThat(server.getAllowedTools()).containsExactly("weather_now");
+                });
+    }
+
+    @Test
+    void localConfigCanOverrideBuiltinByStableId() throws Exception {
+        McpProperties.McpServerInfo builtin = server(
+                "mcp-qweather", "http://127.0.0.1:18090", "/sse", "Builtin weather", true,
+                List.of("weather_now"));
+        McpServerConfigService service = serviceWithBuiltin(builtin);
+
+        McpProperties.McpServerInfo override = server(
+                "mcp-qweather", "http://127.0.0.1:18090", "/sse", "Local override", false,
+                List.of("weather_now"));
+        Files.createDirectories(service.localConfigPath().getParent());
+        objectMapper.writerWithDefaultPrettyPrinter()
+                .writeValue(service.localConfigPath().toFile(),
+                        new McpProperties.McpServerConfig(List.of(override)));
+
+        List<McpServerConfigService.ManagedMcpServerInfo> servers = service.listServers();
+
+        assertThat(servers).hasSize(1);
+        assertThat(servers.get(0).getId()).isEqualTo("mcp-qweather");
+        assertThat(servers.get(0).getSource()).isEqualTo("LOCAL");
+        assertThat(servers.get(0).isLocalOverride()).isTrue();
+        assertThat(servers.get(0).isEnabled()).isFalse();
+        assertThat(servers.get(0).getDescription()).isEqualTo("Local override");
+    }
+
+    @Test
     void localConfigOverridesBuiltinByUrlWithoutEditingSourceConfig() throws Exception {
         McpProperties.McpServerInfo builtin = server(
                 null, "http://127.0.0.1:18090", "/sse", "Builtin weather", true,

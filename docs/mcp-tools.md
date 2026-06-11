@@ -13,6 +13,7 @@ M-Agent 通过 Spring AI MCP Client 连接外部 MCP Server，并把 MCP 工具�
 
 默认启用：
 
+- ID：`mcp-qweather`
 - URL：`http://127.0.0.1:18090`
 - SSE endpoint：`/sse`
 - 工具：`weather_now`
@@ -62,6 +63,7 @@ curl.exe "http://127.0.0.1:18090/debug/weather-now?location=上海"
 
 默认关闭：
 
+- ID：`mcp-amap`
 - URL：`https://mcp.amap.com`
 - SSE endpoint：`/sse?key=${AMAP_MAPS_API_KEY}`
 - 工具：`maps_weather`、`maps_geo`、`maps_regeo`、`maps_text_search`、`maps_around_search`、`maps_ip_location`、`maps_direction_driving`、`maps_direction_walking`、`maps_direction_bicycling`、`maps_distance`
@@ -97,7 +99,7 @@ curl.exe -X POST http://localhost:18080/api/mcp/reload
 测试某个 Server：
 
 ```powershell
-curl.exe -X POST http://localhost:18080/api/mcp/servers/{id}/test
+curl.exe -X POST http://localhost:18080/api/mcp/servers/mcp-qweather/test
 ```
 
 调用工具：
@@ -107,6 +109,24 @@ New-Item -ItemType Directory -Force target/http-check | Out-Null
 '{"location":"上海"}' | Set-Content -Encoding UTF8 target/http-check/weather-now-request.json
 curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http-check/weather-now-request.json" http://localhost:18080/api/mcp/tools/weather_now/invoke
 ```
+
+完整验收顺序：
+
+```powershell
+New-Item -ItemType Directory -Force target/http-check | Out-Null
+curl.exe http://localhost:18080/api/mcp/status > target/http-check/mcp-status.json
+curl.exe http://localhost:18080/api/mcp/servers > target/http-check/mcp-servers.json
+curl.exe -X POST http://localhost:18080/api/mcp/servers/mcp-qweather/test > target/http-check/mcp-qweather-test.json
+curl.exe -X POST http://localhost:18080/api/mcp/reload > target/http-check/mcp-reload.json
+'{"location":"上海","lang":"zh","unit":"m"}' | Set-Content -Encoding UTF8 target/http-check/weather-now-request.json
+curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http-check/weather-now-request.json" http://localhost:18080/api/mcp/tools/weather_now/invoke > target/http-check/weather-now-result.json
+```
+
+验收结果应满足：
+
+- `mcp-status.json` 中 `mcp-qweather` 存在，`allowedTools` 包含 `weather_now`。
+- `mcp-qweather-test.json` 在本地 MCP 已启动时返回 `connected=true`，并发现 `weather_now`。
+- `weather-now-result.json` 返回真实天气结果；如果 Key 缺失、Key 无效、供应商限流或网络失败，应返回清晰错误，不应出现示例天气或 mock 数据。
 
 创建本地 MCP Server：
 
@@ -140,6 +160,7 @@ http://localhost:5173/mcp
 - 测试连接。
 - reload 工具列表。
 - 调试工具调用。
+- 对本地和风天气显示 Key 配置状态、`weather_now` 工具和失败排查提示。
 
 ## 与 Skill 的关系
 

@@ -1,8 +1,7 @@
-# M-Agent 学习项目
+# M-Agent
 
-M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项目。它以 DeepResearch 风格的工作流为核心，展示模型供应商切换、WebFlux SSE 流式输出、PostgreSQL 持久化、Skill 市场、MCP 工具接入和研究流程编排。
+M-Agent 以 DeepResearch 风格的工作流为核心，展示模型供应商切换、WebFlux SSE 流式输出、PostgreSQL 持久化、Skill 市场、MCP 工具接入和研究流程编排。
 
-当前项目的定位是“精简但可运行”的教学工程：优先保留真实模型、真实数据库和真实 MCP 工具路径，不使用 mock agent 或 mock search fallback。
 
 ## 技术栈
 
@@ -14,25 +13,6 @@ M-Agent 是一个面向学习和演示的 Java Agent 后端与 Vue 控制台项�
 - 前端：Vue 3、Vite、Pinia、Ant Design Vue
 - 本地 MCP 示例：`tools/local-qweather-mcp`，提供 `weather_now` 实时天气工具
 
-## 当前完成度
-
-已具备：
-
-- 模型供应商列表、API Key 保存、运行时模型切换和连通性测试。
-- WebFlux SSE 对话与研究流接口。
-- PostgreSQL 会话消息、报告、事件历史、用户画像和历史报告上下文。
-- 短期对话窗口已接入 Coordinator、Planner、Reporter 的模型推理上下文，用于理解追问和用户偏好。
-- Skill 注册、发现、创建、更新、导入、导出、启用/禁用、重载、卸载、健康检查和调用历史。
-- 内置 3 个方向 Skill 演示：`weather-now` 天气、`calculator` 计算器、`web-search` 网络搜索研究模板。
-- Jar Skill 上传热加载的后端与控制台演示能力，默认关闭，仅建议本地可信启用。
-- MCP Server 管理、连接测试、reload 和工具调试调用。
-- Vue 控制台：`/chat`、`/skills`、`/mcp`、`/settings`。
-- DeepResearch 风格图工作流，包含 Coordinator、Planner、Research Team、Parallel Executor、Researcher、Coder、Reporter 等节点。
-
-待补齐：
-
-- Agent Team 高分项目前是研究图工作流能力，仍需独立活动策划 Demo、Reviewer 语义和展示说明。
-- Demo 视频不在仓库中，本仓库先提供可复现录制脚本。
 
 ## 架构图
 
@@ -213,6 +193,8 @@ curl.exe -X PATCH http://localhost:18080/api/skills/weather-now/toggle
 
 ```powershell
 curl.exe http://localhost:18080/api/mcp/status
+curl.exe http://localhost:18080/api/mcp/servers
+curl.exe -X POST http://localhost:18080/api/mcp/servers/mcp-qweather/test
 curl.exe -X POST http://localhost:18080/api/mcp/reload
 '{"location":"上海"}' | Set-Content -Encoding UTF8 target/http-check/weather-now-request.json
 curl.exe -X POST -H "Content-Type: application/json" --data-binary "@target/http-check/weather-now-request.json" http://localhost:18080/api/mcp/tools/weather_now/invoke
@@ -307,8 +289,8 @@ Jar Skill 不是安全沙箱。它通过独立 `SkillPluginClassLoader` 做依�
 
 内置配置位于 `src/main/resources/mcp-config.json`：
 
-- 高德 MCP：默认关闭，需要 `AMAP_MAPS_API_KEY`。
-- 本地和风天气 MCP：默认启用，连接 `http://127.0.0.1:18090/sse`，需要启动 `tools/local-qweather-mcp`。
+- 高德 MCP：ID 为 `mcp-amap`，默认关闭，需要 `AMAP_MAPS_API_KEY`。
+- 本地和风天气 MCP：ID 为 `mcp-qweather`，默认启用，连接 `http://127.0.0.1:18090/sse`，需要启动 `tools/local-qweather-mcp`。
 
 ## Demo 录制
 
