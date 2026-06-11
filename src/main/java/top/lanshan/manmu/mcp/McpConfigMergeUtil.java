@@ -77,6 +77,15 @@ public final class McpConfigMergeUtil {
                 continue;
             }
             WebClient.Builder clone = webClientBuilder.clone().baseUrl(resolvePlaceholders(si.getUrl()));
+
+            Map<String, String> headers = resolveHeaders(si);
+            boolean hasAuth = hasAuthorizationHeader(headers);
+            headers.forEach(clone::defaultHeader);
+
+            if (!hasAuth && si.getApiKey() != null && !si.getApiKey().isBlank()) {
+                clone.defaultHeader("Authorization", "Bearer " + resolvePlaceholders(si.getApiKey()));
+            }
+
             String sseEndpoint = si.getSseEndpoint() != null ? si.getSseEndpoint() : "/sse";
             sseEndpoint = resolvePlaceholders(sseEndpoint);
             WebFluxSseClientTransport transport = WebFluxSseClientTransport.builder(clone)
@@ -179,6 +188,27 @@ public final class McpConfigMergeUtil {
             }
         }
         return "";
+    }
+
+    static Map<String, String> resolveHeaders(McpProperties.McpServerInfo serverInfo) {
+        Map<String, String> resolved = new LinkedHashMap<>();
+        if (serverInfo.getHeaders() == null || serverInfo.getHeaders().isEmpty()) {
+            return resolved;
+        }
+        serverInfo.getHeaders().forEach((name, value) -> {
+            if (name != null && !name.isBlank() && value != null) {
+                resolved.put(name.strip(), resolvePlaceholders(value));
+            }
+        });
+        return resolved;
+    }
+
+    static boolean hasAuthorizationHeader(Map<String, String> headers) {
+        if (headers == null || headers.isEmpty()) {
+            return false;
+        }
+        return headers.keySet().stream()
+                .anyMatch(k -> "Authorization".equalsIgnoreCase(k));
     }
 
     public record NamedTransport(McpProperties.McpServerInfo server,
