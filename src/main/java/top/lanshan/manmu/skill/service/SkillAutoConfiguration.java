@@ -37,7 +37,7 @@ public class SkillAutoConfiguration {
     @Value("${mvp.skill.local-market-path:}")
     private String configuredLocalMarketPath;
 
-    @Value("${mvp.skill.jar-plugins.enabled:false}")
+    @Value("${mvp.skill.jar-plugins.enabled:true}")
     private boolean jarPluginsEnabled;
 
     @Bean

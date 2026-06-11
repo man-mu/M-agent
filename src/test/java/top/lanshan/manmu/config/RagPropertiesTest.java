@@ -7,9 +7,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RagPropertiesTest {
 
     @Test
-    void defaultsDisableRag() {
+    void defaultsEnableRag() {
         RagProperties properties = new RagProperties();
-        assertThat(properties.isEnabled()).isFalse();
+        assertThat(properties.isEnabled()).isTrue();
     }
 
     @Test

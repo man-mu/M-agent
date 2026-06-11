@@ -8,7 +8,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "mvp.rag")
 public class RagProperties {
 
-    private boolean enabled = false;
+    private boolean enabled = true;
 
     private int topK = 5;
 

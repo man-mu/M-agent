@@ -11,7 +11,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "mvp.mcp")
 public class McpProperties {
 
-    private boolean enabled = false;
+    private boolean enabled = true;
 
     private String configLocation = "classpath:mcp-config.json";
     private String localConfigPath = ".local/mcp-servers.json";

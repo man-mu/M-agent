@@ -66,7 +66,7 @@ mvp:
   skill:
     enabled: true
     jar-plugins:
-      enabled: false
+      enabled: true
   search:
     bocha:
       endpoint: https://api.bochaai.com/v1/web-search

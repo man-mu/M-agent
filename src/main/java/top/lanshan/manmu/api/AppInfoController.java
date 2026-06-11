@@ -11,10 +11,10 @@ public class AppInfoController {
 
 	private final AppCapabilities capabilities;
 
-	public AppInfoController(@Value("${mvp.skill.enabled:false}") boolean skillEnabled,
-			@Value("${mvp.rag.enabled:false}") boolean ragEnabled,
-			@Value("${mvp.mcp.enabled:false}") boolean mcpEnabled,
-			@Value("${mvp.skill.jar-plugins.enabled:false}") boolean jarPluginsEnabled) {
+	public AppInfoController(@Value("${mvp.skill.enabled:true}") boolean skillEnabled,
+			@Value("${mvp.rag.enabled:true}") boolean ragEnabled,
+			@Value("${mvp.mcp.enabled:true}") boolean mcpEnabled,
+			@Value("${mvp.skill.jar-plugins.enabled:true}") boolean jarPluginsEnabled) {
 		this.capabilities = new AppCapabilities(skillEnabled, ragEnabled, mcpEnabled, jarPluginsEnabled);
 	}
 
