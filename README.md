@@ -115,6 +115,136 @@ SSE 事件中的 `agent_role` 字段标识每个事件所属角色。前端时�
 curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/team-demo.json" http://localhost:18080/chat/stream > target/http-check/team-demo.sse
 ```
 
+## 短期记忆
+
+采用**会话级滑动窗口**策略，以极简实现精准保留最近相关上下文，保证多轮交互的语义连贯性。
+
+同一 `session_id` 下最近的对话消息按时间排序注入 Coordinator、Planner 和 Reporter 的 prompt，帮助 LLM 理解追问意图与上下文关联。每条消息硬截断至 800 字符、窗口上限 20 条，将 Token 消耗与计算延迟严格控制在常数级，从机制上杜绝模型上下文溢出。消息写入采用异步降级策略（`.onErrorResume`），持久化失败静默丢弃，不阻塞主研究流程。
+
+prompt 中内嵌护栏指令——"Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence"——强制 LLM 将对话历史限定为风格参考而非事实来源，防止记忆污染与幻觉传播。
+
+## 长期记忆
+
+构建 **LLM 驱动的结构化用户画像引擎**，从对话流中自动提炼跨会话的用户特征，实现从"一次性问答"到"渐进式理解"的体验跃迁。
+
+`UserProfileService` 定期从最近消息中提取四维结构化画像：`profile_summary`（身份摘要）、`expertise_level`（专业水平）、`detail_preference`（详略偏好）、`style_preference`（内容风格）。提取结果经 Set 白名单校验后落入 `user_profiles` 表——非法枚举值静默忽略，LLM 解析失败不抛异常，保证画像管线鲁棒可降级。
+
+缓存策略采用 TTL 惰性刷新：60 分钟内直接命中缓存，避免冗余 LLM 调用；超时后取最近 10 条消息做增量更新，新旧画像合并而非全量重建。画像同步注入 Coordinator（辅助判断问题复杂度与路由决策）和 Reporter（自适应调节报告深度与行文风格），注入格式附带与短期记忆同源的护栏约束。
+
+**跨线程背景记忆**作为长期记忆的补充维度：`SessionContextService` 在 Planner 执行前拉取同一 `session_id` 下近期已完成的研究报告摘要（排除当前线程，上限 5 篇，单篇截断至 1200 字符），以结构化上下文形式注入计划制定阶段，消除跨研究的信息孤岛。
+
+## 插件化 Skill
+
+设计 **可热插拔的 Skill 插件架构**，将工具能力从 Agent 核心逻辑中解耦，实现"能力即插件、插件即市场"的开放式工具生态。
+
+两类 Skill 统一通过 `SkillToolProvider` 注册为 LLM 的 function calling 工具集：
+
+| 类型 | 组成 | 定位 |
+|------|------|------|
+| Prompt Skill | `skill.json` + `SKILL.md` | 零代码模板化技能，适合规则明确的任务指令 |
+| Jar Skill | `skill.json` + `plugin.jar` | 全能力 Java 插件，通过 `SkillPlugin` SPI + ServiceLoader 接入 |
+
+核心机制：
+- **运行时热切换**：`PATCH /api/skills/{name}/toggle` 毫秒级启停，无需重启 JVM 或中断正在执行的研究流
+- **ClassLoader 级隔离**：`SkillPluginClassLoader` 为每个 Jar Skill 创建独立类加载器，实现依赖隔离与生命周期自治，卸载时彻底回收元空间
+- **声明式健康探针**：`GET /api/skills/{name}/health` 在注册前验证插件可用性，阻断异常插件污染工具注册表
+- **安全边界**：Jar Skill 默认关闭，需显式传递 `--mvp.skill.jar-plugins.enabled=true` 启用，适用本地可信插件场景
+
+## MCP
+
+接入 **Model Context Protocol（MCP）标准协议**，以统一的工具描述语言打通异构外部服务，让 LLM 在单一协议层面对多源工具进行语义级发现与调用。
+
+基于 Spring AI MCP Client WebFlux 实现 SSE 传输层，`McpToolProvider` 将 MCP Server 暴露的所有工具自动转译为 LLM function calling schema：
+
+```json
+{
+  "servers": {
+    "mcp-qweather": { "type": "sse", "url": "http://127.0.0.1:18090/sse", "enabled": true },
+    "mcp-amap": { "type": "sse", "url": "...", "enabled": false }
+  }
+}
+```
+
+核心机制：
+- **启动时自动发现**：连接 MCP Server → 拉取 `tools/list` → 注册到全局工具注册表，全程零人工编排
+- **运行时热重载**：`POST /api/mcp/reload` 在不下线服务的前提下刷新工具清单，适配 MCP Server 的滚动升级
+- **声明式配置**：`mcp-config.json` 集中管理所有 MCP Server 的连接参数与启停状态，`McpStatusController` 实时暴露健康状态
+
+MCP 工具在 Researcher/Coder 节点执行期间对 LLM 可见，模型自主决策调用时机与参数组合，无需硬编码调用逻辑。
+
+## Spring Data R2DBC
+
+全面采用 **响应式数据访问层**，基于 Spring Data R2DBC + `r2dbc-postgresql` 驱动，实现从 HTTP 入口到数据库出口的全链路非阻塞 I/O。
+
+| Repository | 对应表 | 响应式语义 |
+|-----------|--------|-----------|
+| `ConversationMessageRepository` | `conversation_messages` | `Mono<T>` / `Flux<T>` |
+| `UserProfileRepository` | `user_profiles` | `Mono<T>` / `Flux<T>` |
+| `ResearchSessionHistoryRepository` | `research_session_histories` | `Mono<T>` / `Flux<T>` |
+| `ResearchReportRepository` | `research_reports` | `Mono<T>` / `Flux<T>` |
+| `ResearchEventHistoryRepository` | `research_events` | `Mono<T>` / `Flux<T>` |
+
+所有 Repository 方法返回响应式类型，与 WebFlux 的 Netty 事件循环天然集成——数据库 I/O 不再阻塞服务线程，连接池资源利用率与吞吐量获得数量级提升。Schema 演进由 Flyway 管理 8 个版本迁移脚本保障，可追溯、可回滚。测试环境切换至 `r2dbc-h2` 内存数据库，零外部依赖即可全量运行集成测试。
+
+## Spring WebFlux (SSE)
+
+基于 **Spring WebFlux 响应式运行时**构建服务层，核心差异化能力在于 **SSE（Server-Sent Events）流式推送**——将深度研究这一长时运行任务从"请求-等待-响应"的阻塞模型，重构为"订阅-流式消费"的事件驱动模型。
+
+关键端点矩阵：
+
+| 端点 | 媒体类型 | 职责 |
+|------|---------|------|
+| `/chat/stream` | `text/event-stream` | 研究过程实时推送 |
+| `/api/research/stream` | `text/event-stream` | 直接触发研究流 |
+| `/api/conversations` | `application/json` | 会话列表查询 |
+| `/api/sessions/{id}/threads/{id}/events` | `application/json` | 历史事件回放 |
+
+Runner 内部实现**双通道事件流架构**：Live Channel 在节点执行期间通过 `doOnNext` → `Sinks.Many` 热流实时推送进度事件，前端在毫秒级延迟内感知节点状态变化；Completion Channel 在所有节点完成后统一发出 done 事件与报告全文，确保终端信号与中间进度严格解耦。双通道共享去重集合，保证 exactly-once 语义。
+
+图执行通过 `subscribeOn(Schedulers.boundedElastic())` 隔离到弹性线程池，Netty I/O 线程永不阻塞，背压由 Reactor 内核自动传导。
+
+## RAG
+
+构建 **检索增强生成（RAG）管线**，将外部知识检索作为图工作流的一等公民节点嵌入，在 LLM 推理之前注入语义相关的外部证据，从根本上缓解幻觉与知识截止问题。
+
+两个可选 RAG 节点覆盖双重检索场景：
+
+| 节点 | 触发条件 | 检索目标 |
+|------|---------|---------|
+| `USER_FILE_RAG` | `rag.enabled=true` 且用户上传文件 | 用户私有文档语义检索 |
+| `PROFESSIONAL_KB_RAG` | 用户选定专业知识库 | 领域知识库定向检索 |
+
+`RagRetriever` 封装向量相似度搜索，`VectorStoreDataIngestionService` 通过 Apache Tika 解析多格式文档并批量写入向量存储。RAG 节点精准插入 Query Rewrite 之后、Background Investigator 之前——确保检索增强的上下文同时影响计划制定与后续深度搜索，而非仅在报告生成阶段做表面拼接。
+
+`rag.enabled` 全局开关控制管线启停，关闭时对应节点从图中完全移除，零开销。
+
+## 向量数据库
+
+在 PostgreSQL 上启用 **pgvector 扩展**，将向量存储与关系型业务数据置于同一数据库引擎内，以零额外基础设施实现高维语义嵌入的存储与近似最近邻（ANN）检索。
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+Spring AI 的 `PgVectorStore` 提供开箱即用的向量写入与余弦相似度查询。嵌入向量由 `DashScopeEmbeddingConfiguration` 统一生成——用户上传文档经 Tika 解析 → 分块 → 向量化 → 写入 pgvector，形成完整的非结构化数据到结构化语义索引的转换链路。
+
+pgvector 的架构选择考量：MVP 阶段避免引入独立的向量数据库集群，将语义检索与业务数据的 ACID 保障统一在 PostgreSQL 的事务边界内；数据规模增长后可平滑升级至 IVFFlat / HNSW 近似索引，召回性能与百万级向量规模是线性可扩展的。
+
+## 中断恢复
+
+实现 **有状态工作流的检查点-恢复（Checkpoint-Resume）机制**，让长时运行的深度研究任务在人工介入或异常中断后从精确断点续跑，而非全量重启。
+
+系统支持两个语义化暂停锚点：
+
+| 暂停点 | 触发条件 | 用户操作 |
+|--------|---------|---------|
+| 计划确认 | Plan Validator 完成校验，路由至 `HUMAN_FEEDBACK` | 接受计划 / 提出修改意见 / 拒绝 |
+| 人工反馈 | 工作流中显式等待用户决策 | 注入反馈内容并决定后续路由 |
+
+暂停时 Runner 对当前图状态执行**深拷贝快照**，存入 `ConcurrentHashMap<String, Map>` 内存检查点。恢复时从检查点精确还原状态图，注入用户决策，切换至 `resumeGraph` 继续执行——恢复图的入口为 `START → HUMAN_FEEDBACK`，按决策内容分流至 Planner（带修改意见重新规划）、Information（接受计划继续执行）或 END（用户拒绝终止）。
+
+整个生命周期由 `research_session_histories` 表追踪完整状态机：`RUNNING → PAUSED → RUNNING → COMPLETED / STOPPED / FAILED`。用户刷新页面后通过 `/api/sessions/{sessionId}/history` 恢复会话全貌，前端据此重建 UI 状态。
+
 ## 本地启动
 
 ### 1. 启动 PostgreSQL
@@ -191,11 +321,9 @@ npm run dev
 
 ## 常用验证
 
+> 各特性的详细说明见上文对应章节：[短期记忆](#短期记忆)、[长期记忆](#长期记忆)、[插件化 Skill](#插件化-skill)、[MCP](#mcp)、[RAG](#rag)、[中断恢复](#中断恢复)。以下为快速验证命令。
+
 ### 短期记忆与长期记忆
-
-短期记忆来自同一 `session_id` 下最近的对话消息。后端会在保存当前用户消息后读取会话窗口，并将其传入 Coordinator、Planner 和 Reporter 的 prompt，用于理解上下文、追问和偏好；prompt 中明确要求不要把历史对话当成外部事实证据。
-
-长期记忆由 PostgreSQL 中的会话消息、用户画像、历史报告和事件历史体现，可通过会话历史、报告和对话接口验证。
 
 ```powershell
 New-Item -ItemType Directory -Force target/http-check | Out-Null
