@@ -68,7 +68,52 @@ flowchart TD
   Persist --> Done
 ```
 
-后续 Agent Team 高分 Demo 将在此基础上补齐“活动策划”场景，把 Planner / Executor / Reviewer 的角色、任务分发和状态流展示得更清晰。
+后续 Agent Team 高分 Demo 将在此基础上补齐"活动策划"场景，把 Planner / Executor / Reviewer 的角色、任务分发和状态流展示得更清晰。
+
+## Agent Team 协作
+
+研究工作流中的节点按角色分为三类，前端时间线按角色分组展示：
+
+```mermaid
+flowchart LR
+  subgraph Planner["Planner — 规划"]
+    Coordinator["Coordinator"]
+    PlannerNode["Planner"]
+    PlanValidator["Plan Validator"]
+    HumanFeedback["Human Feedback"]
+  end
+
+  subgraph Executor["Executor — 执行"]
+    ResearchTeam["Research Team"]
+    ParallelExecutor["Parallel Executor"]
+    Researcher["Researcher / Coder"]
+    Information["Information"]
+    Background["Background Investigator"]
+  end
+
+  subgraph Reviewer["Reviewer — 审核"]
+    Reporter["Reporter"]
+  end
+
+  Planner --> Executor --> Reviewer
+```
+
+角色映射：
+
+| 角色 | 包含节点 | 职责 |
+|------|---------|------|
+| Planner | coordinator、planner、plan_validator、human_feedback | 理解需求、制定计划、确认计划 |
+| Executor | research_team、parallel_executor、researcher_N、coder_N、information、background_investigator | 分配任务、执行步骤、调用 Skill/MCP |
+| Reviewer | reporter | 汇总报告、检查遗漏 |
+
+SSE 事件中的 `agent_role` 字段标识每个事件所属角色。前端时间线按角色分组、颜色区分：Planner（紫色）、Executor（蓝色）、Reviewer（绿色）。
+
+活动策划 Demo 示例：
+
+```powershell
+'{"query":"帮我策划一个周六下午在上海适合 20 人的技术读书会活动，考虑天气、场地、流程和风险。","session_id":"team-demo","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/team-demo.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/team-demo.json" http://localhost:18080/chat/stream > target/http-check/team-demo.sse
+```
 
 ## 本地启动
 
@@ -300,7 +345,7 @@ Jar Skill 不是安全沙箱。它通过独立 `SkillPluginClassLoader` 做依�
 2. Skill 市场查看、健康检查、启停和显式调用。
 3. MCP 页面连接测试和 `weather_now` 调试。
 4. 深度研究 SSE 过程、报告与会话历史持久化。
-5. Agent Team 活动策划流程（Phase 6 完成后录制）。
+5. Agent Team 活动策划流程，观察角色分组时间线。
 
 ## 安全与提交约束
 

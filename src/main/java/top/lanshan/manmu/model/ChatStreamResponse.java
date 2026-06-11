@@ -21,6 +21,7 @@ public record ChatStreamResponse(@JsonProperty("nodeName") String nodeName,
 		@JsonProperty("payload") Object payload,
 		@JsonProperty("site_information") Object stableSiteInformation,
 		@JsonProperty("done") boolean done,
+		@JsonProperty("agent_role") AgentRole agentRole,
 		@JsonProperty("timestamp") Instant timestamp,
 		@JsonProperty("graph_id") GraphId stableGraphId) {
 
@@ -34,9 +35,10 @@ public record ChatStreamResponse(@JsonProperty("nodeName") String nodeName,
 		Integer executorId = event.executorId() == null ? metadata.executorId() : event.executorId();
 		String displayTitle = event.displayTitle() == null ? metadata.displayTitle() : event.displayTitle();
 		String status = event.status() == null ? event.phase() : event.status();
+		AgentRole agentRole = event.agentRole() == null ? metadata.agentRole() : event.agentRole();
 		return new ChatStreamResponse(nodeName, graphId, displayTitle, content, siteInformation, event.sequence(),
 				eventType, nodeName, nodeType, executorId, event.stepId(), event.phase(), status, displayTitle,
-				event.payload(), siteInformation, event.done(), event.timestamp(), graphId);
+				event.payload(), siteInformation, event.done(), agentRole, event.timestamp(), graphId);
 	}
 
 }

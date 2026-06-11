@@ -19,11 +19,12 @@ public record ResearchEvent(@JsonProperty("thread_id") String threadId,
 		@JsonProperty("payload") Object payload,
 		@JsonProperty("site_information") Object siteInformation,
 		@JsonProperty("done") boolean done,
+		@JsonProperty("agent_role") AgentRole agentRole,
 		@JsonProperty("timestamp") Instant timestamp) {
 
 	public ResearchEvent(String threadId, String node, String phase, String content, Object payload, boolean done,
 			Instant timestamp) {
-		this(threadId, null, null, node, node, null, null, null, phase, phase, null, content, payload, null, done,
+		this(threadId, null, null, node, node, null, null, null, phase, phase, null, content, payload, null, done, null,
 				timestamp);
 	}
 
@@ -67,7 +68,7 @@ public record ResearchEvent(@JsonProperty("thread_id") String threadId,
 		ResearchStreamEventType resolvedEventType = ResearchStreamEventType.from(this);
 		return new ResearchEvent(threadId, sequence, resolvedEventType, node, metadata.nodeName(), metadata.nodeType(),
 				metadata.executorId(), stepId, phase, status == null ? phase : status, metadata.displayTitle(),
-				content, payload, siteInformation, done, timestamp);
+				content, payload, siteInformation, done, metadata.agentRole(), timestamp);
 	}
 
 }

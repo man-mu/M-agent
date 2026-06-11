@@ -71,7 +71,7 @@ public class ProfessionalKbRagNode implements ResearchNode {
                 return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
                         null, null, null, "completed", "completed",
                         "专业知识库检索", "No professional KB RAG context matched this query",
-                        "未检索到可用的专业知识库上下文。", null, false, Instant.now()));
+                        "未检索到可用的专业知识库上下文。", null, false, null, Instant.now()));
             }
             String context = retriever.buildContext(documents);
             String prompt = ragPromptTemplate
@@ -84,7 +84,7 @@ public class ProfessionalKbRagNode implements ResearchNode {
                     return Flux.just(new ResearchEvent(state.threadId(), null, null, name(), name(),
                             null, null, null, "completed", "completed",
                             "专业知识库检索", "Professional KB RAG context applied", ragContent,
-                            null, false, Instant.now()));
+                            null, false, null, Instant.now()));
                 });
         });
     }

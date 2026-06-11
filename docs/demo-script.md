@@ -178,24 +178,31 @@ curl.exe http://localhost:18080/api/reports/session/demo-video
 
 ## 片段 5：Agent Team 协作流程
 
-当前状态：
-
-- 项目已有 DeepResearch 图工作流和并行执行节点。
-- 独立“活动策划”Agent Team Demo 计划在 Phase 6 补齐。
-
-Phase 6 完成后录制输入：
+录制输入：
 
 ```text
 帮我策划一个周六下午在上海适合 20 人的技术读书会活动，考虑天气、场地、流程和风险。
 ```
 
+建议开启深度研究和自动执行计划。
+
 录制重点：
 
-- Planner 拆解任务。
-- Research Team 分配步骤。
-- Executor 执行天气、场地、流程、风险等子任务。
-- Reviewer 或 Reporter 汇总最终方案。
-- 前端时间线或 Mermaid 说明展示协作流程。
+- 前端时间线按角色分组展示：Planner（紫色）、Executor（蓝色）、Reviewer（绿色）。
+- Planner 阶段：理解需求、制定研究计划、确认计划。
+- Executor 阶段：安排研究步骤、任务分配、资料分析、内容整理。
+- Reviewer 阶段：报告生成和汇总。
+- SSE 事件中 `agent_role` 字段标识每个事件所属角色。
+- 最终输出包含天气、场地、流程、风险的完整活动方案。
+
+可用接口证据：
+
+```powershell
+'{"query":"帮我策划一个周六下午在上海适合 20 人的技术读书会活动，考虑天气、场地、流程和风险。","session_id":"team-demo","enable_deepresearch":true,"auto_accepted_plan":true}' | Set-Content -Encoding UTF8 target/http-check/team-demo.json
+curl.exe -N -H "Content-Type: application/json" --data-binary "@target/http-check/team-demo.json" http://localhost:18080/chat/stream > target/http-check/team-demo.sse
+curl.exe http://localhost:18080/api/sessions/team-demo/history
+curl.exe http://localhost:18080/api/reports/session/team-demo
+```
 
 ## 收尾检查
 

@@ -137,7 +137,7 @@ public class ResearcherNode implements ResearchNode {
 	private ResearchEvent stepEvent(ResearchState state, ResearchStep step, String phase, String status, String content,
 			Object payload) {
 		return new ResearchEvent(state.threadId(), null, null, name(), name(), null, null, step.id(), phase, status,
-				null, content, payload, null, false, Instant.now());
+				null, content, payload, null, false, null, Instant.now());
 	}
 
 	private String errorMessage(RuntimeException ex) {

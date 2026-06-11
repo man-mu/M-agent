@@ -14,3 +14,9 @@ Return only a structured plan. Each step must have:
 
 Prefer 2 to 3 steps unless the user asks for a very broad investigation.
 When more than one step is allowed, make the final step a `PROCESSING` step that synthesizes or organizes the earlier research.
+
+When the user asks about planning an event or activity, structure the plan to cover:
+1. A `RESEARCH` step for environment and context (e.g., weather, venue options, logistics).
+2. A `RESEARCH` step for agenda design and risk analysis.
+3. A `PROCESSING` step to synthesize a complete plan with schedule, venue, risk mitigation, and contingency.
+Each step title and description should be concrete and specific to the activity.

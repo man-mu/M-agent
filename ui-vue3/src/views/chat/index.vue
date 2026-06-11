@@ -103,42 +103,48 @@
             <a-tag v-else color="default">已结束</a-tag>
           </div>
 
-          <a-timeline>
-            <a-timeline-item
-              v-for="node in workflowNodes"
-              :key="node.key"
-              :color="node.color"
-            >
-              <div class="workflow-node" :class="node.status">
-                <div class="event-line">
-                  <strong>{{ node.title }}</strong>
-                  <a-tag :color="node.color">{{ node.statusLabel }}</a-tag>
-                  <span v-if="node.eventType || node.phase" class="event-kind">
-                    {{ node.eventType || node.phase }}
-                  </span>
-                  <span v-if="node.sequence" class="event-meta">#{{ node.sequence }}</span>
-                  <span v-if="node.timestamp" class="event-meta">{{ formatEventTime(node.timestamp) }}</span>
-                </div>
-                <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
-                <div v-if="node.sources.length" class="sources">
-                  <template
-                    v-for="source in node.sources"
-                    :key="source.url || source.title"
-                  >
-                    <a
-                      v-if="source.url"
-                      :href="source.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
+          <template v-for="group in workflowGroups" :key="group.role + '-' + group.nodes[0]?.key">
+            <div v-if="group.role" class="role-header" :style="{ borderLeftColor: roleColor(group.role) }">
+              <span class="role-dot" :style="{ backgroundColor: roleColor(group.role) }"></span>
+              <strong>{{ roleLabel(group.role) }}</strong>
+            </div>
+            <a-timeline>
+              <a-timeline-item
+                v-for="node in group.nodes"
+                :key="node.key"
+                :color="node.color"
+              >
+                <div class="workflow-node" :class="node.status">
+                  <div class="event-line">
+                    <strong>{{ node.title }}</strong>
+                    <a-tag :color="node.color">{{ node.statusLabel }}</a-tag>
+                    <span v-if="node.eventType || node.phase" class="event-kind">
+                      {{ node.eventType || node.phase }}
+                    </span>
+                    <span v-if="node.sequence" class="event-meta">#{{ node.sequence }}</span>
+                    <span v-if="node.timestamp" class="event-meta">{{ formatEventTime(node.timestamp) }}</span>
+                  </div>
+                  <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
+                  <div v-if="node.sources.length" class="sources">
+                    <template
+                      v-for="source in node.sources"
+                      :key="source.url || source.title"
                     >
-                      {{ source.title || source.url }}
-                    </a>
-                    <span v-else class="source-label">{{ source.title }}</span>
-                  </template>
+                      <a
+                        v-if="source.url"
+                        :href="source.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {{ source.title || source.url }}
+                      </a>
+                      <span v-else class="source-label">{{ source.title }}</span>
+                    </template>
+                  </div>
                 </div>
-              </div>
-            </a-timeline-item>
-          </a-timeline>
+              </a-timeline-item>
+            </a-timeline>
+          </template>
         </div>
 
         <PlanReview
@@ -310,7 +316,7 @@ import type { CurrentModelSelection } from '@/services/api/model'
 import skillService from '@/services/api/skills'
 import type { SkillDefinition } from '@/services/api/skills'
 import { useConversationStore } from '@/store/ConversationStore'
-import { useMessageStore } from '@/store/MessageStore'
+import { deriveWorkflowGroups, roleLabel, roleColor, useMessageStore } from '@/store/MessageStore'
 import { isAbortError, streamEventErrorMessage, userMessageFromError } from '@/utils/errors'
 import { filterSkillCandidates, findSkillTrigger, replaceSkillTrigger } from './skillPicker'
 import {
@@ -404,6 +410,7 @@ const sessionStatus = computed(() => {
 })
 
 const workflowNodes = computed(() => messageStore.workflowNodes)
+const workflowGroups = computed(() => deriveWorkflowGroups(workflowNodes.value))
 const currentConversation = computed(() =>
   conversationStore.conversations.find(item => item.key === messageStore.convId || item.key === route.params.convId),
 )
@@ -1099,6 +1106,32 @@ onMounted(() => {
   font-weight: 700;
   justify-content: space-between;
   margin-bottom: 16px;
+}
+
+.role-header {
+  align-items: center;
+  background: #fafbfe;
+  border-left: 3px solid #8ca0bd;
+  border-radius: 6px;
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 6px;
+  padding: 6px 12px;
+}
+
+.role-header:first-of-type {
+  margin-top: 0;
+}
+
+.role-dot {
+  border-radius: 50%;
+  flex: 0 0 8px;
+  height: 8px;
+  width: 8px;
+}
+
+.role-header strong {
+  font-size: 13px;
 }
 
 .event-line {

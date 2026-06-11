@@ -94,7 +94,7 @@ public class ParallelExecutorNode implements ResearchNode {
 		payload.put("step", step.copy());
 		return new ResearchEvent(state.threadId(), null, null, name(), name(), null, null, step.id(),
 				"step.assigned", step.executionStatus(), null, "\u5df2\u5b89\u6392\uff1a" + step.title(), payload, null, false,
-				Instant.now());
+				null, Instant.now());
 	}
 
 	private boolean hasNonTerminalResearchSteps(List<ResearchStep> steps) {

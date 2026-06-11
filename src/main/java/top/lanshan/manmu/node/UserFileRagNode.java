@@ -96,7 +96,7 @@ public class UserFileRagNode implements ResearchNode {
 
 	private ResearchEvent event(ResearchState state, String phase, String status, String content, Object payload) {
 		return new ResearchEvent(state.threadId(), null, null, name(), name(), null, null, null, phase, status,
-				DISPLAY_TITLE, content, payload, null, false, Instant.now());
+				DISPLAY_TITLE, content, payload, null, false, null, Instant.now());
 	}
 
 	private String queryForRag(ResearchState state) {

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import top.lanshan.manmu.model.AgentRole;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.GraphId;
 import top.lanshan.manmu.model.ResearchStreamEventType;
@@ -78,7 +79,7 @@ class PostgresResearchEventHistoryServiceTest {
 		Instant now = Instant.parse("2026-05-28T00:00:00Z");
 		return new ChatStreamResponse("planner", new GraphId("session", "thread"), "制定研究计划", "content",
 				List.of(), sequence, eventType, "planner", "planner", null, null, "completed", "completed",
-				"制定研究计划", "payload", List.of(), false, now, new GraphId("session", "thread"));
+				"制定研究计划", "payload", List.of(), false, AgentRole.PLANNER, now, new GraphId("session", "thread"));
 	}
 
 	private ResearchEventHistoryEntity entity(String sessionId, String threadId, ChatStreamResponse event)

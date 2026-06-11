@@ -7,6 +7,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.eventhistory.ResearchEventHistoryService;
 import top.lanshan.manmu.eventhistory.ResearchEventRecord;
+import top.lanshan.manmu.model.AgentRole;
 import top.lanshan.manmu.model.ChatStreamResponse;
 import top.lanshan.manmu.model.GraphId;
 import top.lanshan.manmu.model.ResearchStreamEventType;
@@ -117,7 +118,8 @@ class SessionHistoryControllerTest {
 					"thread-1", null, now, now, now, null)));
 		ChatStreamResponse event = new ChatStreamResponse("planner", new GraphId("session-1", "thread-1"),
 				"制定研究计划", "content", List.of(), 2L, ResearchStreamEventType.PLAN_GENERATED, "planner", "planner",
-				null, null, "completed", "completed", "制定研究计划", "payload", List.of(), false, now,
+				null, null, "completed", "completed", "制定研究计划", "payload", List.of(), false,
+				AgentRole.PLANNER, now,
 				new GraphId("session-1", "thread-1"));
 		when(eventHistoryService.findBySessionIdAndThreadId("session-1", "thread-1"))
 			.thenReturn(Flux.just(new ResearchEventRecord("session-1", "thread-1", 2L, "plan.generated", "planner",

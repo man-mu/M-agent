@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { deriveWorkflowNodes, useMessageStore } from './MessageStore'
+import { deriveWorkflowGroups, deriveWorkflowNodes, useMessageStore } from './MessageStore'
 
 const service = vi.hoisted(() => ({
   getMessages: vi.fn(),
@@ -308,5 +308,60 @@ describe('MessageStore', () => {
     expect(store.running).toBe(false)
     expect(store.plan?.title).toBe('Research plan')
     expect(store.plan?.steps?.[0]?.title).toBe('First step')
+  })
+
+  it('resolves agent_role from SSE events', () => {
+    const nodes = deriveWorkflowNodes([
+      { event_type: 'node.started', node_name: 'coordinator', phase: 'started', sequence: 1 },
+      { event_type: 'node.completed', node_name: 'planner', phase: 'completed', sequence: 2 },
+      { event_type: 'node.started', node_name: 'researcher_0', node_type: 'researcher', executor_id: 0, phase: 'started', sequence: 3 },
+      { event_type: 'node.completed', node_name: 'reporter', phase: 'completed', sequence: 4 },
+    ])
+
+    expect(nodes[0].role).toBe('PLANNER')
+    expect(nodes[1].role).toBe('PLANNER')
+    expect(nodes[2].role).toBe('EXECUTOR')
+    expect(nodes[3].role).toBe('REVIEWER')
+  })
+
+  it('uses fallback mapping when agent_role is absent', () => {
+    const nodes = deriveWorkflowNodes([
+      { event_type: 'node.started', node_name: 'planner', phase: 'started', sequence: 1 },
+      { event_type: 'node.started', node_name: 'parallel_executor', phase: 'started', sequence: 2 },
+      { event_type: 'node.completed', node_name: 'reporter', phase: 'completed', sequence: 3 },
+    ])
+
+    expect(nodes[0].role).toBe('PLANNER')
+    expect(nodes[1].role).toBe('EXECUTOR')
+    expect(nodes[2].role).toBe('REVIEWER')
+  })
+
+  it('derives workflow groups with role-based grouping', () => {
+    const nodes = deriveWorkflowNodes([
+      { event_type: 'node.started', node_name: 'coordinator', phase: 'started', sequence: 1 },
+      { event_type: 'node.completed', node_name: 'planner', phase: 'completed', sequence: 2 },
+      { event_type: 'node.started', node_name: 'researcher_0', node_type: 'researcher', executor_id: 0, phase: 'started', sequence: 3 },
+      { event_type: 'node.completed', node_name: 'reporter', phase: 'completed', sequence: 4 },
+    ])
+
+    const groups = deriveWorkflowGroups(nodes)
+
+    expect(groups).toHaveLength(3)
+    expect(groups[0].role).toBe('PLANNER')
+    expect(groups[0].nodes).toHaveLength(2)
+    expect(groups[1].role).toBe('EXECUTOR')
+    expect(groups[1].nodes).toHaveLength(1)
+    expect(groups[2].role).toBe('REVIEWER')
+    expect(groups[2].nodes).toHaveLength(1)
+  })
+
+  it('handles agent_role from backend directly', () => {
+    const nodes = deriveWorkflowNodes([
+      { event_type: 'node.started', node_name: 'coordinator', phase: 'started', sequence: 1, agent_role: 'PLANNER' } as any,
+      { event_type: 'node.started', node_name: 'researcher_0', node_type: 'researcher', phase: 'started', sequence: 2, agent_role: 'EXECUTOR' } as any,
+    ])
+
+    expect(nodes[0].role).toBe('PLANNER')
+    expect(nodes[1].role).toBe('EXECUTOR')
   })
 })

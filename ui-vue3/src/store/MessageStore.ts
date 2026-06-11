@@ -32,6 +32,8 @@ export interface SourceLink {
   url?: string
 }
 
+export type AgentRole = 'PLANNER' | 'EXECUTOR' | 'REVIEWER'
+
 export interface WorkflowNodeView {
   key: string
   title: string
@@ -44,6 +46,51 @@ export interface WorkflowNodeView {
   sources: SourceLink[]
   sequence?: number
   timestamp?: string
+  role?: AgentRole
+}
+
+export interface WorkflowGroupView {
+  role: AgentRole
+  nodes: WorkflowNodeView[]
+}
+
+export function roleLabel(role: AgentRole): string {
+  if (role === 'PLANNER') return 'Planner \u2014 \u89c4\u5212'
+  if (role === 'EXECUTOR') return 'Executor \u2014 \u6267\u884c'
+  return 'Reviewer \u2014 \u5ba1\u6838'
+}
+
+export function roleColor(role: AgentRole): string {
+  if (role === 'PLANNER') return '#7c3aed'
+  if (role === 'EXECUTOR') return '#2356f6'
+  return '#059669'
+}
+
+const agentRoleFallbackMap: Record<string, AgentRole> = {
+  coordinator: 'PLANNER',
+  planner: 'PLANNER',
+  plan_validator: 'PLANNER',
+  human_feedback: 'PLANNER',
+  research_team: 'EXECUTOR',
+  parallel_executor: 'EXECUTOR',
+  information: 'EXECUTOR',
+  background_investigator: 'EXECUTOR',
+  rewrite_multi_query: 'EXECUTOR',
+  researcher: 'EXECUTOR',
+  coder: 'EXECUTOR',
+  reporter: 'REVIEWER',
+}
+
+function resolveAgentRole(event: ChatStreamResponse): AgentRole | undefined {
+  const raw = (event as Record<string, unknown>).agent_role
+  if (raw === 'PLANNER' || raw === 'EXECUTOR' || raw === 'REVIEWER') return raw
+  const node = event.node_name || event.nodeName || ''
+  const type = event.node_type || node
+  if (agentRoleFallbackMap[node]) return agentRoleFallbackMap[node]
+  if (agentRoleFallbackMap[type]) return agentRoleFallbackMap[type]
+  if (/^researcher_\d+$/.test(node) || type === 'researcher') return 'EXECUTOR'
+  if (/^coder_\d+$/.test(node) || type === 'coder') return 'EXECUTOR'
+  return undefined
 }
 
 const nodeTitleMap: Record<string, string> = {
@@ -406,9 +453,40 @@ export function deriveWorkflowNodes(events: ChatStreamResponse[]): WorkflowNodeV
       sources: eventSources.length ? eventSources : previous?.sources || [],
       sequence,
       timestamp: event.timestamp || previous?.timestamp,
+      role: resolveAgentRole(event) || previous?.role,
     })
   })
   return [...nodes.values()].sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
+}
+
+export function deriveWorkflowGroups(nodes: WorkflowNodeView[]): WorkflowGroupView[] {
+  const groups: WorkflowGroupView[] = []
+  let currentRole: AgentRole | undefined
+  let currentNodes: WorkflowNodeView[] = []
+
+  for (const node of nodes) {
+    if (node.role && node.role !== currentRole) {
+      if (currentNodes.length) {
+        groups.push({ role: currentRole!, nodes: currentNodes })
+      }
+      currentRole = node.role
+      currentNodes = []
+    }
+    if (node.role) {
+      currentNodes.push(node)
+    } else {
+      if (currentNodes.length && currentRole) {
+        groups.push({ role: currentRole, nodes: currentNodes })
+        currentNodes = []
+        currentRole = undefined
+      }
+      groups.push({ role: currentRole ?? 'EXECUTOR', nodes: [node] })
+    }
+  }
+  if (currentNodes.length && currentRole) {
+    groups.push({ role: currentRole, nodes: currentNodes })
+  }
+  return groups
 }
 
 export const useMessageStore = defineStore('messageStore', {

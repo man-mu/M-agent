@@ -70,7 +70,7 @@ public class ProfessionalKbDecisionNode implements ResearchNode {
                             name(), name(), null, null, null,
                             "decision", "decision", "专业知识库选择",
                             "Selected KBs: " + String.join(", ", selectedIds),
-                            selectedIds, null, false, Instant.now()));
+                            selectedIds, null, false, null, Instant.now()));
                 });
         });
     }
