@@ -77,7 +77,7 @@ public class SkillAutoConfiguration {
         return registry;
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     SkillPluginRegistry skillPluginRegistry() {
         return new SkillPluginRegistry(new JarSkillPackageLoader(SkillPluginRegistry.class.getClassLoader()));
     }

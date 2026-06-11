@@ -7,7 +7,6 @@ import top.lanshan.manmu.skill.market.SkillPackageValidator;
 import top.lanshan.manmu.skill.service.SkillDefinition;
 
 import java.io.IOException;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
@@ -37,8 +36,7 @@ public class JarSkillPackageLoader {
             throw new IllegalArgumentException("Jar Skill package must contain plugin.jar");
         }
 
-        SkillPluginClassLoader classLoader = new SkillPluginClassLoader(
-                new URL[] { pluginJar.toUri().toURL() }, sharedClassLoader);
+        SkillPluginClassLoader classLoader = new SkillPluginClassLoader(pluginJar, sharedClassLoader);
         SkillPlugin plugin = null;
         try {
             ServiceLoader<SkillPlugin> serviceLoader = ServiceLoader.load(SkillPlugin.class, classLoader);

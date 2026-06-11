@@ -7,6 +7,7 @@ import top.lanshan.manmu.skill.market.SkillPackageType;
 import top.lanshan.manmu.skill.market.SkillPackageValidator;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -209,8 +210,11 @@ public class SkillFileRepository {
         try (Stream<Path> files = Files.walk(skillDir)) {
             files.sorted(Comparator.reverseOrder())
                 .forEach(p -> {
-                    try { Files.delete(p); } catch (IOException ignored) {}
+                    try { Files.delete(p); }
+                    catch (IOException e) { throw new UncheckedIOException(e); }
                 });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
         }
         logger.info("Skill '{}' deleted from {}", name, skillDir);
     }

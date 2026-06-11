@@ -46,6 +46,11 @@ public class JarSkillToolCallback implements ToolCallback {
 
     @Override
     public String call(String toolInput) {
+        if (!pluginRegistry.hasPlugin(definition.getName())) {
+            String message = "Skill '" + definition.getName() + "' is currently unavailable (disabled or uninstalled)";
+            logger.warn(message);
+            return message;
+        }
         long started = System.nanoTime();
         Map<String, Object> params = Map.of();
         try {
