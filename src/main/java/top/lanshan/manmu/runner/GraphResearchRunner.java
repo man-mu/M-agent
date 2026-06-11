@@ -280,8 +280,7 @@ public class GraphResearchRunner implements ResearchRunner {
 	private boolean waitingForHumanFeedback(Map<String, Object> graphState) {
 		return ResearchGraphState.humanFeedbackRoute(graphState)
 			.filter(HumanFeedbackRoute.WAITING::equals)
-			.isPresent()
-				|| ResearchGraphBuilder.HUMAN_FEEDBACK.equals(lastEventNode(graphState));
+			.isPresent();
 	}
 
 	private Flux<ResearchEvent> saveCompletedReport(ResearchState state) {
