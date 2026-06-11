@@ -6,7 +6,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @ConfigurationProperties(prefix = "mvp.mcp")
 public class McpProperties {
@@ -62,5 +64,19 @@ public class McpProperties {
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public List<String> getAllowedTools() { return allowedTools; }
         public void setAllowedTools(List<String> allowedTools) { this.allowedTools = allowedTools; }
+
+        @JsonProperty("headers")
+        private Map<String, String> headers = new LinkedHashMap<>();
+
+        @JsonProperty("api-key")
+        @JsonAlias("apiKey")
+        private String apiKey;
+
+        public Map<String, String> getHeaders() { return headers; }
+        public void setHeaders(Map<String, String> headers) {
+            this.headers = headers == null ? new LinkedHashMap<>() : headers;
+        }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
     }
 }
