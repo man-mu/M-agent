@@ -230,7 +230,8 @@ async function loadSkills() {
   loadError.value = ''
   try {
     skills.value = await skillService.list()
-    await loadSkillHealthSummaries()
+    // 不在列表加载时自动触发 health 检查（避免 MCP 连接超时阻塞页面）
+    // health 仅在用户点开详情时按需加载
   } catch (err: unknown) {
     loadError.value = userMessageFromError(err, '加载 Skill 列表失败')
     message.error(loadError.value)
@@ -355,15 +356,21 @@ async function saveSkill() {
 
   saving.value = true
   try {
+    let result: SkillDefinition
     if (editingName.value) {
-      await skillService.update(editingName.value, request)
+      result = await skillService.update(editingName.value, request)
       message.success('Skill 已更新')
     } else {
-      await skillService.create(request)
+      result = await skillService.create(request)
       message.success('Skill 已创建')
     }
     modalVisible.value = false
-    await loadSkills()
+    const index = skills.value.findIndex(s => s.name === result.name)
+    if (index >= 0) {
+      skills.value[index] = result
+    } else {
+      skills.value.push(result)
+    }
   } catch (err: unknown) {
     formError.value = userMessageFromError(err, '保存 Skill 失败')
     message.error(formError.value)
@@ -374,8 +381,12 @@ async function saveSkill() {
 
 async function toggleSkill(name: string) {
   try {
-    await skillService.toggle(name)
-    await loadSkills()
+    const updated = await skillService.toggle(name)
+    const index = skills.value.findIndex(s => s.name === name)
+    if (index >= 0) {
+      skills.value[index] = updated
+    }
+    message.success(`Skill '${name}' 已${updated.enabled ? '启用' : '停用'}`)
   } catch (err: unknown) {
     message.error(userMessageFromError(err, '切换 Skill 状态失败'))
   }
@@ -391,8 +402,9 @@ function confirmDelete(skill: SkillDefinition) {
     async onOk() {
       try {
         await skillService.delete(skill.name)
+        skills.value = skills.value.filter(s => s.name !== skill.name)
+        delete skillHealthMap.value[skill.name]
         message.success('Skill 已删除')
-        await loadSkills()
       } catch (err: unknown) {
         message.error(userMessageFromError(err, '删除 Skill 失败'))
       }
@@ -450,8 +462,14 @@ async function importPackageFile(file: File, packageType: ImportPackageType) {
       ? await skillService.importJarPackage(file)
       : await skillService.importPackage(file)
     addImportRecord(file, packageType, result)
+    // 避免触发全量 health 检查，直接追加到本地列表
+    const existing = skills.value.findIndex(s => s.name === result.name)
+    if (existing >= 0) {
+      skills.value[existing] = { ...skills.value[existing], ...result }
+    } else {
+      skills.value.push(result)
+    }
     message.success(`${packageType === 'JAR' ? 'Jar' : 'Prompt'} Skill 包已导入：${result.name}`)
-    await loadSkills()
     activeTab.value = 'market'
   } catch (err: unknown) {
     const fallback = packageType === 'JAR' ? '导入 Jar Skill 包失败' : '导入 Prompt Skill 包失败'
@@ -534,9 +552,12 @@ async function exportSkillPackage(skill: SkillDefinition) {
 async function reloadSkill(skill: SkillDefinition) {
   packageBusyName.value = skill.name
   try {
-    await skillService.reload(skill.name)
+    const updated = await skillService.reload(skill.name)
+    const index = skills.value.findIndex(s => s.name === skill.name)
+    if (index >= 0) {
+      skills.value[index] = updated
+    }
     message.success('Skill 已重载')
-    await loadSkills()
   } catch (err: unknown) {
     message.error(userMessageFromError(err, '重载 Skill 失败'))
   } finally {
@@ -555,8 +576,9 @@ function confirmUninstall(skill: SkillDefinition) {
       packageBusyName.value = skill.name
       try {
         await skillService.uninstallPackage(skill.name)
+        skills.value = skills.value.filter(s => s.name !== skill.name)
+        delete skillHealthMap.value[skill.name]
         message.success('Skill 包已卸载')
-        await loadSkills()
       } catch (err: unknown) {
         message.error(userMessageFromError(err, '卸载 Skill 包失败'))
       } finally {

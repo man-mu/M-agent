@@ -799,7 +799,9 @@ async function loadCapabilitiesForComposer() {
     }
     try {
       skills.value = await skillService.list()
-    } catch {
+      console.log('[Chat] Skills loaded:', skills.value.map(s => s.name))
+    } catch (err) {
+      console.warn('[Chat] Failed to load skills:', err)
       skills.value = []
       skillEnabled.value = false
     }
@@ -913,6 +915,15 @@ onMounted(() => {
     conversationStore.startDraft()
   }
 })
+
+watch(
+  () => route.path,
+  (newPath) => {
+    if (newPath === '/chat' || newPath.startsWith('/chat/')) {
+      loadCapabilitiesForComposer()
+    }
+  },
+)
 </script>
 
 <style lang="less" scoped>
