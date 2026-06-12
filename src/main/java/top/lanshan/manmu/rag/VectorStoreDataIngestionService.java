@@ -32,12 +32,17 @@ public class VectorStoreDataIngestionService {
     }
 
     public int ingest(Resource resource, String sessionId, String userId) {
+        return ingest(resource, sessionId, userId, "session");
+    }
+
+    public int ingest(Resource resource, String sessionId, String userId, String scope) {
         List<Document> documents = new TikaDocumentReader(resource).read();
         logger.info("Read {} documents from resource", documents.size());
 
         List<Document> chunks = textSplitter.split(documents);
         logger.info("Split into {} chunks", chunks.size());
 
+        String safeScope = scope == null ? "session" : scope;
         Instant timestamp = Instant.now();
         for (int i = 0; i < chunks.size(); i++) {
             Document chunk = chunks.get(i);
@@ -45,6 +50,7 @@ public class VectorStoreDataIngestionService {
             metadata.put("source_type", "user_upload");
             metadata.put("session_id", sessionId);
             metadata.put("user_id", userId);
+            metadata.put("scope", safeScope);
             metadata.put("chunk_id", i);
             metadata.put("original_filename", resource.getFilename() != null ? resource.getFilename() : "unknown");
             metadata.put("upload_timestamp", timestamp.toString());
@@ -54,7 +60,7 @@ public class VectorStoreDataIngestionService {
         }
 
         vectorStore.add(chunks);
-        logger.info("Ingested {} chunks into vector store for session={}", chunks.size(), sessionId);
+        logger.info("Ingested {} chunks into vector store for session={}, scope={}", chunks.size(), sessionId, safeScope);
         return chunks.size();
     }
 
