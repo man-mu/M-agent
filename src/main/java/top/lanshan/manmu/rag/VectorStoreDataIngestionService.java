@@ -25,7 +25,7 @@ public class VectorStoreDataIngestionService {
         this.textSplitter = TokenTextSplitter.builder()
             .withChunkSize(800)
             .withMinChunkSizeChars(5)
-            .withMinChunkLengthToEmbed(50)
+            .withMinChunkLengthToEmbed(5)
             .withMaxNumChunks(100)
             .withKeepSeparator(true)
             .build();
