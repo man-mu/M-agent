@@ -112,7 +112,7 @@ mvp:
           - deepseek-reasoner
       - provider-id: minimax
         display-name: MiniMax
-        base-url: https://api.minimaxi.com/v1
+        base-url: https://api.minimaxi.com
         models:
           - MiniMax-M2.7
           - MiniMax-M2.7-highspeed
@@ -123,7 +123,7 @@ mvp:
           - MiniMax-M2
       - provider-id: moonshot
         display-name: Moonshot AI
-        base-url: https://api.moonshot.ai/v1
+        base-url: https://api.moonshot.ai
         models:
           - kimi-k2.6
           - kimi-k2.5
