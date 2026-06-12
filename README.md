@@ -481,3 +481,25 @@ Jar Skill 不是安全沙箱。它通过独立 `SkillPluginClassLoader` 做依�
 - 不在源码、测试断言、README 示例输出或提交记录中写入 API Key。
 - Jar Skill 不是安全沙箱。ClassLoader 隔离只用于本地可信插件的依赖和生命周期隔离。
 - 真实 HTTP/SSE 验证后必须关闭后端服务，并确认 `18080` 端口释放。
+
+
+
+我给你描述一下刚才测试的过程:
+
+1. 我提问你好, 接着直接出现气泡回复, 这点很好
+
+2. 接着我上传了一个简单的文档, 里面只有"我非常喜欢吃拉面" 这几个字, 然后询问"今天中午吃什么好呢", 意在测试mcp和RAG, 结果返回了正常的回复而不是JSON字符串, 这点值得表扬, 但是显然没有用上我上传的文件
+
+3. 我接着询问:"你知道我喜欢吃什么吗", 回复却是一个JSON字符串
+
+4. ```
+   {
+     "direct_answer": "哈哈，这个问题可难倒我啦！😅 从刚才的聊天来看，你只问过"中午吃什么好"，但我还不知道你的具体口味偏好呢。每个人喜欢的食物都不一样——有人爱吃辣，有人偏爱清淡；有人喜欢面食，有人离不开米饭；还有些人有忌口（比如不吃香菜、不吃海鲜等）。\n\n如果你告诉我你喜欢什么口味、有什么忌口，或者直接说一道你最爱的菜，我就能更好地给你推荐啦！比如：\n- **你是肉食爱好者还是素食派？**\n- **喜欢辣的、甜的、还是清淡的？**\n- **有没有不能吃的东西？**\n\n告诉我，下次就能记住你的偏好了！😊",
+     "next_route": "DIRECT_ANSWER",
+     "thought": "Deep research is disabled (false), and the user's question is purely conversational - asking what I know about their food preferences. No research, investigation, or fact-gathering is needed. It's a lighthearted personal question best answered directly in a friendly, engaging manner."
+   }
+   ```
+
+5. 到这里, mcp调用和RAG都出现了问题
+
+排查刚才的日志, 分析bug
