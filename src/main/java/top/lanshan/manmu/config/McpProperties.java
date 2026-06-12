@@ -78,5 +78,11 @@ public class McpProperties {
         }
         public String getApiKey() { return apiKey; }
         public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+
+        @JsonProperty("type")
+        private String type = "sse";
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = (type == null || type.isBlank()) ? "sse" : type.strip(); }
     }
 }

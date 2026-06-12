@@ -21,6 +21,7 @@
         <java.version>17</java.version>
         <spring-ai.version>1.0.0</spring-ai.version>
         <spring-ai-alibaba.version>1.0.0.4</spring-ai-alibaba.version>
+        <mcp-spring-webflux.version>0.14.0</mcp-spring-webflux.version>
     </properties>
 
     <dependencyManagement>
@@ -102,6 +103,11 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp-spring-webflux</artifactId>
+            <version>${mcp-spring-webflux.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -3,7 +3,6 @@ package top.lanshan.manmu.mcp;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpAsyncClient;
 import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.transport.WebFluxSseClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

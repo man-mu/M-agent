@@ -29,6 +29,14 @@
             "allowed-tools": [
                 "weather_now"
             ]
+        },
+        {
+            "id": "mcp-howtocook",
+            "url": "https://mcp.api-inference.modelscope.net",
+            "sse-endpoint": "/d78c2d988ad14b/mcp",
+            "description": "ModelScope 菜谱 MCP - Streamable HTTP 示例",
+            "type": "streamable_http",
+            "enabled": true
         }
     ]
 }

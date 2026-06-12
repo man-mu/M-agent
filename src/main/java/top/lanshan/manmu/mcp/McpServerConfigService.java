@@ -185,6 +185,7 @@ public class McpServerConfigService {
         copy.setHeaders(source.getHeaders() != null
                 ? new LinkedHashMap<>(source.getHeaders()) : new LinkedHashMap<>());
         copy.setApiKey(source.getApiKey());
+        copy.setType(source.getType());
         return copy;
     }
 
@@ -255,6 +256,7 @@ public class McpServerConfigService {
         copy.setHeaders(source.getHeaders() != null
                 ? new LinkedHashMap<>(source.getHeaders()) : new LinkedHashMap<>());
         copy.setApiKey(source.getApiKey());
+        copy.setType(source.getType());
         copy.setSource(sourceType);
         copy.setLocalOverride(localOverride);
         copy.setEditable(true);

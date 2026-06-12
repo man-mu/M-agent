@@ -2,7 +2,9 @@ package top.lanshan.manmu.mcp;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.client.transport.WebClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.WebFluxSseClientTransport;
+import io.modelcontextprotocol.spec.McpClientTransport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -57,7 +59,7 @@ public final class McpConfigMergeUtil {
         return new McpProperties.McpServerConfig(new ArrayList<>(merged.values()));
     }
 
-    public static List<WebFluxSseClientTransport> createTransports(McpProperties.McpServerConfig config,
+    public static List<McpClientTransport> createTransports(McpProperties.McpServerConfig config,
             WebClient.Builder webClientBuilder, ObjectMapper objectMapper) {
         return createNamedTransports(config, webClientBuilder, objectMapper).stream()
                 .map(NamedTransport::transport)
@@ -86,14 +88,20 @@ public final class McpConfigMergeUtil {
                 clone.defaultHeader("Authorization", "Bearer " + resolvePlaceholders(si.getApiKey()));
             }
 
-            String sseEndpoint = si.getSseEndpoint() != null ? si.getSseEndpoint() : "/sse";
-            sseEndpoint = resolvePlaceholders(sseEndpoint);
-            WebFluxSseClientTransport transport = WebFluxSseClientTransport.builder(clone)
-                .sseEndpoint(sseEndpoint)
-                .objectMapper(objectMapper)
-                .build();
+            String endpoint = si.getSseEndpoint() != null ? si.getSseEndpoint() : "/sse";
+            endpoint = resolvePlaceholders(endpoint);
+            McpClientTransport transport;
+            if ("streamable_http".equalsIgnoreCase(si.getType())) {
+                transport = WebClientStreamableHttpTransport.builder(clone)
+                    .endpoint(endpoint)
+                    .build();
+            } else {
+                transport = new WebFluxSseClientTransport.Builder(clone)
+                    .sseEndpoint(endpoint)
+                    .build();
+            }
             transports.add(new NamedTransport(si, transport));
-            logger.info("MCP transport created: {} -> {}", si.getUrl(), sseEndpoint);
+            logger.info("MCP transport created [{}]: {} -> {}", si.getType(), si.getUrl(), endpoint);
         }
         return transports;
     }
@@ -212,6 +220,6 @@ public final class McpConfigMergeUtil {
     }
 
     public record NamedTransport(McpProperties.McpServerInfo server,
-            WebFluxSseClientTransport transport) {
+            McpClientTransport transport) {
     }
 }
