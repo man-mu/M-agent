@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import top.lanshan.manmu.memory.UserProfileEntity;
 import top.lanshan.manmu.memory.UserProfileService;
 import top.lanshan.manmu.report.ReportResponse;
@@ -52,7 +53,7 @@ public class UserProfileController {
                 "updated_at", entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString() : "",
                 "has_profile", true);
             return ResponseEntity.ok(ReportResponse.success("__global__", "OK", data));
-        });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @PutMapping
@@ -76,7 +77,7 @@ public class UserProfileController {
                 "manual_fields", parseManualFields(entity.getManualFields()),
                 "updated_at", entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString() : "");
             return ResponseEntity.ok(ReportResponse.success("__global__", "画像已更新", data));
-        });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @PostMapping("/reset")
@@ -90,7 +91,7 @@ public class UserProfileController {
                 "manual_fields", List.of(),
                 "message", "手动覆盖已重置，下次对话后自动提取将更新全部字段");
             return ResponseEntity.ok(ReportResponse.success("__global__", "已重置", data));
-        });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private List<String> parseManualFields(String json) {
