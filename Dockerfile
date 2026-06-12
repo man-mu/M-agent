@@ -1,6 +1,6 @@
 # 后端 Dockerfile - 多阶段构建
 # 阶段 1: Maven 编译
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM docker.1ms.run/library/maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 
@@ -8,12 +8,12 @@ WORKDIR /app
 COPY pom.xml .
 RUN mvn dependency:go-offline -B
 
-# 复制源码并编译
-COPY src ./src
+# 复制源码并编译（跳过测试）
+COPY src/main ./src/main
 RUN mvn package -DskipTests -B
 
 # 阶段 2: 运行时
-FROM eclipse-temurin:17-jre
+FROM docker.1ms.run/library/eclipse-temurin:17-jre
 
 WORKDIR /app
 

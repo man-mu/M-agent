@@ -1,5 +1,5 @@
 # 和风天气 MCP Dockerfile
-FROM node:18-alpine AS builder
+FROM docker.1ms.run/library/node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY . .
 RUN npm run build
 
 # 运行阶段
-FROM node:18-alpine
+FROM docker.1ms.run/library/node:18-alpine
 
 WORKDIR /app
 

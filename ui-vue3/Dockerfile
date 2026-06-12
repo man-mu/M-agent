@@ -1,6 +1,6 @@
 # 前端 Dockerfile - 多阶段构建
 # 阶段 1: Node.js 编译
-FROM node:18-alpine AS builder
+FROM docker.1ms.run/library/node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 # 阶段 2: Nginx 运行
-FROM nginx:alpine
+FROM docker.1ms.run/library/nginx:alpine
 
 # 复制 Nginx 配置
 COPY nginx.conf /etc/nginx/conf.d/default.conf
