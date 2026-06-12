@@ -66,7 +66,8 @@ class SkillHealthServiceTest {
                 "local-qweather", "http://127.0.0.1:18090", "/sse",
                 "本地和风天气 MCP", true, true, "",
                 List.of("weather_now"), "QWEATHER_API_KEY", true,
-                List.of("QWEATHER_API_KEY"), "LOCAL", true, true)));
+                List.of("QWEATHER_API_KEY"), "LOCAL", true, true,
+                false, false, List.of())));
 
         SkillHealthResult result = new SkillHealthService(skillService, repository, mcpProvider, objectMapper)
                 .health("weather-now");
@@ -96,7 +97,8 @@ class SkillHealthServiceTest {
                 "local-qweather", "http://127.0.0.1:18090", "/sse",
                 "本地和风天气 MCP", true, false, "MCP server is not reachable",
                 List.of("weather_now"), "QWEATHER_API_KEY", false,
-                List.of("QWEATHER_API_KEY"), "LOCAL", true, true)));
+                List.of("QWEATHER_API_KEY"), "LOCAL", true, true,
+                false, false, List.of())));
 
         SkillHealthResult result = new SkillHealthService(skillService, repository, mcpProvider, objectMapper)
                 .health("weather-now");

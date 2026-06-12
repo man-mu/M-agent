@@ -204,12 +204,7 @@ public class McpServerConfigService {
         server.setUrl(url);
         server.setSseEndpoint(normalizeEndpoint(server.getSseEndpoint()));
         requireNoInlineSecret(server.getSseEndpoint());
-        if (server.getHeaders() != null) {
-            server.getHeaders().values().forEach(McpServerConfigService::requireNoInlineSecret);
-        }
-        if (server.getApiKey() != null) {
-            requireNoInlineSecret(server.getApiKey());
-        }
+        rejectInlineSecretsInHeadersAndApiKey(server.getHeaders(), server.getApiKey());
         server.setDescription(blankToNull(server.getDescription()));
         server.setAllowedTools(normalizeTools(server.getAllowedTools()));
         if (server.getId() != null && !server.getId().isBlank()) {
@@ -333,6 +328,21 @@ public class McpServerConfigService {
                 throw new IllegalArgumentException(
                         "MCP Server key/token values must use ${ENV_NAME} placeholders");
             }
+        }
+    }
+
+    private static void rejectInlineSecretsInHeadersAndApiKey(Map<String, String> headers, String apiKey) {
+        if (headers != null) {
+            headers.values().forEach(value -> {
+                if (value != null && !value.isBlank() && !value.contains("${")) {
+                    throw new IllegalArgumentException(
+                            "MCP Server key/token values must use ${ENV_NAME} placeholders");
+                }
+            });
+        }
+        if (apiKey != null && !apiKey.isBlank() && !apiKey.contains("${")) {
+            throw new IllegalArgumentException(
+                    "MCP Server key/token values must use ${ENV_NAME} placeholders");
         }
     }
 

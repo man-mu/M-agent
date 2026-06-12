@@ -7,6 +7,7 @@ import top.lanshan.manmu.config.McpProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -153,6 +154,41 @@ class McpServerConfigServiceTest {
         assertThatThrownBy(() -> service.delete("missing-server"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void rejectsInlineSecretsInHeadersAndApiKey() throws Exception {
+        McpServerConfigService service = serviceWithBuiltin();
+
+        // headers with plaintext key should be rejected
+        McpProperties.McpServerInfo headerKey = server(
+                "header-key", "https://example.com", "/sse", "bad", true, List.of());
+        headerKey.setHeaders(Map.of("X-API-Key", "secret-value"));
+        assertThatThrownBy(() -> service.create(headerKey))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("${ENV_NAME}");
+
+        // headers with placeholder should pass
+        McpProperties.McpServerInfo headerPlaceholder = server(
+                "header-ok", "https://example.com", "/sse", "ok", true, List.of());
+        headerPlaceholder.setHeaders(Map.of("X-API-Key", "${EXAMPLE_API_KEY}"));
+        assertThat(service.create(headerPlaceholder).getHeaders())
+                .containsEntry("X-API-Key", "${EXAMPLE_API_KEY}");
+
+        // plaintext apiKey should be rejected
+        McpProperties.McpServerInfo apiKeyPlain = server(
+                "apikey-plain", "https://example.com", "/sse", "bad", true, List.of());
+        apiKeyPlain.setApiKey("sk-plain-secret");
+        assertThatThrownBy(() -> service.create(apiKeyPlain))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("${ENV_NAME}");
+
+        // placeholder apiKey should pass
+        McpProperties.McpServerInfo apiKeyOk = server(
+                "apikey-ok", "https://example.com", "/sse", "ok", true, List.of());
+        apiKeyOk.setApiKey("${MODELSCOPE_API_TOKEN}");
+        assertThat(service.create(apiKeyOk).getApiKey())
+                .isEqualTo("${MODELSCOPE_API_TOKEN}");
     }
 
     private McpServerConfigService serviceWithBuiltin(McpProperties.McpServerInfo... servers) throws Exception {

@@ -133,6 +133,53 @@ class McpConfigMergeUtilTest {
                 .doesNotContainKeys("IGNORED_NUMBER", "IGNORED_BLANK");
     }
 
+    @Test
+    void resolveHeadersParsesPlaceholdersInValues() {
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        info.setHeaders(Map.of(
+                "Authorization", "Bearer ${TEST_TOKEN}",
+                "X-Tenant-ID", "static-tenant"));
+
+        Map<String, String> resolved = McpConfigMergeUtil.resolveHeaders(info);
+
+        assertThat(resolved).containsEntry("Authorization", "Bearer ");
+        assertThat(resolved).containsEntry("X-Tenant-ID", "static-tenant");
+    }
+
+    @Test
+    void hasAuthorizationHeaderDetectsCaseInsensitively() {
+        assertThat(McpConfigMergeUtil.hasAuthorizationHeader(
+                Map.of("Authorization", "Bearer x"))).isTrue();
+        assertThat(McpConfigMergeUtil.hasAuthorizationHeader(
+                Map.of("authorization", "Bearer x"))).isTrue();
+        assertThat(McpConfigMergeUtil.hasAuthorizationHeader(
+                Map.of("X-API-Key", "abc"))).isFalse();
+        assertThat(McpConfigMergeUtil.hasAuthorizationHeader(Map.of())).isFalse();
+        assertThat(McpConfigMergeUtil.hasAuthorizationHeader(null)).isFalse();
+    }
+
+    @Test
+    void resolveHeadersSkipsBlankNamesAndNullValues() {
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        Map<String, String> raw = new java.util.LinkedHashMap<>();
+        raw.put("Authorization", "Bearer x");
+        raw.put("  ", "should-skip");
+        raw.put("X-Valid", "value");
+        info.setHeaders(raw);
+
+        Map<String, String> resolved = McpConfigMergeUtil.resolveHeaders(info);
+
+        assertThat(resolved).hasSize(2);
+        assertThat(resolved).containsKeys("Authorization", "X-Valid");
+    }
+
+    @Test
+    void resolveHeadersReturnsEmptyForNullHeaders() {
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        Map<String, String> resolved = McpConfigMergeUtil.resolveHeaders(info);
+        assertThat(resolved).isEmpty();
+    }
+
     private static McpProperties.McpServerInfo server(String url, String sseEndpoint,
             String description, boolean enabled) {
         McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
