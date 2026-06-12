@@ -582,13 +582,33 @@ export const useMessageStore = defineStore('messageStore', {
       this.lastError = ''
       this.planWaiting = false
       this.resuming = false
-      this.messages.push({
+      // Replace thinking placeholder if present
+      const placeholderIdx = this.messages.findIndex(m => m.id === 'thinking-placeholder')
+      const msg: ChatMessage = {
         id: `${Date.now()}-assistant`,
         role: 'assistant',
         content,
         createdAt: new Date().toISOString(),
         threadId,
+      }
+      if (placeholderIdx >= 0) {
+        this.messages.splice(placeholderIdx, 1, msg)
+      } else {
+        this.messages.push(msg)
+      }
+    },
+    addThinkingPlaceholder() {
+      this.removeThinkingPlaceholder()
+      this.messages.push({
+        id: 'thinking-placeholder',
+        role: 'assistant',
+        content: '',
+        createdAt: new Date().toISOString(),
       })
+    },
+    removeThinkingPlaceholder() {
+      const idx = this.messages.findIndex(m => m.id === 'thinking-placeholder')
+      if (idx >= 0) this.messages.splice(idx, 1)
     },
     addEvent(event: ChatStreamResponse) {
       this.lastError = ''

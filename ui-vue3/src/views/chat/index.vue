@@ -85,7 +85,15 @@
         >
           <div class="avatar">{{ item.role === 'user' ? '你' : 'AI' }}</div>
           <div class="bubble">
-            <Suspense v-if="item.role === 'assistant'">
+            <template v-if="item.id === 'thinking-placeholder'">
+              <div class="thinking-indicator">
+                <span class="thinking-dot" />
+                <span class="thinking-dot" />
+                <span class="thinking-dot" />
+                <span class="thinking-text">正在思考...</span>
+              </div>
+            </template>
+            <Suspense v-else-if="item.role === 'assistant'">
               <MD :content="item.content" />
               <template #fallback>
                 <p>{{ item.content }}</p>
@@ -94,6 +102,25 @@
             <p v-else>{{ item.content }}</p>
           </div>
         </article>
+
+        <div
+          v-if="messageStore.deepResearch && messageStore.running && messageStore.events.length === 0"
+          class="event-card workflow-init-placeholder"
+          data-testid="workflow-init-placeholder"
+        >
+          <div class="event-card-header">
+            <span>工作流进度</span>
+            <a-tag color="processing">运行中</a-tag>
+          </div>
+          <div class="workflow-node running">
+            <div class="event-line">
+              <span class="thinking-dot" />
+              <span class="thinking-dot" />
+              <span class="thinking-dot" />
+              <strong style="margin-left: 8px">正在初始化研究流程...</strong>
+            </div>
+          </div>
+        </div>
 
         <div v-if="messageStore.events.length" class="event-card" data-testid="workflow-progress">
           <div class="event-card-header">
@@ -490,6 +517,9 @@ async function submit() {
   messageStore.events = []
   messageStore.clearPlanGate()
   messageStore.running = true
+  if (!messageStore.deepResearch) {
+    messageStore.addThinkingPlaceholder()
+  }
   draft.value = ''
   feedbackVisible.value = false
   feedbackDraft.value = ''
@@ -525,6 +555,7 @@ async function submit() {
       localTerminalStatus.value = 'completed'
     }
   } catch (err: any) {
+    messageStore.removeThinkingPlaceholder()
     if (!isAbortError(err)) {
       const errorMessage = userMessageFromError(err, '研究流程执行失败')
       message.error(errorMessage)
@@ -1546,5 +1577,40 @@ watch(
   .thread {
     max-width: 100%;
   }
+}
+
+.thinking-indicator {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.thinking-dot {
+  animation: thinking-bounce 1.4s infinite ease-in-out both;
+  background: #8ca0bd;
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+.thinking-dot:nth-child(1) { animation-delay: 0s; }
+.thinking-dot:nth-child(2) { animation-delay: 0.16s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.32s; }
+
+.thinking-text {
+  color: #8ca0bd;
+  font-size: 13px;
+  margin-left: 4px;
+}
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.workflow-init-placeholder {
+  opacity: 0.85;
 }
 </style>
