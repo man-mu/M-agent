@@ -36,6 +36,12 @@ public class UserProfileEntity implements Persistable<UUID> {
     @Column("updated_at")
     private Instant updatedAt;
 
+    @Column("scope")
+    private String scope = "session";
+
+    @Column("manual_fields")
+    private String manualFields = "[]";
+
     @Override
     public UUID getId() {
         return id;
@@ -100,6 +106,22 @@ public class UserProfileEntity implements Persistable<UUID> {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getScope() {
+        return scope;
+    }
+
+    public void setScope(String scope) {
+        this.scope = scope;
+    }
+
+    public String getManualFields() {
+        return manualFields;
+    }
+
+    public void setManualFields(String manualFields) {
+        this.manualFields = manualFields;
     }
 
     UserProfileRecord toRecord() {

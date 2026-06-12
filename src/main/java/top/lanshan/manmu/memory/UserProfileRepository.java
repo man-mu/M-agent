@@ -8,4 +8,6 @@ import java.util.UUID;
 public interface UserProfileRepository extends ReactiveCrudRepository<UserProfileEntity, UUID> {
 
     Mono<UserProfileEntity> findTopBySessionIdOrderByUpdatedAtDesc(String sessionId);
+
+    Mono<UserProfileEntity> findTopByScopeOrderByUpdatedAtDesc(String scope);
 }

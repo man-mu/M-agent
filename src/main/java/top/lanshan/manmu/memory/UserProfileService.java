@@ -184,10 +184,31 @@ public class UserProfileService {
     }
 
     private void fillEntity(UserProfileEntity entity, UserProfileFields fields) {
-        entity.setProfileSummary(fields.profileSummary());
-        entity.setExpertiseLevel(fields.expertiseLevel());
-        entity.setDetailPreference(fields.detailPreference());
-        entity.setStylePreference(fields.stylePreference());
+        Set<String> manual = parseManualFields(entity.getManualFields());
+        if (!manual.contains("profile_summary")) {
+            entity.setProfileSummary(fields.profileSummary());
+        }
+        if (!manual.contains("expertise_level")) {
+            entity.setExpertiseLevel(fields.expertiseLevel());
+        }
+        if (!manual.contains("detail_preference")) {
+            entity.setDetailPreference(fields.detailPreference());
+        }
+        if (!manual.contains("style_preference")) {
+            entity.setStylePreference(fields.stylePreference());
+        }
+    }
+
+    private Set<String> parseManualFields(String json) {
+        if (json == null || json.isBlank() || "[]".equals(json.trim())) {
+            return Set.of();
+        }
+        try {
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {})
+                .stream().collect(Collectors.toSet());
+        } catch (Exception e) {
+            return Set.of();
+        }
     }
 
     private String formatProfileContext(UserProfileEntity entity) {
@@ -256,6 +277,57 @@ public class UserProfileService {
             return error.getMessage();
         }
         return error.getClass().getSimpleName();
+    }
+
+    // ===== 全局画像 =====
+
+    private static final String GLOBAL_SCOPE = "global";
+    private static final String GLOBAL_SESSION_ID = "__global__";
+
+    public UserProfileEntity getGlobalProfile() {
+        return profileRepository.findTopByScopeOrderByUpdatedAtDesc(GLOBAL_SCOPE).block();
+    }
+
+    public UserProfileEntity updateGlobalProfile(String profileSummary, String expertiseLevel,
+            String detailPreference, String stylePreference, List<String> manualFieldsList) {
+        UserProfileEntity entity = profileRepository.findTopByScopeOrderByUpdatedAtDesc(GLOBAL_SCOPE).block();
+        if (entity == null) {
+            entity = new UserProfileEntity();
+            entity.setNewEntity(true);
+            entity.setId(UUID.randomUUID());
+            entity.setSessionId(GLOBAL_SESSION_ID);
+            entity.setScope(GLOBAL_SCOPE);
+        }
+        if (profileSummary != null) {
+            entity.setProfileSummary(profileSummary);
+        }
+        if (expertiseLevel != null) {
+            entity.setExpertiseLevel(expertiseLevel);
+        }
+        if (detailPreference != null) {
+            entity.setDetailPreference(detailPreference);
+        }
+        if (stylePreference != null) {
+            entity.setStylePreference(stylePreference);
+        }
+        try {
+            entity.setManualFields(objectMapper.writeValueAsString(
+                manualFieldsList != null ? manualFieldsList : List.of()));
+        } catch (Exception e) {
+            entity.setManualFields("[]");
+        }
+        entity.setUpdatedAt(Instant.now());
+        return profileRepository.save(entity).block();
+    }
+
+    public UserProfileEntity resetGlobalManualFields() {
+        UserProfileEntity entity = profileRepository.findTopByScopeOrderByUpdatedAtDesc(GLOBAL_SCOPE).block();
+        if (entity == null) {
+            return null;
+        }
+        entity.setManualFields("[]");
+        entity.setUpdatedAt(Instant.now());
+        return profileRepository.save(entity).block();
     }
 
     private record UserProfileFields(String profileSummary, String expertiseLevel,
