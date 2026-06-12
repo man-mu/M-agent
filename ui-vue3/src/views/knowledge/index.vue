@@ -11,6 +11,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
+import Modal from 'ant-design-vue/es/modal'
 import knowledgeService from '@/services/api/knowledge'
 import type { RagDocumentItem, UserProfileData } from '@/services/api/knowledge'
 import {
@@ -43,35 +44,42 @@ async function loadDocuments() {
   }
 }
 
-function handleUpload(file: File) {
+function beforeUpload(file: File) {
+  void doUpload(file)
+  return false
+}
+
+async function doUpload(file: File) {
   const validation = validateRagUploadFile(file)
   if (!validation.valid) {
     message.warning(validation.error || '文件校验失败')
-    return false
+    return
+  }
+
+  if (uploading.value) {
+    message.warning('当前已有文档上传中')
+    return
   }
 
   uploading.value = true
   const item = createRagUploadItem(file, '__global__')
   uploadItems.value = [item, ...uploadItems.value].slice(0, 3)
 
-  knowledgeService.uploadGlobalDocument(file)
-    .then(result => {
-      uploadItems.value = uploadItems.value.map(i =>
-        i.id === item.id ? completeRagUploadItem(i, { ...result, sessionId: '__global__' }) : i,
-      )
-      message.success(`${file.name} 上传成功，已切 ${result.chunks} 块`)
-      loadDocuments()
-    })
-    .catch((error: unknown) => {
-      uploadItems.value = uploadItems.value.map(i =>
-        i.id === item.id ? failRagUploadItem(i, error) : i,
-      )
-      message.error(`上传失败：${(error as Error)?.message || '未知错误'}`)
-    })
-    .finally(() => {
-      uploading.value = false
-    })
-  return false
+  try {
+    const result = await knowledgeService.uploadGlobalDocument(file)
+    uploadItems.value = uploadItems.value.map(i =>
+      i.id === item.id ? completeRagUploadItem(i, { ...result, sessionId: '__global__' }) : i,
+    )
+    message.success(`${file.name} 上传成功，已切 ${result.chunks} 块`)
+    await loadDocuments()
+  } catch (error: unknown) {
+    uploadItems.value = uploadItems.value.map(i =>
+      i.id === item.id ? failRagUploadItem(i, error) : i,
+    )
+    message.error(`上传失败：${(error as Error)?.message || '未知错误'}`)
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function deleteDocument(id: string, fileName: string) {
@@ -82,6 +90,19 @@ async function deleteDocument(id: string, fileName: string) {
   } catch (error: unknown) {
     message.error(`删除失败：${(error as Error)?.message || '未知错误'}`)
   }
+}
+
+function confirmDelete(id: string, fileName: string) {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定删除文档「${fileName}」？此操作不可撤销。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk() {
+      return deleteDocument(id, fileName)
+    },
+  })
 }
 
 function formatTime(value: string) {
@@ -208,7 +229,7 @@ onMounted(() => {
         <div class="section-header">
           <span><DatabaseOutlined /> 全局知识库</span>
           <a-upload
-            :before-upload="handleUpload"
+            :before-upload="beforeUpload"
             :show-upload-list="false"
             :disabled="uploading"
           >
@@ -259,16 +280,9 @@ onMounted(() => {
               <a-tag color="blue" size="small">{{ doc.chunks }} 块</a-tag>
               <span class="doc-time">{{ formatTime(doc.uploadedAt) }}</span>
             </div>
-            <a-popconfirm
-              :title="`确定删除 ${doc.fileName}？`"
-              ok-text="删除"
-              cancel-text="取消"
-              @confirm="deleteDocument(doc.id, doc.fileName)"
-            >
-              <a-button size="small" type="text" danger>
-                <DeleteOutlined />
-              </a-button>
-            </a-popconfirm>
+            <a-button size="small" type="text" danger @click="confirmDelete(doc.id, doc.fileName)">
+              <DeleteOutlined />
+            </a-button>
           </div>
         </div>
       </a-spin>

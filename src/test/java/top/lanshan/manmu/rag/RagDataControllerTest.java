@@ -15,9 +15,14 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.util.MultiValueMap;
 import org.springframework.http.client.MultipartBodyBuilder;
 
+import org.reactivestreams.Publisher;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,7 +41,8 @@ class RagDataControllerTest {
     @Test
     void uploadIngestsNonEmptyFileWithBoundSession() {
         RecordingIngestionService ingestionService = new RecordingIngestionService();
-        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService)).build();
+        StubRagDocumentRepository documentRepository = new StubRagDocumentRepository();
+        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService, documentRepository)).build();
 
         client.post()
             .uri("/api/rag/upload")
@@ -64,7 +70,8 @@ class RagDataControllerTest {
     @Test
     void uploadRejectsEmptyFile() {
         RecordingIngestionService ingestionService = new RecordingIngestionService();
-        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService)).build();
+        StubRagDocumentRepository documentRepository = new StubRagDocumentRepository();
+        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService, documentRepository)).build();
 
         client.post()
             .uri("/api/rag/upload")
@@ -85,7 +92,8 @@ class RagDataControllerTest {
     @Test
     void uploadRejectsMissingFilePartWithClearError() {
         RecordingIngestionService ingestionService = new RecordingIngestionService();
-        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService)).build();
+        StubRagDocumentRepository documentRepository = new StubRagDocumentRepository();
+        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService, documentRepository)).build();
         MultipartBodyBuilder builder = new MultipartBodyBuilder();
         builder.part("session_id", "session-1");
 
@@ -108,7 +116,8 @@ class RagDataControllerTest {
     @Test
     void uploadRejectsOversizedFile() {
         RecordingIngestionService ingestionService = new RecordingIngestionService();
-        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService)).build();
+        StubRagDocumentRepository documentRepository = new StubRagDocumentRepository();
+        WebTestClient client = WebTestClient.bindToController(new RagDataController(ingestionService, documentRepository)).build();
 
         client.post()
             .uri("/api/rag/upload")
@@ -202,6 +211,111 @@ class RagDataControllerTest {
 
         @Override
         public void delete(Filter.Expression filterExpression) {
+        }
+    }
+
+    static class StubRagDocumentRepository implements RagDocumentRepository {
+        final List<RagDocumentEntity> savedDocuments = new ArrayList<>();
+
+        @Override
+        public <S extends RagDocumentEntity> S save(S entity) {
+            savedDocuments.add(entity);
+            return entity;
+        }
+
+        @Override
+        public <S extends RagDocumentEntity> Flux<S> saveAll(Iterable<S> entities) {
+            return Flux.fromIterable(entities).doOnNext(this::save);
+        }
+
+        @Override
+        public Mono<RagDocumentEntity> findById(UUID id) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Boolean> existsById(UUID id) {
+            return Mono.just(false);
+        }
+
+        @Override
+        public Flux<RagDocumentEntity> findAll() {
+            return Flux.fromIterable(savedDocuments);
+        }
+
+        @Override
+        public Flux<RagDocumentEntity> findAllById(Iterable<UUID> ids) {
+            return Flux.empty();
+        }
+
+        @Override
+        public Mono<Long> count() {
+            return Mono.just((long) savedDocuments.size());
+        }
+
+        @Override
+        public Mono<Void> deleteById(UUID id) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> deleteById(Mono<UUID> id) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> delete(RagDocumentEntity entity) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> deleteAllById(Iterable<? extends UUID> ids) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> deleteAll(Iterable<? extends RagDocumentEntity> entities) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> deleteAll(Publisher<? extends RagDocumentEntity> entityStream) {
+            return Mono.empty();
+        }
+
+        @Override
+        public Mono<Void> deleteAll() {
+            savedDocuments.clear();
+            return Mono.empty();
+        }
+
+        @Override
+        public <S extends RagDocumentEntity> Mono<S> saveAndFlush(S entity) {
+            return save(entity);
+        }
+
+        @Override
+        public Flux<RagDocumentEntity> findByScopeOrderByUploadedAtDesc(String scope) {
+            return Flux.fromIterable(savedDocuments).filter(d -> scope.equals(d.getScope()));
+        }
+
+        @Override
+        public Flux<RagDocumentEntity> findByScopeOrderByUploadedAtDesc(String scope, int limit) {
+            return findByScopeOrderByUploadedAtDesc(scope).take(limit);
+        }
+
+        @Override
+        public Mono<RagDocumentEntity> findByIdAndScope(UUID id, String scope) {
+            return Mono.fromIterable(savedDocuments)
+                .filter(d -> id.equals(d.getId()) && scope.equals(d.getScope()))
+                .next();
+        }
+
+        @Override
+        public Mono<Integer> deleteByIdAndScope(UUID id, String scope) {
+            int before = savedDocuments.size();
+            savedDocuments.removeIf(d -> id.equals(d.getId()) && scope.equals(d.getScope()));
+            return Mono.just(before - savedDocuments.size());
         }
     }
 

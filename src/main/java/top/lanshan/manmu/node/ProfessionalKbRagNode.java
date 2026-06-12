@@ -10,6 +10,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
+import top.lanshan.manmu.modelprovider.ModelProviderRegistry;
 import top.lanshan.manmu.rag.RagRetriever;
 
 import java.io.IOException;
@@ -24,14 +25,14 @@ public class ProfessionalKbRagNode implements ResearchNode {
 
     private final RagRetriever retriever;
 
-    private final ChatClient ragAgent;
+    private final ModelProviderRegistry modelProviderRegistry;
 
     private final String ragPromptTemplate;
 
-    public ProfessionalKbRagNode(RagRetriever retriever, ChatClient.Builder chatClientBuilder,
+    public ProfessionalKbRagNode(RagRetriever retriever, ModelProviderRegistry modelProviderRegistry,
             ResourceLoader resourceLoader) {
         this.retriever = retriever;
-        this.ragAgent = chatClientBuilder.build();
+        this.modelProviderRegistry = modelProviderRegistry;
         this.ragPromptTemplate = loadPrompt(resourceLoader);
     }
 
@@ -77,6 +78,9 @@ public class ProfessionalKbRagNode implements ResearchNode {
             String prompt = ragPromptTemplate
                 .replace("{context}", context)
                 .replace("{question}", query);
+
+            // 每次调用时获取最新的 ChatClient，支持动态切换模型
+            ChatClient ragAgent = modelProviderRegistry.getChatClientBuilder().build();
 
             return Mono.fromCallable(() -> ragAgent.prompt().user(prompt).call().content())
                 .flatMapMany(ragContent -> {

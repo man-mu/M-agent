@@ -10,6 +10,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
+import top.lanshan.manmu.modelprovider.ModelProviderRegistry;
 import top.lanshan.manmu.rag.RagRetriever;
 
 import java.io.IOException;
@@ -21,19 +22,19 @@ public class UserFileRagNode implements ResearchNode {
 
 	private static final Logger logger = LoggerFactory.getLogger(UserFileRagNode.class);
 
-	private static final String DISPLAY_TITLE = "\u8bfb\u53d6\u4e0a\u4f20\u8d44\u6599";
+	private static final String DISPLAY_TITLE = "读取上传资料";
 
 	private static final String NO_CONTEXT_PAYLOAD = "No user-upload RAG context was retrieved.";
 
 	private final RagRetriever retriever;
 
-	private final ChatClient ragAgent;
+	private final ModelProviderRegistry modelProviderRegistry;
 
 	private final String ragPromptTemplate;
 
-	public UserFileRagNode(RagRetriever retriever, ChatClient.Builder chatClientBuilder, ResourceLoader resourceLoader) {
+	public UserFileRagNode(RagRetriever retriever, ModelProviderRegistry modelProviderRegistry, ResourceLoader resourceLoader) {
 		this.retriever = retriever;
-		this.ragAgent = chatClientBuilder.build();
+		this.modelProviderRegistry = modelProviderRegistry;
 		this.ragPromptTemplate = loadPrompt(resourceLoader);
 	}
 
@@ -83,6 +84,9 @@ public class UserFileRagNode implements ResearchNode {
 
 			String context = retriever.buildContext(documents);
 			String prompt = ragPromptTemplate.replace("{context}", context).replace("{question}", query);
+
+			// 每次调用时获取最新的 ChatClient，支持动态切换模型
+			ChatClient ragAgent = modelProviderRegistry.getChatClientBuilder().build();
 
 			return Mono.fromCallable(() -> ragAgent.prompt().user(prompt).call().content()).flatMapMany(ragContent -> {
 				state.addObservation("[RAG] " + ragContent);

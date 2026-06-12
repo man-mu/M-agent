@@ -82,7 +82,25 @@ public class RagDataController {
                             return file.filename();
                         }
                     };
-                    int chunks = ingestionService.ingest(resource, finalSessionId, finalUserId, finalScope);
+                    int chunks;
+                    try {
+                        chunks = ingestionService.ingest(resource, finalSessionId, finalUserId, finalScope);
+                    } catch (Exception e) {
+                        String errorMsg = e.getMessage();
+                        if (errorMsg == null || errorMsg.isBlank()) {
+                            errorMsg = e.getClass().getSimpleName();
+                        }
+                        // 检测 embedding 超时或网络错误
+                        if (errorMsg.contains("timeout") || errorMsg.contains("Timeout")
+                                || errorMsg.contains("I/O error") || errorMsg.contains("ReadTimeout")) {
+                            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                                .body(ReportResponse.<Map<String, Object>>error(finalSessionId,
+                                        "Embedding 服务超时，请稍后重试"));
+                        }
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(ReportResponse.<Map<String, Object>>error(finalSessionId,
+                                    "文档处理失败：" + errorMsg));
+                    }
 
                     // 写入文档元数据表
                     RagDocumentEntity doc = new RagDocumentEntity();

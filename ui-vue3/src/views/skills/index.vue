@@ -465,9 +465,9 @@ async function importPackageFile(file: File, packageType: ImportPackageType) {
     // 避免触发全量 health 检查，直接追加到本地列表
     const existing = skills.value.findIndex(s => s.name === result.name)
     if (existing >= 0) {
-      skills.value[existing] = { ...skills.value[existing], ...result }
+      skills.value[existing] = { ...skills.value[existing], ...result } as any
     } else {
-      skills.value.push(result)
+      skills.value.push(result as any)
     }
     message.success(`${packageType === 'JAR' ? 'Jar' : 'Prompt'} Skill 包已导入：${result.name}`)
     activeTab.value = 'market'

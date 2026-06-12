@@ -32,7 +32,7 @@ public class RagNodeConfiguration {
     UserFileRagNode userFileRagNode(RagRetriever ragRetriever,
             ModelProviderRegistry modelProviderRegistry) {
         return new UserFileRagNode(ragRetriever,
-                modelProviderRegistry.getChatClientBuilder(),
+                modelProviderRegistry,
                 new DefaultResourceLoader());
     }
 
@@ -47,7 +47,7 @@ public class RagNodeConfiguration {
     ProfessionalKbRagNode professionalKbRagNode(RagRetriever ragRetriever,
             ModelProviderRegistry modelProviderRegistry) {
         return new ProfessionalKbRagNode(ragRetriever,
-                modelProviderRegistry.getChatClientBuilder(),
+                modelProviderRegistry,
                 new DefaultResourceLoader());
     }
 
