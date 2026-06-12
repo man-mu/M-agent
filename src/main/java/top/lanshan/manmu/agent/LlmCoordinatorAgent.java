@@ -89,8 +89,29 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 			if (!allowsDirectAnswerFallback(query, deepResearchEnabled)) {
 				throw ex;
 			}
-			return directAnswerResponse(modelOutput);
+			return extractDirectAnswerFromJson(candidate)
+				.or(() -> extractDirectAnswerFromJson(modelOutput))
+				.map(answer -> new CoordinatorResponse(CoordinatorRoute.DIRECT_ANSWER, answer,
+						"BeanOutputConverter failed, extracted direct_answer from JSON fallback."))
+				.orElse(directAnswerResponse(modelOutput));
 		}
+	}
+
+	private java.util.Optional<String> extractDirectAnswerFromJson(String text) {
+		if (text == null || text.isBlank()) {
+			return java.util.Optional.empty();
+		}
+		try {
+			com.fasterxml.jackson.databind.JsonNode node =
+					new com.fasterxml.jackson.databind.ObjectMapper().readTree(text);
+			com.fasterxml.jackson.databind.JsonNode answer = node.get("direct_answer");
+			if (answer != null && answer.isTextual() && !answer.asText().isBlank()) {
+				return java.util.Optional.of(answer.asText());
+			}
+		}
+		catch (Exception ignored) {
+		}
+		return java.util.Optional.empty();
 	}
 
 	private boolean allowsDirectAnswerFallback(String query, boolean deepResearchEnabled) {
@@ -114,14 +135,19 @@ public class LlmCoordinatorAgent implements CoordinatorAgent {
 		String trimmed = modelOutput.strip();
 		Matcher fenced = FENCED_JSON.matcher(trimmed);
 		if (fenced.find()) {
-			return fenced.group(1).strip();
+			return sanitizeJson(fenced.group(1).strip());
 		}
 		int start = trimmed.indexOf('{');
 		int end = trimmed.lastIndexOf('}');
 		if (start >= 0 && end > start) {
-			return trimmed.substring(start, end + 1);
+			return sanitizeJson(trimmed.substring(start, end + 1));
 		}
 		return trimmed;
+	}
+
+	private String sanitizeJson(String json) {
+		// LLMs commonly emit trailing commas before } or ] — Jackson rejects them
+		return json.replaceAll(",\\s*([}\\]])", "$1");
 	}
 
 }
