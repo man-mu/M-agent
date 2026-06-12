@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# 本地配置
+.local
+.claude
+.codex
+
+# 构建产物
+target
+node_modules
+ui-vue3/node_modules
+ui-vue3/dist
+tools/*/node_modules
+tools/*/dist
+
+# 文档
+docs
+*.md
+!README.md
+
+# Docker
+docker-compose.yml
+Dockerfile
+*.dockerfile
+.dockerignore
+
+# 环境变量
+.env
+.env.*
+!.env.docker.example

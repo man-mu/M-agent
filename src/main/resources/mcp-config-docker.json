@@ -1,0 +1,42 @@
+{
+    "mcp-servers": [
+        {
+            "id": "mcp-amap",
+            "url": "https://mcp.amap.com",
+            "sse-endpoint": "/sse",
+            "description": "高德地图 MCP - 天气、地址解析、POI 搜索、路线规划和距离测量",
+            "enabled": true,
+            "api-key": "${AMAP_MAPS_API_KEY}",
+            "allowed-tools": [
+                "maps_weather",
+                "maps_geo",
+                "maps_regeo",
+                "maps_text_search",
+                "maps_around_search",
+                "maps_ip_location",
+                "maps_direction_driving",
+                "maps_direction_walking",
+                "maps_direction_bicycling",
+                "maps_distance"
+            ]
+        },
+        {
+            "id": "mcp-qweather",
+            "url": "http://qweather-mcp:18090",
+            "sse-endpoint": "/sse",
+            "description": "本地和风天气 MCP - 查询城市实时天气",
+            "enabled": true,
+            "allowed-tools": [
+                "weather_now"
+            ]
+        },
+        {
+            "id": "mcp-howtocook",
+            "url": "https://mcp.api-inference.modelscope.net",
+            "sse-endpoint": "/d78c2d988ad14b/mcp",
+            "description": "ModelScope 菜谱 MCP - Streamable HTTP 示例",
+            "type": "streamable_http",
+            "enabled": true
+        }
+    ]
+}

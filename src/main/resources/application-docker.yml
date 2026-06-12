@@ -1,0 +1,21 @@
+# Docker 环境配置
+spring:
+  datasource:
+    url: ${MVP_POSTGRES_JDBC_URL:jdbc:postgresql://postgres:5432/manmu}
+    username: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+    driver-class-name: org.postgresql.Driver
+  r2dbc:
+    url: ${MVP_POSTGRES_R2DBC_URL:r2dbc:postgresql://postgres:5432/manmu}
+    username: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+  flyway:
+    url: ${MVP_POSTGRES_JDBC_URL:jdbc:postgresql://postgres:5432/manmu}
+    user: ${MVP_POSTGRES_USER:manmu}
+    password: ${MVP_POSTGRES_PASSWORD:manmu}
+    locations: classpath:db/migration
+
+# MCP 配置使用 Docker 服务名
+mvp:
+  mcp:
+    config-path: classpath:mcp-config-docker.json
