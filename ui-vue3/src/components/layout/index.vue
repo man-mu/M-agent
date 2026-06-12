@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import {
+  DatabaseOutlined,
   DeleteOutlined,
   EnvironmentOutlined,
   MessageOutlined,
@@ -27,6 +28,7 @@ const currentMode = computed(() => {
   if (route.path.startsWith('/skills')) return 'skills'
   if (route.path.startsWith('/mcp')) return 'mcp'
   if (route.path.startsWith('/settings')) return 'settings'
+  if (route.path.startsWith('/knowledge')) return 'knowledge'
   return 'chat'
 })
 
@@ -42,6 +44,10 @@ const navItems = computed(() => {
     const modelIndex = items.findIndex(item => item.value === 'settings')
     items.splice(modelIndex, 0, { value: 'mcp', label: 'MCP 工具', icon: EnvironmentOutlined })
   }
+  if (capabilities.value.ragEnabled) {
+    const modelIndex = items.findIndex(item => item.value === 'settings')
+    items.splice(modelIndex, 0, { value: 'knowledge', label: '知识库', icon: DatabaseOutlined })
+  }
   return items
 })
 
@@ -51,6 +57,8 @@ function switchMode(mode: string) {
   } else if (mode === 'skills' && !capabilities.value.skillEnabled) {
     router.push('/chat')
   } else if (mode === 'mcp' && !capabilities.value.mcpEnabled) {
+    router.push('/chat')
+  } else if (mode === 'knowledge' && !capabilities.value.ragEnabled) {
     router.push('/chat')
   } else {
     router.push(`/${mode}`)

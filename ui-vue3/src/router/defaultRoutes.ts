@@ -34,6 +34,12 @@ export const routes: Readonly<RouteRecordType[]> = [
         meta: { icon: 'mcp', fullscreen: true },
       },
       {
+        path: '/knowledge',
+        name: 'knowledge',
+        component: () => import('../views/knowledge/index.vue'),
+        meta: { icon: 'knowledge', fullscreen: true },
+      },
+      {
         path: '/settings',
         name: 'settings',
         component: () => import('../views/settings/index.vue'),
