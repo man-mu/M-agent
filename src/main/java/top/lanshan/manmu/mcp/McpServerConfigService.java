@@ -182,6 +182,9 @@ public class McpServerConfigService {
         copy.setDescription(source.getDescription());
         copy.setEnabled(source.isEnabled());
         copy.setAllowedTools(normalizeTools(source.getAllowedTools()));
+        copy.setHeaders(source.getHeaders() != null
+                ? new LinkedHashMap<>(source.getHeaders()) : new LinkedHashMap<>());
+        copy.setApiKey(source.getApiKey());
         return copy;
     }
 
@@ -201,6 +204,12 @@ public class McpServerConfigService {
         server.setUrl(url);
         server.setSseEndpoint(normalizeEndpoint(server.getSseEndpoint()));
         requireNoInlineSecret(server.getSseEndpoint());
+        if (server.getHeaders() != null) {
+            server.getHeaders().values().forEach(McpServerConfigService::requireNoInlineSecret);
+        }
+        if (server.getApiKey() != null) {
+            requireNoInlineSecret(server.getApiKey());
+        }
         server.setDescription(blankToNull(server.getDescription()));
         server.setAllowedTools(normalizeTools(server.getAllowedTools()));
         if (server.getId() != null && !server.getId().isBlank()) {
@@ -248,6 +257,9 @@ public class McpServerConfigService {
         copy.setDescription(source.getDescription());
         copy.setEnabled(source.isEnabled());
         copy.setAllowedTools(normalizeTools(source.getAllowedTools()));
+        copy.setHeaders(source.getHeaders() != null
+                ? new LinkedHashMap<>(source.getHeaders()) : new LinkedHashMap<>());
+        copy.setApiKey(source.getApiKey());
         copy.setSource(sourceType);
         copy.setLocalOverride(localOverride);
         copy.setEditable(true);
@@ -310,7 +322,7 @@ public class McpServerConfigService {
         }
     }
 
-    private void requireNoInlineSecret(String value) {
+    private static void requireNoInlineSecret(String value) {
         if (value == null || value.isBlank()) {
             return;
         }
