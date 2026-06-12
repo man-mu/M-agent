@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
 @Component
 public class LlmCoordinatorAgent implements CoordinatorAgent {
 
-	private static final Pattern FENCED_JSON = Pattern.compile("(?s)```(?:json)?\\s*(\\{.*?})\\s*```");
+	private static final Pattern FENCED_JSON = Pattern.compile("(?s)```(?:json)?\\s*(\\{.*)\\s*```");
 
 	private final AgentClient agentClient;
 
