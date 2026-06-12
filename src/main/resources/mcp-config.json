@@ -3,9 +3,10 @@
         {
             "id": "mcp-amap",
             "url": "https://mcp.amap.com",
-            "sse-endpoint": "/sse?key=${AMAP_MAPS_API_KEY}",
+            "sse-endpoint": "/sse",
             "description": "高德地图 MCP - 天气、地址解析、POI 搜索、路线规划和距离测量",
             "enabled": true,
+            "api-key": "${AMAP_MAPS_API_KEY}",
             "allowed-tools": [
                 "maps_weather",
                 "maps_geo",
