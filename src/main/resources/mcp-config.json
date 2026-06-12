@@ -24,8 +24,8 @@
             "id": "mcp-qweather",
             "url": "http://127.0.0.1:18090",
             "sse-endpoint": "/sse",
-            "description": "本地和风天气 MCP - 查询城市实时天气",
-            "enabled": true,
+            "description": "本地和风天气 MCP - 查询城市实时天气（本地服务未运行，已禁用）",
+            "enabled": false,
             "allowed-tools": [
                 "weather_now"
             ]
