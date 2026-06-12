@@ -6,6 +6,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,6 +42,34 @@ public class RagRetriever {
                 results.size(), filtered.size(), similarityThreshold, topK,
                 query.length() > 100 ? query.substring(0, 100) + "..." : query);
         return filtered;
+    }
+
+    public List<Document> retrieveWithGlobal(String query, String sessionId) {
+        // 查询全局文档
+        Map<String, Object> globalFilters = Map.of("scope", "global");
+        List<Document> globalDocs = retrieve(query, globalFilters);
+
+        // 查询会话级文档
+        List<Document> sessionDocs = List.of();
+        if (sessionId != null && !sessionId.isBlank()) {
+            Map<String, Object> sessionFilters = Map.of("scope", "session", "session_id", sessionId);
+            sessionDocs = retrieve(query, sessionFilters);
+        }
+
+        // 合并去重（按文本内容去重），全局文档优先
+        Map<String, Document> merged = new LinkedHashMap<>();
+        for (Document doc : globalDocs) {
+            merged.putIfAbsent(doc.getText(), doc);
+        }
+        for (Document doc : sessionDocs) {
+            merged.putIfAbsent(doc.getText(), doc);
+        }
+
+        List<Document> result = merged.values().stream().toList();
+        logger.info("retrieveWithGlobal: global={}, session={}, merged={} for query: {}",
+                globalDocs.size(), sessionDocs.size(), result.size(),
+                query.length() > 80 ? query.substring(0, 80) + "..." : query);
+        return result;
     }
 
     public String buildContext(List<Document> documents) {

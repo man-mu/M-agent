@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 public class UserFileRagNode implements ResearchNode {
 
@@ -76,8 +75,7 @@ public class UserFileRagNode implements ResearchNode {
 			logger.info("UserFileRagNode retrieving for session={}, query={}", sessionId,
 					query.length() > 80 ? query.substring(0, 80) + "..." : query);
 
-			Map<String, Object> filters = Map.of("source_type", "user_upload", "session_id", sessionId);
-			List<Document> documents = retriever.retrieve(query, filters);
+			List<Document> documents = retriever.retrieveWithGlobal(query, sessionId);
 			if (documents.isEmpty()) {
 				return Flux.just(event(state, "completed", "completed",
 						"No user-upload RAG context matched this query", NO_CONTEXT_PAYLOAD));
