@@ -29,20 +29,58 @@ M-Agent 是一个**完整可用的 DeepResearch 风格 AI Agent 工作流引擎*
 
 ## 架构图
 
-### 请求接收层
+### 整体架构
 
 ```mermaid
 flowchart LR
-  User["用户 / 浏览器"] -->|HTTP / SSE| Netty["Netty<br/>EventLoop 非阻塞 I/O<br/>TCP 连接管理 / HTTP 编解码"]
-  Netty --> WebFlux["Spring WebFlux<br/>DispatcherHandler 路由<br/>Flux → SSE 自动编码"]
-  WebFlux --> Controller["Controller 层<br/>ResearchController / ChatController<br/>参数校验 → 委托 Runner"]
-  Controller --> Runner["GraphResearchRunner<br/>图执行编排 / 事件收集 / 生命周期管理"]
-  Runner -->|Flux 事件流| WebFlux
-  WebFlux -->|SSE 推送| Netty
-  Netty -->|TCP 长连接| User
+  subgraph 请求接收层
+    User["用户 / 浏览器"] -->|HTTP / SSE| Netty["Netty<br/>EventLoop 非阻塞 I/O"]
+    Netty --> WebFlux["Spring WebFlux<br/>Flux → SSE 自动编码"]
+    WebFlux --> Controller["Controller 层<br/>ChatController / ResearchController<br/>@Valid 参数校验 → 委托 Runner"]
+    Controller --> Runner["GraphResearchRunner<br/>图执行编排 / 事件收集 / 生命周期"]
+    Runner -->|Flux&lt;ResearchEvent&gt;| WebFlux
+    WebFlux -->|SSE 推送| Netty
+    Netty -->|TCP 长连接| User
+  end
 
-  Runner --> R2DBC["Spring Data R2DBC<br/>ReactiveCrudRepository<br/>Mono / Flux 异步非阻塞"]
-  R2DBC --> Pg[("PostgreSQL<br/>pgvector 向量存储")]
+  subgraph 前端
+    UI["Vue 控制台<br/>/chat /skills /mcp /knowledge /settings"]
+  end
+
+  User --> UI
+  UI -->|"/chat/stream"| Controller
+  UI -->|"/api/* 管理接口"| AdminApi["Admin API<br/>/api/model /api/skills /api/mcp"]
+
+  subgraph Agent 编排层
+    Runner --> Graph["Spring AI Alibaba Graph"]
+    Graph --> Coordinator["Coordinator"]
+    Graph --> Planner["Planner"]
+    Graph --> Team["Research Team"]
+    Team --> Executor["Parallel Executor"]
+    Executor --> Researcher["Researcher / Coder"]
+    Researcher --> Reporter["Reporter"]
+  end
+
+  subgraph 模型与工具层
+    Coordinator --> ModelRouter["RoutingChatModel"]
+    Planner --> ModelRouter
+    Researcher --> ModelRouter
+    Reporter --> ModelRouter
+    ModelRouter --> Providers["模型供应商<br/>DashScope / DeepSeek / OpenAI-compatible"]
+
+    Researcher --> SkillTools["Skill ToolProvider"]
+    SkillTools --> SkillMarket["Skill 市场<br/>Prompt Skill / Jar Skill"]
+    Researcher --> McpTools["MCP ToolProvider"]
+    McpTools --> McpServers["MCP Servers<br/>qweather / bazi / howtocook"]
+  end
+
+  subgraph 持久化层
+    Runner --> R2DBC["Spring Data R2DBC<br/>Mono / Flux 异步非阻塞"]
+    R2DBC --> Pg[("PostgreSQL + pgvector")]
+    Pg --> Reports["报告 / 会话历史 / 事件历史"]
+    Pg --> Memory["短期对话窗口 / 用户画像"]
+    Pg --> RagDocs["全局知识库向量"]
+  end
 ```
 
 **请求接收层核心机制**：
@@ -54,40 +92,6 @@ flowchart LR
 | **Controller** | 参数校验（`@Valid`）、委托 Runner、包装 ServerSentEvent | 无业务逻辑，纯路由层 |
 | **GraphResearchRunner** | 图执行编排、事件收集为 Flux、R2DBC 持久化时机控制 | 整条链路返回 `Flux<ResearchEvent>`，WebFlux 自动订阅推送 |
 | **R2DBC** | 非阻塞数据库访问，`save()` 返回 `Mono` 不阻塞线程 | 等待数据库响应期间线程可服务其他请求 |
-
-### 整体架构
-
-```mermaid
-flowchart LR
-  User["用户 / 浏览器"] --> UI["Vue 控制台<br/>/chat /skills /mcp /knowledge /settings"]
-  UI --> ChatApi["Chat SSE API<br/>/chat/stream"]
-  UI --> AdminApi["管理 API<br/>/api/model /api/skills /api/mcp"]
-
-  ChatApi --> Runner["GraphResearchRunner"]
-  Runner --> Graph["Spring AI Alibaba Graph"]
-  Graph --> Coordinator["Coordinator"]
-  Graph --> Planner["Planner"]
-  Graph --> Team["Research Team"]
-  Team --> Executor["Parallel Executor"]
-  Executor --> Researcher["Researcher / Coder"]
-  Researcher --> Reporter["Reporter"]
-
-  Coordinator --> ModelRouter["RoutingChatModel"]
-  Planner --> ModelRouter
-  Researcher --> ModelRouter
-  Reporter --> ModelRouter
-  ModelRouter --> Providers["模型供应商<br/>DashScope / DeepSeek / OpenAI-compatible"]
-
-  Researcher --> SkillTools["Skill ToolProvider"]
-  SkillTools --> SkillMarket["Skill 市场<br/>Prompt Skill / Jar Skill"]
-  Researcher --> McpTools["MCP ToolProvider"]
-  McpTools --> McpServers["MCP Servers<br/>local-qweather / amap / howtocook"]
-
-  Runner --> Pg["PostgreSQL + pgvector"]
-  Pg --> Reports["报告 / 会话历史 / 事件历史"]
-  Pg --> Memory["短期对话窗口 / 用户画像"]
-  Pg --> RagDocs["全局知识库向量"]
-```
 
 ## Agent 工作流
 
