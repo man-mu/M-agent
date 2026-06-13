@@ -93,27 +93,6 @@ flowchart LR
 | **GraphResearchRunner** | 图执行编排、事件收集为 Flux、R2DBC 持久化时机控制 | 整条链路返回 `Flux<ResearchEvent>`，WebFlux 自动订阅推送 |
 | **R2DBC** | 非阻塞数据库访问，`save()` 返回 `Mono` 不阻塞线程 | 等待数据库响应期间线程可服务其他请求 |
 
-## Agent 工作流
-
-```mermaid
-flowchart TD
-  Start["收到用户问题"] --> Coordinator["Coordinator<br/>判断快速回答或深度研究"]
-  Coordinator -->|快速回答| Done["直接输出"]
-  Coordinator -->|深度研究| Rewrite["Query Rewrite"]
-  Rewrite --> Background["Background Investigator<br/>可触发真实搜索"]
-  Background --> Planner["Planner<br/>生成研究计划"]
-  Planner --> Validator["Plan Validator"]
-  Validator -->|需要修改| Planner
-  Validator -->|可执行| Info["Information / 上下文整理"]
-  Info --> Team["Research Team<br/>分配待执行步骤"]
-  Team --> Executor["Parallel Executor<br/>分发给 researcher_n / coder_n"]
-  Executor --> Researcher["Researcher / Coder<br/>执行步骤并调用 Skill/MCP"]
-  Researcher --> Team
-  Team -->|全部完成| Reporter["Reporter<br/>汇总报告"]
-  Reporter --> Persist["保存报告与历史"]
-  Persist --> Done
-```
-
 # LLM 大脑
 
 LLM 是整个 Agent 系统的中枢，负责理解用户意图、进行逻辑推理、生成行动计划、解读工具返回结果。M-Agent 通过 `RoutingChatModel` 接入多个模型供应商（DeepSeek、DashScope、MiniMax、Moonshot、智谱），并在此基础上构建了重试与自动降级机制保障可用性。
@@ -145,18 +124,6 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 重试机制解决的是同一供应商的临时故障，但当整个供应商不可用时（持续 503、Key 失效、服务下线），需要自动切换到备用模型。M-Agent 通过配置化的 **FallbackChain** 实现多模型自动降级。
 
-**降级链配置**（`model-providers.json`）：
-
-```json
-{
-  "fallbackChain": [
-    { "providerId": "deepseek",  "model": "deepseek-chat",   "priority": 1 },
-    { "providerId": "dashscope", "model": "qwen-plus",       "priority": 2 },
-    { "providerId": "minimax",   "model": "MiniMax-Text-01", "priority": 3 }
-  ]
-}
-```
-
 **执行流程**：
 
 ```
@@ -177,6 +144,45 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 | **前端感知** | `/api/model/current` 接口暴露 `fallbackStatus` 字段，前端可提示"当前使用备用模型" |
 
 整个机制在 `SpringAiAgentClient` 内部实现，`RoutingChatModel` 接口不变，对所有 Agent 调用方透明。降级确实会带来质量下降，但"质量稍差的回答"远好过"完全不可用"。
+
+## 语义缓存
+
+传统缓存按字符串精确匹配，但用户的同一意图可以有无数种表述方式。M-Agent 基于 Spring AI 的 `SemanticCache` 抽象实现**语义级缓存**——将用户查询转化为向量，通过余弦相似度匹配历史命中，相似度超过阈值直接返回缓存结果，跳过 LLM 调用。
+
+**工作原理**：
+
+```
+用户: "北京今天天气怎么样"
+  → Embedding → 向量 → pgvector 存储 → LLM 调用 → 缓存响应
+
+用户: "查一下首都的天气"  （语义相似，表述不同）
+  → Embedding → 向量 → pgvector 相似度检索 → 命中 0.92 > 阈值 0.85
+  → 直接返回缓存响应，跳过 LLM 调用
+```
+
+**技术实现**：
+
+| 组件 | 说明 |
+|------|------|
+| `SemanticCache` 接口 | Spring AI 标准抽象，`set(query, response)` / `get(query)` / `clear()` |
+| `PgVectorStore` 后端 | 复用项目已有的 pgvector + DashScope Embedding，无需引入 Redis |
+| `SemanticCacheAdvisor` | ChatClient Advisor，拦截 LLM 调用：先查缓存 → 命中则返回 → 未命中则调用 LLM 并写入缓存 |
+| 相似度阈值 | 可配置（默认 0.85），过高导致漏缓存，过低导致误命中 |
+| TTL 过期 | 缓存条目支持时效过期，避免返回过时结果 |
+
+**配置**（`application.yml`）：
+
+```yaml
+spring:
+  ai:
+    cache:
+      semantic:
+        enabled: true
+        similarity-threshold: 0.85
+        ttl: 30m
+```
+
+语义缓存对研究流程中的高频相似问题效果显著——同一会话内追问"再说详细点"、"换个角度分析"等变体表述可以直接命中缓存，节省大量 token 消耗和响应延迟。
 
 # 规划模块
 
@@ -344,7 +350,7 @@ prompt 中内嵌护栏指令——"Use this only to adapt explanation depth and 
 
 Spring AI 的 `PgVectorStore` 提供开箱即用的向量写入与余弦相似度查询。嵌入向量由 DashScope 统一生成——用户上传文档经 Tika 解析 → 分块 → 向量化 → 写入 pgvector，形成完整的非结构化数据到结构化语义索引的转换链路。
 
-## 快速开始（Docker 一键部署）
+# 快速开始（Docker 一键部署）
 
 ### 前置条件
 
