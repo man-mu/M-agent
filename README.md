@@ -114,17 +114,28 @@ flowchart TD
   Persist --> Done
 ```
 
-## Agent Team 协作
+## 模型调用重试机制
 
-研究工作流中的节点按角色分为三类，前端时间线按角色分组展示：
+LLM API 是整条链路中最不稳定的环节——限流（429）、服务不可用（503）、网络抖动、响应超时，任何一种都会直接中断研究流程。M-Agent 在 `SpringAiAgentClient` 的 LLM 调用层实现了**指数退避重试**，对调用方完全透明。
 
-| 角色 | 包含节点 | 职责 |
-|------|---------|------|
-| Planner | coordinator、planner、plan_validator、human_feedback | 理解需求、制定计划、确认计划 |
-| Executor | research_team、parallel_executor、researcher_N、coder_N、information、background_investigator | 分配任务、执行步骤、调用 Skill/MCP |
-| Reviewer | reporter | 汇总报告、检查遗漏 |
+**重试策略**：
 
-SSE 事件中的 `agent_role` 字段标识每个事件所属角色。前端时间线按角色分组、颜色区分：Planner（紫色）、Executor（蓝色）、Reviewer（绿色）。
+| 维度 | 设计 |
+|------|------|
+| **重试范围** | 仅对临时性故障重试：ReadTimeout、429 限流、503 服务不可用、ConnectException |
+| **最大重试次数** | 3 次（不含首次请求） |
+| **退避算法** | 指数退避 + 随机抖动：`base = 2^attempt × 1s`，`jitter = random(0, base/2)` |
+| **不重试的情况** | 4xx 客户端错误、模型输出格式问题（属于业务错误，重试无意义） |
+
+**退避时间线**：
+
+```
+第 1 次重试：等待 1.0s ~ 1.5s
+第 2 次重试：等待 2.0s ~ 3.0s
+第 3 次重试：等待 4.0s ~ 6.0s
+```
+
+随机抖动避免多个并发请求同时重试形成惊群效应。重试过程中记录 WARN 级别日志（重试次数、等待时长、异常类型），最终失败才向上抛出异常。整个机制对 `AgentClient` 接口签名零变更，`LlmResearcherAgent`、`LlmPlannerAgent` 等调用方无感知。
 
 ## 短期记忆
 
