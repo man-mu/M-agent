@@ -137,6 +137,43 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 随机抖动避免多个并发请求同时重试形成惊群效应。重试过程中记录 WARN 级别日志（重试次数、等待时长、异常类型），最终失败才向上抛出异常。整个机制对 `AgentClient` 接口签名零变更，`LlmResearcherAgent`、`LlmPlannerAgent` 等调用方无感知。
 
+## 多模型 Fallback 链
+
+重试机制解决的是同一供应商的临时故障，但当整个供应商不可用时（持续 503、Key 失效、服务下线），需要自动切换到备用模型。M-Agent 通过配置化的 **FallbackChain** 实现多模型自动降级。
+
+**降级链配置**（`model-providers.json`）：
+
+```json
+{
+  "fallbackChain": [
+    { "providerId": "deepseek",  "model": "deepseek-chat",   "priority": 1 },
+    { "providerId": "dashscope", "model": "qwen-plus",       "priority": 2 },
+    { "providerId": "minimax",   "model": "MiniMax-Text-01", "priority": 3 }
+  ]
+}
+```
+
+**执行流程**：
+
+```
+供应商 DeepSeek → 重试 3 次 → 全部失败
+  ↓ 自动切换（检查 API Key 可用性）
+供应商 DashScope → 重试 3 次 → 成功 → 返回结果
+```
+
+**设计要点**：
+
+| 维度 | 设计 |
+|------|------|
+| **切换条件** | 当前供应商重试全部耗尽后触发，429 限流优先等待而非立即切换 |
+| **Key 检查** | 切换前校验目标供应商的 API Key 是否存在，跳过无 Key 的供应商 |
+| **执行顺序** | 按 `priority` 升序，最低值为首选供应商 |
+| **最大总耗时** | 与任务总超时配合（2-5 分钟），避免无限重试切换 |
+| **日志** | 切换时记录 INFO 日志：原始供应商、切换原因、目标供应商 |
+| **前端感知** | `/api/model/current` 接口暴露 `fallbackStatus` 字段，前端可提示"当前使用备用模型" |
+
+整个机制在 `SpringAiAgentClient` 内部实现，`RoutingChatModel` 接口不变，对所有 Agent 调用方透明。降级确实会带来质量下降，但"质量稍差的回答"远好过"完全不可用"。
+
 ## 短期记忆
 
 采用**会话级滑动窗口**策略，以极简实现精准保留最近相关上下文，保证多轮交互的语义连贯性。
