@@ -137,42 +137,7 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 随机抖动避免多个并发请求同时重试形成惊群效应。重试过程中记录 WARN 级别日志（重试次数、等待时长、异常类型），最终失败才向上抛出异常。整个机制对 `AgentClient` 接口签名零变更，`LlmResearcherAgent`、`LlmPlannerAgent` 等调用方无感知。
 
-## 多模型 Fallback 链
 
-重试机制解决的是同一供应商的临时故障，但当整个供应商不可用时（持续 503、Key 失效、服务下线），需要自动切换到备用模型。M-Agent 通过配置化的 **FallbackChain** 实现多模型自动降级。
-
-**降级链配置**（`model-providers.json`）：
-
-```json
-{
-  "fallbackChain": [
-    { "providerId": "deepseek",  "model": "deepseek-chat",   "priority": 1 },
-    { "providerId": "dashscope", "model": "qwen-plus",       "priority": 2 },
-    { "providerId": "minimax",   "model": "MiniMax-Text-01", "priority": 3 }
-  ]
-}
-```
-
-**执行流程**：
-
-```
-供应商 DeepSeek → 重试 3 次 → 全部失败
-  ↓ 自动切换（检查 API Key 可用性）
-供应商 DashScope → 重试 3 次 → 成功 → 返回结果
-```
-
-**设计要点**：
-
-| 维度 | 设计 |
-|------|------|
-| **切换条件** | 当前供应商重试全部耗尽后触发，429 限流优先等待而非立即切换 |
-| **Key 检查** | 切换前校验目标供应商的 API Key 是否存在，跳过无 Key 的供应商 |
-| **执行顺序** | 按 `priority` 升序，最低值为首选供应商 |
-| **最大总耗时** | 与任务总超时配合（2-5 分钟），避免无限重试切换 |
-| **日志** | 切换时记录 INFO 日志：原始供应商、切换原因、目标供应商 |
-| **前端感知** | `/api/model/current` 接口暴露 `fallbackStatus` 字段，前端可提示"当前使用备用模型" |
-
-整个机制在 `SpringAiAgentClient` 内部实现，`RoutingChatModel` 接口不变，对所有 Agent 调用方透明。降级确实会带来质量下降，但"质量稍差的回答"远好过"完全不可用"。
 
 ## 短期记忆
 
@@ -184,9 +149,18 @@ prompt 中内嵌护栏指令——"Use this only to adapt explanation depth and 
 
 ## 长期记忆
 
-构建 **LLM 驱动的结构化用户画像引擎**，从对话流中自动提炼跨会话的用户特征，实现从"一次性问答"到"渐进式理解"的体验跃迁。
+采用 **Embedding 向量检索** 实现语义级长期记忆，将记忆的"存"和"取"统一为向量空间中的操作。
 
-`UserProfileService` 定期从最近消息中提取四维结构化画像：`profile_summary`（身份摘要）、`expertise_level`（专业水平）、`detail_preference`（详略偏好）、`style_preference`（内容风格）。提取结果经 Set 白名单校验后落入 `user_profiles` 表——非法枚举值静默忽略，LLM 解析失败不抛异常，保证画像管线鲁棒可降级。
+**核心流程**：
+
+1. **存**：对话历史摘要、用户画像、领域文档等长期信息通过 Embedding 模型（DashScope `text-embedding-v1`）转化为向量，写入 pgvector 向量表
+2. **取**：Planner 编写研究计划时，将当前问题同样转化为向量，在向量库中做余弦相似度检索，找出语义最相关的记忆片段注入上下文供 LLM 参考
+
+语义检索的优势在于：即使用户的问法与存储时的原文表述不同，只要语义相近就能命中。例如存储了"Java 并发编程最佳实践"，用户问"多线程有哪些注意事项"依然可以检索到。
+
+**用户画像引擎**：
+
+`UserProfileService` 从对话流中自动提炼四维结构化画像：`profile_summary`（身份摘要）、`expertise_level`（专业水平）、`detail_preference`（详略偏好）、`style_preference`（内容风格）。提取结果经 Set 白名单校验后落入 `user_profiles` 表——非法枚举值静默忽略，LLM 解析失败不抛异常，保证画像管线鲁棒可降级。
 
 缓存策略采用 TTL 惰性刷新：60 分钟内直接命中缓存，避免冗余 LLM 调用；超时后取最近 10 条消息做增量更新，新旧画像合并而非全量重建。画像同步注入 Coordinator（辅助判断问题复杂度与路由决策）和 Reporter（自适应调节报告深度与行文风格），注入格式附带与短期记忆同源的护栏约束。
 
