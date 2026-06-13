@@ -92,6 +92,100 @@ public class McpServerConfigService {
         return getServer(server.getId()).orElse(server);
     }
 
+    /**
+     * 从 ModelScope 社区 JSON 格式创建 MCP Server。
+     * 输入格式：{ "mcpServers": { "Name": { "type": "...", "url": "..." } } }
+     */
+    @SuppressWarnings("unchecked")
+    public synchronized ManagedMcpServerInfo createFromModelScopeJson(String json,
+            String description, String apiKey) throws IOException {
+        if (json == null || json.isBlank()) {
+            throw new IllegalArgumentException("JSON 配置不能为空");
+        }
+
+        Map<String, Object> root;
+        try {
+            root = objectMapper.readValue(json.strip(),
+                    new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            throw new IllegalArgumentException("JSON 格式不正确: " + e.getMessage());
+        }
+
+        Object mcpServersObj = root.get("mcpServers");
+        if (!(mcpServersObj instanceof Map) || ((Map<?, ?>) mcpServersObj).isEmpty()) {
+            throw new IllegalArgumentException("JSON 中缺少 mcpServers 对象");
+        }
+
+        Map<String, Object> mcpServers = (Map<String, Object>) mcpServersObj;
+        Map.Entry<String, Object> first = mcpServers.entrySet().iterator().next();
+        String key = first.getKey();
+        Object value = first.getValue();
+
+        if (!(value instanceof Map)) {
+            throw new IllegalArgumentException("mcpServers." + key + " 不是有效对象");
+        }
+
+        Map<String, Object> serverConfig = (Map<String, Object>) value;
+        String rawUrl = serverConfig.get("url") instanceof String s ? s.strip() : "";
+        if (rawUrl.isBlank()) {
+            throw new IllegalArgumentException("mcpServers." + key + ".url 不能为空");
+        }
+
+        String type = serverConfig.get("type") instanceof String s ? s.strip() : "sse";
+
+        // 拆分 URL 为 base url + path
+        URI uri;
+        try {
+            uri = URI.create(rawUrl);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("URL 格式不正确: " + rawUrl);
+        }
+
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || host == null) {
+            throw new IllegalArgumentException("URL 缺少 scheme 或 host: " + rawUrl);
+        }
+
+        int port = uri.getPort();
+        String baseUrl = scheme + "://" + host + (port > 0 ? ":" + port : "");
+        String path = uri.getPath();
+        if (path == null || path.isBlank()) {
+            path = "/sse";
+        }
+
+        // 构建 McpServerInfo
+        McpProperties.McpServerInfo info = new McpProperties.McpServerInfo();
+        info.setId(sanitizeId(key));
+        info.setUrl(baseUrl);
+        info.setSseEndpoint(path);
+        info.setType(type);
+        info.setEnabled(true);
+        if (description != null && !description.isBlank()) {
+            info.setDescription(description.strip());
+        } else {
+            info.setDescription("ModelScope MCP - " + key);
+        }
+        if (apiKey != null && !apiKey.isBlank()) {
+            info.setApiKey(apiKey.strip());
+        }
+
+        return create(info);
+    }
+
+    private String sanitizeId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "mcp-remote-" + System.currentTimeMillis();
+        }
+        String slug = raw.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+|-+$)", "");
+        if (slug.isBlank()) {
+            return "mcp-remote-" + System.currentTimeMillis();
+        }
+        return "mcp-" + slug;
+    }
+
     public synchronized ManagedMcpServerInfo update(String id, McpProperties.McpServerInfo request) throws IOException {
         requireValidId(id);
         ManagedMcpServerInfo server = sanitizeForWrite(request);
