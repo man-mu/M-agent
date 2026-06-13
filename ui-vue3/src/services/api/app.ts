@@ -87,6 +87,10 @@ class AppService {
     return post<McpServerConfig>('/api/mcp/servers', request)
   }
 
+  createMcpServerFromJson(json: string, description?: string, apiKey?: string): Promise<McpServerConfig> {
+    return post<McpServerConfig>('/api/mcp/servers/from-json', { json, description, apiKey })
+  }
+
   updateMcpServer(id: string, request: McpServerConfig): Promise<McpServerConfig> {
     return put<McpServerConfig>(`/api/mcp/servers/${id}`, request)
   }
