@@ -180,19 +180,73 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 # 规划模块
 
-规划模块负责将用户问题拆解为可执行的研究计划，并管理工作流的执行生命周期与中断恢复。
+规划模块负责将用户问题拆解为可执行的研究计划，并管理工作流的执行生命周期与中断恢复。M-Agent 的规划策略融合了 ReAct 控制范式和 GoT 图推理结构，分别解决"怎么执行"和"怎么推理"两个层面的问题。
 
-## Agent Team 协作
+## ReAct
 
-研究工作流中的节点按角色分为三类，前端时间线按角色分组展示：
+M-Agent 的研究执行采用 **ReAct（Reasoning + Acting）** 范式——想一步、做一步、看一步，推理指导行动，行动反馈推理，二者交替螺旋式推进直到任务完成。
 
-| 角色 | 包含节点 | 职责 |
-|------|---------|------|
-| Planner | coordinator、planner、plan_validator、human_feedback | 理解需求、制定计划、确认计划 |
-| Executor | research_team、parallel_executor、researcher_N、coder_N、information、background_investigator | 分配任务、执行步骤、调用 Skill/MCP |
-| Reviewer | reporter | 汇总报告、检查遗漏 |
+ReAct 的核心三元组在 M-Agent 中的映射：
 
-SSE 事件中的 `agent_role` 字段标识每个事件所属角色。前端时间线按角色分组、颜色区分：Planner（紫色）、Executor（蓝色）、Reviewer（绿色）。
+| ReAct 概念 | M-Agent 实现 | 说明 |
+|-----------|-------------|------|
+| **Thought** | Researcher / Coder 的 LLM 推理 | 模型的"内心独白"，分解任务、分析当前进度、决定下一步策略 |
+| **Action** | MCP 工具调用 / Skill 工具调用 | 结构化的工具名 + 参数，系统解析并执行 |
+| **Observation** | 工具返回结果注入上下文 | 真实外部数据，保证推理"接地气"而非臆想 |
+
+**执行流程示例**（用户问"我生于2007年1月11日，生辰八字怎么样"）：
+
+```
+Thought: 用户问生辰八字，需要精确的干支计算，我应该调用 Bazi MCP 工具
+Action:  调用 bazi 工具，参数 {"date": "2007-01-11"}
+Observation: 工具返回丙戌年、辛丑月、乙巳日及五行分析
+Thought: 已获取准确的四柱信息，可以结合背景知识生成完整报告
+Action:  Finish，输出最终报告
+```
+
+每一步的 Thought、Action、Observation 都通过 SSE 事件流实时推送到前端，用户可以完整追踪 Agent 的推理与行动轨迹。
+
+## GoT
+
+在 Planner 生成研究计划时，M-Agent 采用 **GoT（Graph-of-Thought）** 图推理结构，突破 CoT 线性链路的局限。
+
+CoT 是一条线、ToT 是一棵树、GoT 是一张图。GoT 最关键的新增能力是**思维聚合（Aggregation）**——允许多个分支的中间结论汇总合并成新结论，形成 DAG 甚至包含环路的图结构。这种"先发散再收敛"的模式在树结构中做不到。
+
+M-Agent 的研究计划本质上是一张有向图：
+
+```mermaid
+flowchart LR
+  subgraph 发散
+    Q["用户问题"] --> R1["background_investigator<br/>背景检索"]
+    Q --> R2["rewrite_multi_query<br/>多维查询改写"]
+  end
+
+  subgraph 聚合
+    R1 --> Plan["Planner<br/>聚合上下文生成计划"]
+    R2 --> Plan
+  end
+
+  subgraph 并行执行
+    Plan --> E1["researcher_0<br/>步骤1"]
+    Plan --> E2["researcher_1<br/>步骤2"]
+    Plan --> E3["coder_0<br/>步骤3"]
+  end
+
+  subgraph 收敛
+    E1 --> Reporter["Reporter<br/>汇总所有观察结果"]
+    E2 --> Reporter
+    E3 --> Reporter
+  end
+```
+
+| GoT 特性 | M-Agent 对应 |
+|---------|-------------|
+| **发散** | `rewrite_multi_query` 生成多个优化查询，`background_investigator` 并行搜索 |
+| **聚合** | Planner 将多源上下文（背景搜索、用户画像、对话历史）聚合成结构化研究计划 |
+| **并行执行** | `Parallel Executor` 将计划步骤分发给多个 researcher / coder 并行执行 |
+| **收敛** | Reporter 汇总所有步骤的观察结果，生成最终报告 |
+
+这种图结构让 M-Agent 能够处理需要"先分后合"的复杂研究任务——例如分析多个竞品时，各竞品独立研究（发散），最后汇总对比（收敛）。
 
 ## 中断恢复
 
