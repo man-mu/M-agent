@@ -47,6 +47,7 @@ export interface WorkflowNodeView {
   sequence?: number
   timestamp?: string
   role?: AgentRole
+  toolCalls?: string[]
 }
 
 export interface WorkflowGroupView {
@@ -441,6 +442,16 @@ export function deriveWorkflowNodes(events: ChatStreamResponse[]): WorkflowNodeV
     const status = statusFromEvent(event)
     const eventSources = sourceLinks(event)
     const sequence = event.sequence ?? previous?.sequence ?? index + 1
+
+    // 累加工具调用信息
+    const toolCalls = [...(previous?.toolCalls || [])]
+    const payload = event.payload as Record<string, unknown> | undefined
+    if (payload?.tool_called && typeof payload.tool_name === 'string') {
+      if (!toolCalls.includes(payload.tool_name)) {
+        toolCalls.push(payload.tool_name)
+      }
+    }
+
     nodes.set(key, {
       key,
       title: workflowTitle(event),
@@ -454,6 +465,7 @@ export function deriveWorkflowNodes(events: ChatStreamResponse[]): WorkflowNodeV
       sequence,
       timestamp: event.timestamp || previous?.timestamp,
       role: resolveAgentRole(event) || previous?.role,
+      toolCalls,
     })
   })
   return [...nodes.values()].sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
