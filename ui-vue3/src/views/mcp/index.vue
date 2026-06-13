@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, reactive, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Card from 'ant-design-vue/es/card'
 import Drawer from 'ant-design-vue/es/drawer'
@@ -9,7 +9,6 @@ import Table from 'ant-design-vue/es/table'
 import {
   ArrowLeftOutlined,
   DeleteOutlined,
-  EditOutlined,
   EnvironmentOutlined,
   KeyOutlined,
   PlusOutlined,
@@ -32,10 +31,10 @@ import {
   mcpToolExampleInput,
   normalizeToolNames,
   parseMcpJsonObject,
+  parseModelScopeJson,
   prettyMcpJson,
   testResultSummary,
   toolsText,
-  validateMcpServerConfig,
 } from './mcpTools'
 
 const router = useRouter()
@@ -58,10 +57,7 @@ const actionLoading = ref(false)
 const savingServer = ref(false)
 const testingServerId = ref('')
 const loadError = ref('')
-const formError = ref('')
 const serverModalVisible = ref(false)
-const editingServerId = ref('')
-const allowedToolsText = ref('')
 const connectionResults = ref<Record<string, McpConnectionTestResult>>({})
 const toolDebugVisible = ref(false)
 const debugToolName = ref('')
@@ -71,14 +67,12 @@ const debugToolInputError = ref('')
 const invokingTool = ref(false)
 const invocationResult = ref<McpToolInvocationResult | null>(null)
 
-const serverForm = reactive<McpServerConfig>({
-  id: '',
-  url: '',
-  sseEndpoint: '/sse',
-  description: '',
-  enabled: true,
-  allowedTools: [],
-})
+// 新增远程 MCP 表单
+const jsonInput = ref('')
+const descriptionInput = ref('')
+const apiKeyInput = ref('')
+const jsonParseError = ref('')
+const parsedPreview = ref<{ id: string; type: string; url: string } | null>(null)
 
 const serverColumns = [
   { title: '服务', key: 'server', width: 280 },
@@ -86,7 +80,7 @@ const serverColumns = [
   { title: '来源', key: 'source', width: 120 },
   { title: '工具', key: 'tools', width: 220 },
   { title: '连接测试', key: 'test', width: 220 },
-  { title: '操作', key: 'actions', width: 230, fixed: 'right' },
+  { title: '操作', key: 'actions', width: 200, fixed: 'right' },
 ] as const
 
 const overallStatus = computed(() => mcpOverallStatusView(mcpStatus.value))
@@ -97,7 +91,6 @@ const serverViews = computed(() => (mcpStatus.value?.servers || []).map(server =
   display: mcpServerDisplay(server),
   address: mcpServerAddress(server.url, server.sseEndpoint),
 })))
-const modalTitle = computed(() => editingServerId.value ? '编辑 MCP Server' : '新增 MCP Server')
 const invocationSummary = computed(() => invocationResultSummary(invocationResult.value))
 const invocationResultText = computed(() => invocationResult.value ? prettyMcpJson(invocationResult.value) : '')
 
@@ -126,58 +119,46 @@ async function loadData() {
   }
 }
 
-function resetServerForm(server?: McpServerConfig) {
-  serverForm.id = server?.id || ''
-  serverForm.url = server?.url || ''
-  serverForm.sseEndpoint = server?.sseEndpoint || '/sse'
-  serverForm.description = server?.description || ''
-  serverForm.enabled = server?.enabled ?? true
-  serverForm.allowedTools = [...(server?.allowedTools || [])]
-  allowedToolsText.value = toolsText(server?.allowedTools)
-  formError.value = ''
-}
-
 function openCreateServer() {
-  editingServerId.value = ''
-  resetServerForm()
+  jsonInput.value = ''
+  descriptionInput.value = ''
+  apiKeyInput.value = ''
+  jsonParseError.value = ''
+  parsedPreview.value = null
   serverModalVisible.value = true
 }
 
-function openEditServer(server: McpServerConfig) {
-  editingServerId.value = server.id || ''
-  resetServerForm(server)
-  serverModalVisible.value = true
+function onJsonInputChange() {
+  const result = parseModelScopeJson(jsonInput.value)
+  if (result.ok) {
+    parsedPreview.value = { id: result.id!, type: result.type!, url: result.url! }
+    jsonParseError.value = ''
+  } else {
+    parsedPreview.value = null
+    jsonParseError.value = result.error || ''
+  }
 }
 
 async function saveServer() {
-  const request: McpServerConfig = {
-    ...serverForm,
-    id: serverForm.id?.trim() || undefined,
-    url: serverForm.url.trim(),
-    sseEndpoint: serverForm.sseEndpoint?.trim() || '/sse',
-    description: serverForm.description?.trim() || undefined,
-    allowedTools: normalizeToolNames(allowedToolsText.value),
-  }
-  const error = validateMcpServerConfig(request)
-  if (error) {
-    formError.value = error
+  const result = parseModelScopeJson(jsonInput.value)
+  if (!result.ok) {
+    jsonParseError.value = result.error || 'JSON 格式不正确'
     return
   }
 
   savingServer.value = true
-  formError.value = ''
+  jsonParseError.value = ''
   try {
-    if (editingServerId.value) {
-      await appService.updateMcpServer(editingServerId.value, request)
-      message.success('MCP Server 已更新')
-    } else {
-      await appService.createMcpServer(request)
-      message.success('MCP Server 已新增')
-    }
+    await appService.createMcpServerFromJson(
+      jsonInput.value,
+      descriptionInput.value || undefined,
+      apiKeyInput.value || undefined,
+    )
+    message.success('MCP Server 已新增')
     serverModalVisible.value = false
     await loadData()
   } catch (err: any) {
-    formError.value = userMessageFromError(err, '保存 MCP Server 失败')
+    jsonParseError.value = userMessageFromError(err, '新增 MCP Server 失败')
   } finally {
     savingServer.value = false
   }
@@ -462,11 +443,6 @@ onMounted(loadData)
             </template>
             <template v-else-if="column.key === 'actions'">
               <a-space wrap>
-                <a-tooltip title="编辑">
-                  <a-button size="small" @click="openEditServer(record)">
-                    <EditOutlined />
-                  </a-button>
-                </a-tooltip>
                 <a-tooltip :title="record.enabled ? '停用' : '启用'">
                   <a-button
                     size="small"
@@ -478,7 +454,17 @@ onMounted(loadData)
                     <PoweroffOutlined />
                   </a-button>
                 </a-tooltip>
-                <a-tooltip :title="record.source === 'BUILTIN' ? '内置服务器不可删除，请使用停用按钮' : '删除'">
+                <a-tooltip title="连接测试">
+                  <a-button
+                    size="small"
+                    :loading="testingServerId === record.id"
+                    :disabled="!record.id"
+                    @click="testServer(record)"
+                  >
+                    <ToolOutlined />
+                  </a-button>
+                </a-tooltip>
+                <a-tooltip :title="record.source === 'BUILTIN' ? '内置服务器不可删除' : '删除'">
                   <a-button
                     size="small"
                     danger
@@ -536,10 +522,6 @@ onMounted(loadData)
               >
                 <ToolOutlined />
                 测试
-              </a-button>
-              <a-button size="small" @click="openEditServer(server)">
-                <EditOutlined />
-                编辑
               </a-button>
               <a-button
                 size="small"
@@ -691,45 +673,46 @@ onMounted(loadData)
     <a-modal
       v-model:open="serverModalVisible"
       :confirm-loading="savingServer"
-      :title="modalTitle"
+      title="新增远程 MCP Server"
+      ok-text="连接"
       width="680px"
       @ok="saveServer"
     >
       <a-alert
-        v-if="formError"
+        v-if="jsonParseError"
         class="form-alert"
         show-icon
         type="warning"
-        :message="formError"
+        :message="jsonParseError"
       />
       <a-form layout="vertical">
-        <div class="form-grid">
-          <a-form-item label="服务 ID">
-            <a-input
-              v-model:value="serverForm.id"
-              :disabled="Boolean(editingServerId)"
-              placeholder="local-qweather"
-            />
-          </a-form-item>
-          <a-form-item label="启用">
-            <a-switch v-model:checked="serverForm.enabled" />
-          </a-form-item>
-        </div>
-        <a-form-item label="服务地址" required>
-          <a-input v-model:value="serverForm.url" placeholder="http://127.0.0.1:18090" />
-        </a-form-item>
-        <a-form-item label="SSE Endpoint" required>
-          <a-input v-model:value="serverForm.sseEndpoint" placeholder="/sse" />
-        </a-form-item>
-        <a-form-item label="描述">
-          <a-input v-model:value="serverForm.description" placeholder="本地和风天气 MCP" />
-        </a-form-item>
-        <a-form-item label="允许工具">
+        <a-form-item label="MCP 配置 JSON（从 ModelScope 社区复制）" required>
           <a-textarea
-            v-model:value="allowedToolsText"
-            :auto-size="{ minRows: 3, maxRows: 6 }"
-            placeholder="weather_now"
+            v-model:value="jsonInput"
+            :auto-size="{ minRows: 6, maxRows: 12 }"
+            placeholder='{
+  "mcpServers": {
+    "Bazi-MCP": {
+      "type": "streamable_http",
+      "url": "https://mcp.api-inference.modelscope.net/b89553de02054a/mcp"
+    }
+  }
+}'
+            @change="onJsonInputChange"
           />
+        </a-form-item>
+        <a-form-item v-if="parsedPreview" label="解析预览">
+          <div class="parsed-preview">
+            <a-tag color="blue">ID: {{ parsedPreview.id }}</a-tag>
+            <a-tag color="green">类型: {{ parsedPreview.type }}</a-tag>
+            <span class="parsed-url">{{ parsedPreview.url }}</span>
+          </div>
+        </a-form-item>
+        <a-form-item label="说明（可选）">
+          <a-input v-model:value="descriptionInput" placeholder="默认：ModelScope MCP - {id}" />
+        </a-form-item>
+        <a-form-item label="API Key（可选）">
+          <a-input-password v-model:value="apiKeyInput" placeholder="部分 MCP 服务需要" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -1248,5 +1231,18 @@ onMounted(loadData)
   .debug-actions {
     justify-content: flex-start;
   }
+}
+
+.parsed-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.parsed-url {
+  color: #7a8798;
+  font-size: 12px;
+  word-break: break-all;
 }
 </style>
