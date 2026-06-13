@@ -64,6 +64,27 @@ public class McpStatusController {
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
+    @PostMapping("/servers/from-json")
+    public Mono<ResponseEntity<Object>> createServerFromJson(@RequestBody Map<String, Object> body) {
+        return Mono.fromCallable(() -> {
+            try {
+                String json = body.get("json") instanceof String s ? s : "";
+                String description = body.get("description") instanceof String s ? s : null;
+                String apiKey = body.get("apiKey") instanceof String s ? s : null;
+
+                McpServerConfigService.ManagedMcpServerInfo server =
+                        configService.createFromModelScopeJson(json, description, apiKey);
+                toolProvider.clearCache();
+                return ResponseEntity.status(201).body((Object) server);
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body((Object) Map.of("error", e.getMessage()));
+            } catch (IOException e) {
+                return ResponseEntity.internalServerError()
+                        .body((Object) Map.of("error", "Failed to write MCP config"));
+            }
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
     @PutMapping("/servers/{id}")
     public Mono<ResponseEntity<Object>> updateServer(@PathVariable String id,
             @RequestBody McpProperties.McpServerInfo request) {
