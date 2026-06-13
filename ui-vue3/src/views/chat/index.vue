@@ -152,6 +152,11 @@
                     <span v-if="node.timestamp" class="event-meta">{{ formatEventTime(node.timestamp) }}</span>
                   </div>
                   <p v-if="node.summary" class="event-summary">{{ node.summary }}</p>
+                  <div v-if="node.toolCalls?.length" class="tool-calls">
+                    <span v-for="tool in node.toolCalls" :key="tool" class="tool-call-tag">
+                      🛠 {{ tool }}
+                    </span>
+                  </div>
                   <div v-if="node.sources.length" class="sources">
                     <template
                       v-for="source in node.sources"
@@ -1232,6 +1237,24 @@ watch(
   color: #607086;
   margin: 4px 0 0;
   white-space: pre-wrap;
+}
+
+.tool-calls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.tool-call-tag {
+  color: #7c3aed;
+  font-size: 12px;
+  background: #f5f3ff;
+  padding: 1px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .sources {
