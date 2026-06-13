@@ -59,11 +59,11 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  User["用户 / 浏览器"] --> Netty["Netty<br/>非阻塞 I/O"]
-  Netty --> WebFlux["WebFlux<br/>SSE 编码"]
-  WebFlux --> Controller["Controller"]
-  Controller --> Runner["GraphResearchRunner"]
+  User["用户 / 浏览器"] --> UI["Vue 控制台<br/>/chat /skills /mcp /knowledge /settings"]
+  UI --> ChatApi["Chat SSE API<br/>/chat/stream"]
+  UI --> AdminApi["管理 API<br/>/api/model /api/skills /api/mcp"]
 
+  ChatApi --> Runner["GraphResearchRunner"]
   Runner --> Graph["Spring AI Alibaba Graph"]
   Graph --> Coordinator["Coordinator"]
   Graph --> Planner["Planner"]
@@ -83,8 +83,7 @@ flowchart LR
   Researcher --> McpTools["MCP ToolProvider"]
   McpTools --> McpServers["MCP Servers<br/>local-qweather / amap / howtocook"]
 
-  Runner --> R2DBC["R2DBC 异步"]
-  R2DBC --> Pg[("PostgreSQL + pgvector")]
+  Runner --> Pg["PostgreSQL + pgvector"]
   Pg --> Reports["报告 / 会话历史 / 事件历史"]
   Pg --> Memory["短期对话窗口 / 用户画像"]
   Pg --> RagDocs["全局知识库向量"]
