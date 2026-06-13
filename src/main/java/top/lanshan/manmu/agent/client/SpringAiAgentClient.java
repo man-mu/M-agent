@@ -60,7 +60,9 @@ public class SpringAiAgentClient implements AgentClient {
 	public String call(String systemPrompt, String userPrompt) {
 		boolean attachSkillCallbacks = shouldAttachSkillCallbacks(userPrompt);
 		String effectiveSystem = resolveExplicitSkillCall(systemPrompt, userPrompt);
-		effectiveSystem = appendSkillSummary(effectiveSystem);
+		if (attachSkillCallbacks) {
+			effectiveSystem = appendSkillSummary(effectiveSystem);
+		}
 
 		ChatClient chatClient = ChatClient.builder(routingChatModel).build();
 		ChatClient.ChatClientRequestSpec request = chatClient.prompt()
