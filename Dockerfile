@@ -17,11 +17,6 @@ FROM docker.1ms.run/library/eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# 安装必要的工具
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # 复制编译好的 jar
 COPY --from=builder /app/target/*.jar app.jar
 
@@ -31,9 +26,9 @@ RUN mkdir -p /app/config /app/.local
 # 暴露端口
 EXPOSE 8080
 
-# 健康检查
+# 健康检查（使用 wget，eclipse-temurin 镜像自带）
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8080/api/app/capabilities || exit 1
+    CMD wget -q --spider http://localhost:8080/api/app/capabilities || exit 1
 
 # 启动命令
 ENTRYPOINT ["java", "-jar", "app.jar", "--spring.profiles.active=docker"]

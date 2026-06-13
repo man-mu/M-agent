@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import {
   DatabaseOutlined,
   DeleteOutlined,
@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons-vue'
 import message from 'ant-design-vue/es/message'
 import Modal from 'ant-design-vue/es/modal'
+import Upload from 'ant-design-vue/es/upload'
 import knowledgeService from '@/services/api/knowledge'
 import type { RagDocumentItem, UserProfileData } from '@/services/api/knowledge'
 import {
@@ -24,6 +25,11 @@ import {
   validateRagUploadFile,
 } from '@/views/chat/ragUpload'
 import type { RagUploadItem } from '@/views/chat/ragUpload'
+
+const app = getCurrentInstance()?.appContext.app
+if (app && !app.component('AUpload')) {
+  app.use(Upload)
+}
 
 // ========== 全局文档 ==========
 const documents = ref<RagDocumentItem[]>([])
@@ -163,13 +169,22 @@ async function loadProfile() {
 }
 
 function startEdit() {
-  if (!profile.value) return
-  editForm.value = {
-    profile_summary: profile.value.profile_summary,
-    expertise_level: profile.value.expertise_level,
-    detail_preference: profile.value.detail_preference,
-    style_preference: profile.value.style_preference,
-    manual_fields: [...profile.value.manual_fields],
+  if (profile.value?.has_profile) {
+    editForm.value = {
+      profile_summary: profile.value.profile_summary,
+      expertise_level: profile.value.expertise_level,
+      detail_preference: profile.value.detail_preference,
+      style_preference: profile.value.style_preference,
+      manual_fields: [...profile.value.manual_fields],
+    }
+  } else {
+    editForm.value = {
+      profile_summary: '',
+      expertise_level: '',
+      detail_preference: '',
+      style_preference: '',
+      manual_fields: [],
+    }
   }
   editing.value = true
 }
@@ -304,7 +319,7 @@ onMounted(() => {
               <a-button size="small" :disabled="!hasProfile" @click="resetProfile">
                 <ReloadOutlined /> 重置手动覆盖
               </a-button>
-              <a-button size="small" type="primary" :disabled="!hasProfile" @click="startEdit">
+              <a-button size="small" type="primary" @click="startEdit">
                 <EditOutlined /> 编辑
               </a-button>
             </template>
