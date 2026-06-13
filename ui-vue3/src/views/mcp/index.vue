@@ -478,11 +478,11 @@ onMounted(loadData)
                     <PoweroffOutlined />
                   </a-button>
                 </a-tooltip>
-                <a-tooltip :title="record.source === 'BUILTIN' && !record.localOverride ? '内置配置需先编辑生成本地覆盖' : '删除'">
+                <a-tooltip :title="record.source === 'BUILTIN' ? '内置服务器不可删除，请使用停用按钮' : '删除'">
                   <a-button
                     size="small"
                     danger
-                    :disabled="record.source === 'BUILTIN' && !record.localOverride"
+                    :disabled="record.source === 'BUILTIN'"
                     :loading="actionLoading"
                     @click="confirmDeleteServer(record)"
                   >
@@ -554,7 +554,7 @@ onMounted(loadData)
               <a-button
                 size="small"
                 danger
-                :disabled="server.source === 'BUILTIN' && !server.localOverride"
+                :disabled="server.source === 'BUILTIN'"
                 :loading="actionLoading"
                 @click="confirmDeleteServer(server)"
               >
