@@ -175,7 +175,11 @@ public class McpToolProvider {
 		}
 
 		Set<String> allowedTools = allowedTools(transports);
-		AsyncMcpToolCallbackProvider provider = allowedTools.isEmpty()
+		boolean allServersHaveRestrictions = transports.stream()
+				.allMatch(t -> t.server().getAllowedTools() != null && !t.server().getAllowedTools().isEmpty());
+		// Only apply global filter when ALL servers have explicit allowlists.
+		// If any server has no restrictions, its tools must not be filtered out.
+		AsyncMcpToolCallbackProvider provider = (!allServersHaveRestrictions || allowedTools.isEmpty())
 				? new AsyncMcpToolCallbackProvider(clients)
 				: new AsyncMcpToolCallbackProvider(
 					(connectionInfo, tool) -> allowedTools.contains(tool.name()), clients);

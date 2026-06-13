@@ -3,9 +3,11 @@ package top.lanshan.manmu.agent;
 import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Component;
 import top.lanshan.manmu.agent.client.AgentClient;
+import top.lanshan.manmu.mcp.McpToolProvider;
 import top.lanshan.manmu.model.ResearchPlan;
 import top.lanshan.manmu.prompt.PromptService;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -21,11 +23,15 @@ public class LlmPlannerAgent implements PlannerAgent {
 
 	private final BeanOutputConverter<PlannerResponse> outputConverter;
 
-	public LlmPlannerAgent(AgentClient agentClient, PromptService promptService, PlannerOutputMapper outputMapper) {
+	private final McpToolProvider mcpToolProvider;
+
+	public LlmPlannerAgent(AgentClient agentClient, PromptService promptService, PlannerOutputMapper outputMapper,
+			McpToolProvider mcpToolProvider) {
 		this.agentClient = agentClient;
 		this.promptService = promptService;
 		this.outputMapper = outputMapper;
 		this.outputConverter = new BeanOutputConverter<>(PlannerResponse.class);
+		this.mcpToolProvider = mcpToolProvider;
 	}
 
 	@Override
@@ -73,8 +79,8 @@ public class LlmPlannerAgent implements PlannerAgent {
 				backgroundInvestigationPrompt(backgroundInvestigationContext), backgroundContextPrompt(backgroundContext),
 				conversationHistoryPrompt(conversationHistoryContext), feedbackPrompt(feedbackContent));
 
-		String modelOutput = agentClient.call(promptService.load("planner") + "\n\n" + outputConverter.getFormat(),
-				userPrompt);
+		String systemPrompt = buildSystemPrompt() + "\n\n" + outputConverter.getFormat();
+		String modelOutput = agentClient.call(systemPrompt, userPrompt);
 		PlannerResponse response = outputConverter.convert(modelOutput);
 
 		return outputMapper.toResearchPlan(response, query, maxSteps);
@@ -141,6 +147,30 @@ public class LlmPlannerAgent implements PlannerAgent {
 				%s
 				Revise the research plan to address this feedback before execution.
 				""".formatted(feedbackContent.strip());
+	}
+
+	private String buildSystemPrompt() {
+		String base = promptService.load("planner");
+		String toolNames = getMcpToolNames();
+		if (toolNames.isEmpty()) {
+			return base;
+		}
+		return base + "\n\n## Available MCP Tools\n" + toolNames;
+	}
+
+	private String getMcpToolNames() {
+		try {
+			var callbacks = mcpToolProvider.getToolCallbacks();
+			if (callbacks == null || callbacks.length == 0) {
+				return "";
+			}
+			return Arrays.stream(callbacks)
+					.map(cb -> "- **" + cb.getToolDefinition().name() + "**: "
+							+ cb.getToolDefinition().description())
+					.collect(Collectors.joining("\n"));
+		} catch (Exception e) {
+			return "";
+		}
 	}
 
 }
