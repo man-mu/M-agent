@@ -160,26 +160,40 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
   → 直接返回缓存响应，跳过 LLM 调用
 ```
 
-**技术实现**：
+**核心架构**：
+
+Spring AI 自身不造存储轮子，而是定义了高度抽象的 `VectorStore` 接口。`SemanticCacheAdvisor` 构建时传入哪个 `VectorStore` 实现，数据就存哪个库里。这些向量数据库天生具备"双重能力"：
+
+- **存向量 + 算相似度**：处理 Key（问题向量）
+- **存 JSON / Metadata**：处理 Value（序列化后的 `ChatResponse`）
+
+Key（向量）和 Value（序列化对象）打包在同一条记录里，一石双鸟。
+
+**底层存储结构**（以 pgvector 为例）：
+
+| 字段 | 内容 | 说明 |
+|------|------|------|
+| `embedding` | `[0.123, -0.456, 0.789, ...]` | 问题向量，pgvector 基此建立 ANN 索引 |
+| `content` | `"Java怎么学?"` | 原始问题文本 |
+| `metadata` | `{"result": {...}, "usage": {...}}` | 序列化的 ChatResponse，含模型输出和 token 用量 |
+
+**实现层**：
 
 | 组件 | 说明 |
 |------|------|
-| `SemanticCache` 接口 | Spring AI 标准抽象，`set(query, response)` / `get(query)` / `clear()` |
-| `PgVectorStore` 后端 | 复用项目已有的 pgvector + DashScope Embedding，无需引入 Redis |
+| `VectorStore` 接口 | Spring AI 标准抽象，解耦存储层，可切换 pgvector / Redis / Milvus |
+| `PgVectorStore` 实现 | 复用项目已有的 pgvector + DashScope Embedding，无需引入额外基础设施 |
 | `SemanticCacheAdvisor` | ChatClient Advisor，拦截 LLM 调用：先查缓存 → 命中则返回 → 未命中则调用 LLM 并写入缓存 |
-| 相似度阈值 | 可配置（默认 0.85），过高导致漏缓存，过低导致误命中 |
+| 相似度阈值 | 可配置（默认 0.95），过高导致漏缓存，过低导致误命中 |
 | TTL 过期 | 缓存条目支持时效过期，避免返回过时结果 |
 
-**配置**（`application.yml`）：
-
-```yaml
-spring:
-  ai:
-    cache:
-      semantic:
-        enabled: true
-        similarity-threshold: 0.85
-        ttl: 30m
+```java
+@Bean
+public SemanticCacheAdvisor semanticCacheAdvisor(VectorStore vectorStore, EmbeddingModel embeddingModel) {
+    return SemanticCacheAdvisor.builder(vectorStore, embeddingModel)
+            .similarityThreshold(0.95)
+            .build();
+}
 ```
 
 语义缓存对研究流程中的高频相似问题效果显著——同一会话内追问"再说详细点"、"换个角度分析"等变体表述可以直接命中缓存，节省大量 token 消耗和响应延迟。
@@ -408,123 +422,3 @@ docker compose logs -f
 docker compose down
 ```
 
-## Docker 服务架构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    docker compose                        │
-├─────────────────────────────────────────────────────────┤
-│  postgres:5432  ←──  backend:8080  ←──  frontend:80    │
-│                          │                              │
-│                    qweather-mcp:18090                   │
-└─────────────────────────────────────────────────────────┘
-```
-
-| 服务 | 镜像 | 端口 | 说明 |
-|------|------|------|------|
-| postgres | postgres:17-alpine | 5432 | PostgreSQL 数据库 + pgvector |
-| backend | 自构建 | 8080 | Spring Boot 后端 |
-| frontend | 自构建 | 80 | Vue 3 + Nginx |
-| qweather-mcp | 自构建 | 18090 | 和风天气 MCP 服务 |
-
-`.local/` 目录通过 volume 挂载到后端容器，API Key 无需重新配置。
-
-## 常用验证命令
-
-> 各特性的详细说明见上文对应章节。以下为快速验证命令（假设服务运行在 localhost）。
-
-### 能力开关
-
-```bash
-curl http://localhost:8080/api/app/capabilities
-```
-
-### 模型切换
-
-```bash
-# 查看当前模型
-curl http://localhost:8080/api/model/current
-
-# 切换到 DeepSeek
-curl -X POST http://localhost:8080/api/model/switch \
-  -H "Content-Type: application/json" \
-  -d '{"providerId":"deepseek","modelName":"deepseek-chat"}'
-```
-
-### MCP 状态和天气工具
-
-```bash
-# MCP 状态
-curl http://localhost:8080/api/mcp/status
-
-# 查询天气
-curl -X POST http://localhost:8080/api/mcp/tools/weather_now/invoke \
-  -H "Content-Type: application/json" \
-  -d '{"location":"Beijing"}'
-```
-
-### 深度研究 SSE
-
-```bash
-curl -N -H "Content-Type: application/json" \
-  -d '{"query":"解释 Agent 工作流为什么要区分 Planner、Researcher 和 Reporter","session_id":"demo","enable_deepresearch":true,"auto_accepted_plan":true}' \
-  http://localhost:8080/chat/stream
-```
-
-### 知识库 API
-
-```bash
-# 上传全局文档
-curl -X POST "http://localhost:8080/api/rag/upload?scope=global" \
-  -F "file=@test.txt" -F "session_id=__global__" -F "user_id=global"
-
-# 查看全局文档列表
-curl "http://localhost:8080/api/rag/documents?scope=global"
-
-# 查看用户画像
-curl http://localhost:8080/api/user-profile
-```
-
-## 本地开发（非 Docker）
-
-如需本地开发调试，可单独启动各组件：
-
-```bash
-# 1. 启动 PostgreSQL
-docker compose up -d postgres
-
-# 2. 配置 Key（同上）
-
-# 3. 启动和风天气 MCP
-cd tools/local-qweather-mcp && npm install && npm run build && npm start
-
-# 4. 启动后端
-export JAVA_HOME=/path/to/jdk17
-mvn spring-boot:run
-
-# 5. 启动前端
-cd ui-vue3 && npm install && npm run dev
-```
-
-## 测试
-
-```bash
-# 后端测试
-mvn test
-
-# 前端测试
-cd ui-vue3 && npm run test:unit
-
-# MCP 测试
-cd tools/local-qweather-mcp && npm test
-```
-
-## 安全与提交约束
-
-- 不提交 `.local/`、`target/`、`.idea/`、`.claude/`
-- 不在源码、测试断言、README 或提交记录中写入 API Key
-- Jar Skill 仅用于本地可信插件，ClassLoader 隔离不等于安全沙箱
-
-## License
-
-MIT
