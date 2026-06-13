@@ -29,13 +29,41 @@ M-Agent 是一个**完整可用的 DeepResearch 风格 AI Agent 工作流引擎*
 
 ## 架构图
 
+### 请求接收层
+
 ```mermaid
 flowchart LR
-  User["用户 / 浏览器"] --> UI["Vue 控制台<br/>/chat /skills /mcp /knowledge /settings"]
-  UI --> ChatApi["Chat SSE API<br/>/chat/stream"]
-  UI --> AdminApi["管理 API<br/>/api/model /api/skills /api/mcp"]
+  User["用户 / 浏览器"] -->|HTTP / SSE| Netty["Netty<br/>EventLoop 非阻塞 I/O<br/>TCP 连接管理 / HTTP 编解码"]
+  Netty --> WebFlux["Spring WebFlux<br/>DispatcherHandler 路由<br/>Flux → SSE 自动编码"]
+  WebFlux --> Controller["Controller 层<br/>ResearchController / ChatController<br/>参数校验 → 委托 Runner"]
+  Controller --> Runner["GraphResearchRunner<br/>图执行编排 / 事件收集 / 生命周期管理"]
+  Runner -->|Flux 事件流| WebFlux
+  WebFlux -->|SSE 推送| Netty
+  Netty -->|TCP 长连接| User
 
-  ChatApi --> Runner["GraphResearchRunner"]
+  Runner --> R2DBC["Spring Data R2DBC<br/>ReactiveCrudRepository<br/>Mono / Flux 异步非阻塞"]
+  R2DBC --> Pg[("PostgreSQL<br/>pgvector 向量存储")]
+```
+
+**请求接收层核心机制**：
+
+| 组件 | 职责 | 关键特性 |
+|------|------|---------|
+| **Netty** | TCP 连接管理、HTTP 协议解析、SSE 长连接维护 | EventLoop 模型，少量线程处理大量并发连接 |
+| **WebFlux** | 请求路由、Flux 订阅调度、SSE 格式自动编码 | 检测 `TEXT_EVENT_STREAM_VALUE` 自动将 Flux 编码为 SSE |
+| **Controller** | 参数校验（`@Valid`）、委托 Runner、包装 ServerSentEvent | 无业务逻辑，纯路由层 |
+| **GraphResearchRunner** | 图执行编排、事件收集为 Flux、R2DBC 持久化时机控制 | 整条链路返回 `Flux<ResearchEvent>`，WebFlux 自动订阅推送 |
+| **R2DBC** | 非阻塞数据库访问，`save()` 返回 `Mono` 不阻塞线程 | 等待数据库响应期间线程可服务其他请求 |
+
+### 整体架构
+
+```mermaid
+flowchart LR
+  User["用户 / 浏览器"] --> Netty["Netty<br/>非阻塞 I/O"]
+  Netty --> WebFlux["WebFlux<br/>SSE 编码"]
+  WebFlux --> Controller["Controller"]
+  Controller --> Runner["GraphResearchRunner"]
+
   Runner --> Graph["Spring AI Alibaba Graph"]
   Graph --> Coordinator["Coordinator"]
   Graph --> Planner["Planner"]
@@ -55,7 +83,8 @@ flowchart LR
   Researcher --> McpTools["MCP ToolProvider"]
   McpTools --> McpServers["MCP Servers<br/>local-qweather / amap / howtocook"]
 
-  Runner --> Pg["PostgreSQL + pgvector"]
+  Runner --> R2DBC["R2DBC 异步"]
+  R2DBC --> Pg[("PostgreSQL + pgvector")]
   Pg --> Reports["报告 / 会话历史 / 事件历史"]
   Pg --> Memory["短期对话窗口 / 用户画像"]
   Pg --> RagDocs["全局知识库向量"]
