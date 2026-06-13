@@ -280,3 +280,51 @@ function uniqueNames(names: string[]): string[] {
 function hasInlineSecret(value: string) {
   return /[?&](key|token|api[_-]?key|access[_-]?key)=(?!\$\{)[^&\s]+/i.test(value)
 }
+
+export interface ModelScopeMcpParseResult {
+  ok: boolean
+  id?: string
+  type?: string
+  url?: string
+  error?: string
+}
+
+export function parseModelScopeJson(text: string): ModelScopeMcpParseResult {
+  try {
+    const root = JSON.parse(text || '{}')
+    if (!root || typeof root !== 'object' || Array.isArray(root)) {
+      return { ok: false, error: '请输入 JSON 对象。' }
+    }
+
+    const mcpServers = root.mcpServers
+    if (!mcpServers || typeof mcpServers !== 'object' || Array.isArray(mcpServers)) {
+      return { ok: false, error: 'JSON 中缺少 mcpServers 对象。' }
+    }
+
+    const entries = Object.entries(mcpServers)
+    if (entries.length === 0) {
+      return { ok: false, error: 'mcpServers 为空。' }
+    }
+
+    const [key, value] = entries[0]
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return { ok: false, error: `mcpServers.${key} 不是有效对象。` }
+    }
+
+    const serverConfig = value as Record<string, unknown>
+    const url = typeof serverConfig.url === 'string' ? serverConfig.url.trim() : ''
+    if (!url) {
+      return { ok: false, error: `mcpServers.${key}.url 不能为空。` }
+    }
+
+    if (!/^https?:\/\/.+/i.test(url)) {
+      return { ok: false, error: `mcpServers.${key}.url 格式不正确。` }
+    }
+
+    const type = typeof serverConfig.type === 'string' ? serverConfig.type.trim() : 'sse'
+
+    return { ok: true, id: key, type, url }
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'JSON 格式不正确。' }
+  }
+}
