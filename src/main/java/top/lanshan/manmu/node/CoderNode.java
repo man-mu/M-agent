@@ -3,6 +3,7 @@ package top.lanshan.manmu.node;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import top.lanshan.manmu.agent.ProcessorAgent;
+import top.lanshan.manmu.agent.client.SpringAiAgentClient;
 import top.lanshan.manmu.model.ResearchEvent;
 import top.lanshan.manmu.model.ResearchState;
 import top.lanshan.manmu.model.ResearchStep;
@@ -11,6 +12,7 @@ import top.lanshan.manmu.model.StepExecutionStatus;
 import top.lanshan.manmu.model.StepType;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,13 +69,32 @@ public class CoderNode implements ResearchNode {
 		return Mono.fromSupplier(() -> {
 			markStepStarted(state, step);
 			try {
-				String result = processorAgent.process(state, step);
+				// 设置工具调用回调
+				List<String> calledTools = new ArrayList<>();
+				SpringAiAgentClient.setToolCallCallback(calledTools::add);
+
+				String result;
+				try {
+					result = processorAgent.process(state, step);
+				} finally {
+					SpringAiAgentClient.clearToolCallCallback();
+				}
+
 				step.executionRes(result);
 				markStepCompleted(state, step);
 				state.addObservation(result);
 
-				return stepEvent(state, step, "step_completed", step.executionStatus(),
-						"Completed: " + step.title(), payload(step, "result", result));
+				// 构建包含工具调用信息的事件
+				List<ResearchEvent> events = new ArrayList<>();
+				for (String toolName : calledTools) {
+					events.add(ResearchEvent.message(state.threadId(), name(), "tool_called",
+						"已调用 " + toolName + " 工具",
+						Map.of("tool_called", true, "tool_name", toolName)));
+				}
+				events.add(stepEvent(state, step, "step_completed", step.executionStatus(),
+					"Completed: " + step.title(), payload(step, "result", result)));
+
+				return events;
 			}
 			catch (RuntimeException ex) {
 				String errorMessage = errorMessage(ex);
@@ -82,6 +103,7 @@ public class CoderNode implements ResearchNode {
 						"Failed: " + step.title(), payload(step, "error", errorMessage)), ex);
 			}
 		}).flux()
+			.flatMapIterable(events -> events)
 			.onErrorResume(StepExecutionException.class,
 					error -> Flux.concat(Flux.just(error.event()), Flux.error(error.getCause())));
 	}
