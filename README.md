@@ -114,6 +114,10 @@ flowchart TD
   Persist --> Done
 ```
 
+# LLM 大脑
+
+LLM 是整个 Agent 系统的中枢，负责理解用户意图、进行逻辑推理、生成行动计划、解读工具返回结果。M-Agent 通过 `RoutingChatModel` 接入多个模型供应商（DeepSeek、DashScope、MiniMax、Moonshot、智谱），并在此基础上构建了重试与自动降级机制保障可用性。
+
 ## 模型调用重试机制
 
 LLM API 是整条链路中最不稳定的环节——限流（429）、服务不可用（503）、网络抖动、响应超时，任何一种都会直接中断研究流程。M-Agent 在 `SpringAiAgentClient` 的 LLM 调用层实现了**指数退避重试**，对调用方完全透明。
@@ -137,7 +141,75 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 随机抖动避免多个并发请求同时重试形成惊群效应。重试过程中记录 WARN 级别日志（重试次数、等待时长、异常类型），最终失败才向上抛出异常。整个机制对 `AgentClient` 接口签名零变更，`LlmResearcherAgent`、`LlmPlannerAgent` 等调用方无感知。
 
+## 多模型 Fallback 链
 
+重试机制解决的是同一供应商的临时故障，但当整个供应商不可用时（持续 503、Key 失效、服务下线），需要自动切换到备用模型。M-Agent 通过配置化的 **FallbackChain** 实现多模型自动降级。
+
+**降级链配置**（`model-providers.json`）：
+
+```json
+{
+  "fallbackChain": [
+    { "providerId": "deepseek",  "model": "deepseek-chat",   "priority": 1 },
+    { "providerId": "dashscope", "model": "qwen-plus",       "priority": 2 },
+    { "providerId": "minimax",   "model": "MiniMax-Text-01", "priority": 3 }
+  ]
+}
+```
+
+**执行流程**：
+
+```
+供应商 DeepSeek → 重试 3 次 → 全部失败
+  ↓ 自动切换（检查 API Key 可用性）
+供应商 DashScope → 重试 3 次 → 成功 → 返回结果
+```
+
+**设计要点**：
+
+| 维度 | 设计 |
+|------|------|
+| **切换条件** | 当前供应商重试全部耗尽后触发，429 限流优先等待而非立即切换 |
+| **Key 检查** | 切换前校验目标供应商的 API Key 是否存在，跳过无 Key 的供应商 |
+| **执行顺序** | 按 `priority` 升序，最低值为首选供应商 |
+| **最大总耗时** | 与任务总超时配合（2-5 分钟），避免无限重试切换 |
+| **日志** | 切换时记录 INFO 日志：原始供应商、切换原因、目标供应商 |
+| **前端感知** | `/api/model/current` 接口暴露 `fallbackStatus` 字段，前端可提示"当前使用备用模型" |
+
+整个机制在 `SpringAiAgentClient` 内部实现，`RoutingChatModel` 接口不变，对所有 Agent 调用方透明。降级确实会带来质量下降，但"质量稍差的回答"远好过"完全不可用"。
+
+# 规划模块
+
+规划模块负责将用户问题拆解为可执行的研究计划，并管理工作流的执行生命周期与中断恢复。
+
+## Agent Team 协作
+
+研究工作流中的节点按角色分为三类，前端时间线按角色分组展示：
+
+| 角色 | 包含节点 | 职责 |
+|------|---------|------|
+| Planner | coordinator、planner、plan_validator、human_feedback | 理解需求、制定计划、确认计划 |
+| Executor | research_team、parallel_executor、researcher_N、coder_N、information、background_investigator | 分配任务、执行步骤、调用 Skill/MCP |
+| Reviewer | reporter | 汇总报告、检查遗漏 |
+
+SSE 事件中的 `agent_role` 字段标识每个事件所属角色。前端时间线按角色分组、颜色区分：Planner（紫色）、Executor（蓝色）、Reviewer（绿色）。
+
+## 中断恢复
+
+实现 **有状态工作流的检查点-恢复（Checkpoint-Resume）机制**，让长时运行的深度研究任务在人工介入或异常中断后从精确断点续跑，而非全量重启。
+
+系统支持两个语义化暂停锚点：
+
+| 暂停点 | 触发条件 | 用户操作 |
+|--------|---------|---------|
+| 计划确认 | Plan Validator 完成校验，路由至 `HUMAN_FEEDBACK` | 接受计划 / 提出修改意见 / 拒绝 |
+| 人工反馈 | 工作流中显式等待用户决策 | 注入反馈内容并决定后续路由 |
+
+整个生命周期由 `research_session_histories` 表追踪完整状态机：`RUNNING → PAUSED → RUNNING → COMPLETED / STOPPED / FAILED`。
+
+# 记忆模块
+
+记忆模块让 Agent 从"一次性问答"进化为"渐进式理解"，包含短期记忆（会话内上下文）和长期记忆（跨会话语义检索）两个层次。
 
 ## 短期记忆
 
@@ -165,6 +237,10 @@ prompt 中内嵌护栏指令——"Use this only to adapt explanation depth and 
 缓存策略采用 TTL 惰性刷新：60 分钟内直接命中缓存，避免冗余 LLM 调用；超时后取最近 10 条消息做增量更新，新旧画像合并而非全量重建。画像同步注入 Coordinator（辅助判断问题复杂度与路由决策）和 Reporter（自适应调节报告深度与行文风格），注入格式附带与短期记忆同源的护栏约束。
 
 **用户画像支持手动覆盖**：前端知识库页面提供可视化编辑，手动修改的字段不被自动提取覆盖，实现"系统自动 + 人工精调"的混合画像策略。
+
+# 工具使用
+
+工具扩展了 LLM 的能力边界，让 Agent 能处理超出预训练知识的实时数据。M-Agent 通过插件化 Skill、MCP 协议和 RAG 管线三层工具体系，实现能力的热插拔与语义级发现。
 
 ## 插件化 Skill
 
@@ -211,19 +287,6 @@ prompt 中内嵌护栏指令——"Use this only to adapt explanation depth and 
 在 PostgreSQL 上启用 **pgvector 扩展**，将向量存储与关系型业务数据置于同一数据库引擎内，以零额外基础设施实现高维语义嵌入的存储与近似最近邻（ANN）检索。
 
 Spring AI 的 `PgVectorStore` 提供开箱即用的向量写入与余弦相似度查询。嵌入向量由 DashScope 统一生成——用户上传文档经 Tika 解析 → 分块 → 向量化 → 写入 pgvector，形成完整的非结构化数据到结构化语义索引的转换链路。
-
-## 中断恢复
-
-实现 **有状态工作流的检查点-恢复（Checkpoint-Resume）机制**，让长时运行的深度研究任务在人工介入或异常中断后从精确断点续跑，而非全量重启。
-
-系统支持两个语义化暂停锚点：
-
-| 暂停点 | 触发条件 | 用户操作 |
-|--------|---------|---------|
-| 计划确认 | Plan Validator 完成校验，路由至 `HUMAN_FEEDBACK` | 接受计划 / 提出修改意见 / 拒绝 |
-| 人工反馈 | 工作流中显式等待用户决策 | 注入反馈内容并决定后续路由 |
-
-整个生命周期由 `research_session_histories` 表追踪完整状态机：`RUNNING → PAUSED → RUNNING → COMPLETED / STOPPED / FAILED`。
 
 ## 快速开始（Docker 一键部署）
 
