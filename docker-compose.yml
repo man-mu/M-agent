@@ -1,7 +1,7 @@
 services:
-  # PostgreSQL 数据库
+  # PostgreSQL 数据库（含 pgvector 扩展）
   postgres:
-    image: docker.1ms.run/library/postgres:17-alpine
+    image: docker.1ms.run/pgvector/pgvector:pg17
     container_name: manmu-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-manmu}
