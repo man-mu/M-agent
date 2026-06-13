@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,6 +35,19 @@ public class SpringAiAgentClient implements AgentClient {
 	private static final Pattern KEY_VALUE_PAIR = Pattern.compile("--(\\w+)=(\"[^\"]*\"|\\S+)");
 	private static final Pattern DIRECT_QWEATHER_LOCATION = Pattern
 		.compile("^\\d{6,12}$|^-?\\d+(\\.\\d+)?\\s*,\\s*-?\\d+(\\.\\d+)?$");
+
+	private static final ThreadLocal<Consumer<String>> toolCallCallback = new ThreadLocal<>();
+
+	/**
+	 * 设置当前线程的工具调用回调。调用方在 call() 前设置，call() 后清除。
+	 */
+	public static void setToolCallCallback(Consumer<String> callback) {
+		toolCallCallback.set(callback);
+	}
+
+	public static void clearToolCallCallback() {
+		toolCallCallback.remove();
+	}
 
 	private final RoutingChatModel routingChatModel;
 
@@ -92,7 +106,10 @@ public class SpringAiAgentClient implements AgentClient {
 		}
 
 		if (!allCallbacks.isEmpty()) {
-			request = request.toolCallbacks(allCallbacks.toArray(new ToolCallback[0]));
+			List<ToolCallback> wrappedCallbacks = allCallbacks.stream()
+				.map(this::wrapToolCallbackWithEvent)
+				.toList();
+			request = request.toolCallbacks(wrappedCallbacks.toArray(new ToolCallback[0]));
 		}
 
 		try {
@@ -117,6 +134,29 @@ public class SpringAiAgentClient implements AgentClient {
 			current = current.getCause();
 		}
 		return false;
+	}
+
+	private ToolCallback wrapToolCallbackWithEvent(ToolCallback original) {
+		return new ToolCallback() {
+			@Override
+			public org.springframework.ai.tool.definition.ToolDefinition getToolDefinition() {
+				return original.getToolDefinition();
+			}
+
+			@Override
+			public String call(String input) {
+				Consumer<String> callback = toolCallCallback.get();
+				if (callback != null) {
+					try {
+						callback.accept(original.getToolDefinition().name());
+					} catch (Exception e) {
+						logger.debug("Tool call callback failed for {}: {}",
+							original.getToolDefinition().name(), e.getMessage());
+					}
+				}
+				return original.call(input);
+			}
+		};
 	}
 
 	/**
