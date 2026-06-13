@@ -184,27 +184,29 @@ LLM API 是整条链路中最不稳定的环节——限流（429）、服务不
 
 ## ReAct
 
-M-Agent 的研究执行采用 **ReAct（Reasoning + Acting）** 范式——想一步、做一步、看一步，推理指导行动，行动反馈推理，二者交替螺旋式推进直到任务完成。
+M-Agent 中**每个工作流节点都是一个独立的 ReAct 循环**。ReAct（Reasoning + Acting）的核心思想是：想一步、做一步、看一步，推理指导行动，行动反馈推理，二者交替螺旋式推进直到任务完成。
 
-ReAct 的核心三元组在 M-Agent 中的映射：
+ReAct 的三元组 `Thought → Action → Observation` 在每个节点内部自闭环：
 
-| ReAct 概念 | M-Agent 实现 | 说明 |
-|-----------|-------------|------|
-| **Thought** | Researcher / Coder 的 LLM 推理 | 模型的"内心独白"，分解任务、分析当前进度、决定下一步策略 |
-| **Action** | MCP 工具调用 / Skill 工具调用 | 结构化的工具名 + 参数，系统解析并执行 |
-| **Observation** | 工具返回结果注入上下文 | 真实外部数据，保证推理"接地气"而非臆想 |
+| 节点 | Thought | Action | Observation |
+|------|---------|--------|-------------|
+| **Coordinator** | 分析问题复杂度，判断走快速回答还是深度研究 | 输出路由决策 JSON | 下游节点执行结果 |
+| **Planner** | 综合背景搜索、用户画像等上下文，拆解研究步骤 | 输出结构化研究计划 JSON | Plan Validator 校验结果 |
+| **Researcher** | 分析当前步骤需要什么信息，决定调用哪个工具 | 调用 MCP / Skill 工具 | 工具返回的真实数据 |
+| **Coder** | 整合已有观察结果，决定如何加工和格式化 | 调用工具或直接推理 | 处理后的结构化输出 |
+| **Reporter** | 汇总所有观察结果，规划报告结构 | 生成最终 Markdown 报告 | 报告持久化结果 |
 
-**执行流程示例**（用户问"我生于2007年1月11日，生辰八字怎么样"）：
+**单节点内部的 ReAct 循环示例**（ResearcherNode 执行"生辰八字查询"步骤）：
 
 ```
 Thought: 用户问生辰八字，需要精确的干支计算，我应该调用 Bazi MCP 工具
 Action:  调用 bazi 工具，参数 {"date": "2007-01-11"}
 Observation: 工具返回丙戌年、辛丑月、乙巳日及五行分析
-Thought: 已获取准确的四柱信息，可以结合背景知识生成完整报告
-Action:  Finish，输出最终报告
+Thought: 已获取准确的四柱信息，可以输出结论了
+Action:  Finish，输出观察结果
 ```
 
-每一步的 Thought、Action、Observation 都通过 SSE 事件流实时推送到前端，用户可以完整追踪 Agent 的推理与行动轨迹。
+每个节点内部的 Thought → Action → Observation 通过 Spring AI 的 function calling 机制自动驱动——LLM 推理决定调用哪个工具，系统执行工具并将结果注入上下文，LLM 继续推理，直到判断任务完成。整个过程通过 SSE 事件流实时推送到前端。
 
 ## GoT
 
