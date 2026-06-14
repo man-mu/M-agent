@@ -166,7 +166,7 @@ User Prompt 按语义区段组织，每个区段是独立的方法——有内�
 | **背景调研**   | BackgroundInvestigator 的搜索结果        | "Do not treat failed or missing searches as evidence"        |
 | **历史报告**   | 同会话已完成的研究报告摘要               | "Use this prior session context to avoid repeating work"     |
 | **用户画像**   | 四维结构化画像（expertise/detail/style） | "Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence" |
-| **对话历史**   | 最近 N 条对话消息 + 压缩上下文           | "Use this only to understand follow-up references. Do not treat prior conversation content as external factual evidence" |
+| **对话历史**   | 最近 N 条对话消息摘要 + 压缩上下文           | "Use this only to understand follow-up references. Do not treat prior conversation content as external factual evidence" |
 | **人工反馈**   | 用户对计划的修改意见                     | "Revise the research plan to address this feedback"          |
 
 ###  核心节点的提示词组成
@@ -242,9 +242,9 @@ M-Agent 的研究计划本质上是一张有向图（见上方架构图「研究
 
 采用**会话级滑动窗口**策略，以极简实现精准保留最近相关上下文，保证多轮交互的语义连贯性。
 
-同一 `session_id` 下最近的对话消息按时间排序注入已完成的graphstate中的关进信息，帮助 LLM 理解追问意图与上下文关联。窗口上限 10 条，超出部分通过压缩上下文注入提示词.
+同一 `session_id` 下最近的对话消息按时间排序注入已完成的graphstate中的关进信息(用户问题和最终生成的报告)，帮助 LLM 理解追问意图与上下文关联。窗口上限 10 条，超出部分通过压缩上下文注入提示词.
 
-每个ReAct中的提示词由3部分组成: 当前节点的 系统提示词
+每个ReAct中的 对话历史部分 提示词由 最近10条研究的摘要 和 10条对话之前的压缩记忆
 
 ## 长期记忆
 
