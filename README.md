@@ -181,7 +181,7 @@ M-Agent 中**每个工作流节点都是一个独立的 ReAct 节点**。ReAct�
 
 ReAct 的三元组 `Thought → Action → Observation` 在每个节点内部自闭环：
 
-| 节点            | Thought                                      | Action                  | Observation             |
+| 主要节点            | Thought                                      | Action                  | Observation             |
 | --------------- | -------------------------------------------- | ----------------------- | ----------------------- |
 | **Coordinator** | 分析问题复杂度，判断走快速回答还是深度研究   | 输出路由决策 JSON       | 下游节点执行结果        |
 | **Planner**     | 综合背景搜索、用户画像等上下文，拆解研究步骤 | 输出结构化研究计划 JSON | Plan Validator 校验结果 |
