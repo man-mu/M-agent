@@ -10,8 +10,29 @@ M-Agent 是一个**完整可用的 DeepResearch 风格 AI Agent 工作流引擎*
 - **Agent 编排**：Spring AI 、Spring AI Alibaba Graph
 - **模型**：OpenAI-compatible 协议，支持 DeepSeek / MiniMax / Moonshot / 智谱 / DashScope
 - **持久化**：PostgreSQL 17 + pgvector 向量存储
-- **前端**：Vue 3、Vite、Pinia、Ant Design Vue
+- **前端**：Vue 3、Vite、
 - **容器化**：Docker Compose 一键部署（前端 + 后端 + 数据库 + MCP）
+
+## 目录
+
+- [🧠 LLM 大脑](#llm-大脑)
+  - [模型调用重试机制](#模型调用重试机制)
+  - [多模型 Fallback 链](#多模型-fallback-链)
+  - [动态切换模型](#动态切换模型)
+  - [语义缓存](#语义缓存)
+  - [结构化提示词](#结构化提示词)
+- [📋 规划模块](#规划模块)
+  - [ReAct](#react)
+  - [GoT](#got)
+  - [共享上下文（Graph State）](#共享上下文graph-state)
+- [🗄️ 记忆模块](#记忆模块)
+  - [短期记忆](#短期记忆)
+  - [长期记忆](#长期记忆)
+- [🔧 工具使用](#工具使用)
+  - [插件化 Skill](#插件化-skill)
+  - [MCP](#mcp)
+  - [Spring AI ToolCallback 统一工具桥接](#spring-ai-toolcallback-统一工具桥接)
+  - [RAG](#rag)
 
 ## 架构图
 
@@ -22,7 +43,7 @@ M-Agent 是一个**完整可用的 DeepResearch 风格 AI Agent 工作流引擎*
 ```mermaid
 flowchart TD
   User["用户浏览器"] -- "TCP 三次握手" --> Netty["Netty\nEventLoop 非阻塞 I/O\nHTTP 编解码 / SSE 长连接"]
-  Netty -- "ServerHttpRequest" --> WebFlux["Spring WebFlux\nDispatcherHandler 路由\nFlux 订阅调度 / SSE 自动编码"]
+  Netty -- "ServerHttpRequest" --> WebFlux["Spring WebFlux\n"]
   WebFlux -- "URL 匹配" --> Controller["Controller\n@Valid 参数校验\n委托 Runner / 包装 ServerSentEvent"]
   Controller -- "Flux of ResearchEvent" --> WebFlux
   WebFlux -- "text/event-stream" --> Netty
@@ -148,7 +169,7 @@ User Prompt 按语义区段组织，每个区段是独立的方法——有内�
 | **对话历史**   | 最近 N 条对话消息 + 压缩上下文           | "Use this only to understand follow-up references. Do not treat prior conversation content as external factual evidence" |
 | **人工反馈**   | 用户对计划的修改意见                     | "Revise the research plan to address this feedback"          |
 
-###  各 节点 的提示词组成
+###  核心节点的提示词组成
 
 | node            | System Prompt                  | User Prompt 区段                                             |
 | --------------- | ------------------------------ | ------------------------------------------------------------ |
@@ -325,11 +346,6 @@ SkillToolProvider                          McpToolProvider
 **全局知识库**：用户在前端知识库页面上传的文档对所有会话生效，支持文档列表查看和删除。`RagRetriever` 自动合并全局文档和会话级文档的检索结果。
 
 两个可选 RAG 节点覆盖双重检索场景：
-
-| 节点                  | 触发条件                          | 检索目标                          |
-| --------------------- | --------------------------------- | --------------------------------- |
-| `USER_FILE_RAG`       | `rag.enabled=true` 且用户上传文件 | 用户私有文档 + 全局知识库语义检索 |
-| `PROFESSIONAL_KB_RAG` | 用户选定专业知识库                | 领域知识库定向检索                |
 
 ## 向量数据库
 
