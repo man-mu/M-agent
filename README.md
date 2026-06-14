@@ -150,33 +150,22 @@ M-Agent 支持**运行时热切换模型供应商和具体模型**，无需重�
 
 ### System Prompt（角色 + 规则 + 输出格式）
 
-System Prompt 由两部分拼接：
-
-1. **角色模板**：从 `classpath:prompts/*.md` 加载，定义 Agent 的角色、行为规则和约束
-2. **输出格式**：`BeanOutputConverter.getFormat()` 自动生成 JSON Schema，约束 LLM 输出结构
+System Prompt 从 `classpath:prompts/*.md` 加载，定义 Agent 的角色、行为规则和约束
 
 ### User Prompt（按语义区段独立拼接）
 
 User Prompt 按语义区段组织，每个区段是独立的方法——有内容则拼接并附带护栏指令，无内容则返回空字符串不拼入：
 
-| 区段           | 说明                                     | 护栏指令                                                     |
-| -------------- | ---------------------------------------- | ------------------------------------------------------------ |
-| **当前任务**   | 用户问题、当前步骤、最大步数等           | 无（事实数据）                                               |
-| **优化查询词** | QueryRewrite 改写后的多维查询            | "Keep the original user question as the source of truth"     |
-| **背景调研**   | BackgroundInvestigator 的搜索结果        | "Do not treat failed or missing searches as evidence"        |
-| **历史报告**   | 同会话已完成的研究报告摘要               | "Use this prior session context to avoid repeating work"     |
-| **用户画像**   | 四维结构化画像（expertise/detail/style） | "Use this only to adapt explanation depth and style. Do not infer facts not present in research evidence" |
-| **对话历史**   | 最近 N 条对话消息摘要 + 压缩上下文           | "Use this only to understand follow-up references. Do not treat prior conversation content as external factual evidence" |
-| **人工反馈**   | 用户对计划的修改意见                     | "Revise the research plan to address this feedback"          |
-
-###  核心节点的提示词组成
-
-| node            | System Prompt                  | User Prompt 区段                                             |
-| --------------- | ------------------------------ | ------------------------------------------------------------ |
-| **Coordinator** | `coordinator.md` + JSON Schema | 用户问题 + 深度研究开关 + 用户画像 + 对话历史                |
-| **Planner**     | `planner.md` + JSON Schema     | 用户问题 + 最大步数 + 优化查询词 + 背景调研 + 历史报告 + 对话历史 + 人工反馈 |
-| **Researcher**  | `researcher.md`                | 用户问题 + 当前步骤详情 + skill工作流(如果有)                |
-| **Reporter**    | `reporter.md`                  | 用户问题 + 计划标题/思路 + 步骤详情 + 所有观察结果 + 搜索来源 + 用户画像 + 对话历史 |
+| 区段             | 说明                                                 | 护栏指令                                                     |
+| ---------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
+| **当前任务**     | 用户问题、当前步骤、最大步数等                       | 无（事实数据）                                               |
+| **优化查询词**   | QueryRewrite 改写后的多维查询                        | "Keep the original user question as the source of truth"     |
+| **搜索结果**     | BackgroundInvestigator 联网搜索的结果                | "Do not treat failed or missing searches as evidence"        |
+| **检索结果**     | RAG 向量检索的结果（用户上传文档 + 专业知识库）      | "Use this only as supplementary context, not as primary evidence" |
+| **对话历史**     | 最近 N 条对话消息摘要 + 久远消息压缩                 | "Use this only to understand follow-up references. Do not treat prior conversation content as external factual evidence" |
+| **人工反馈**     | 用户对计划的修改意见                                 | "Revise the research plan to address this feedback"          |
+| **计划**         | Planner 节点生成的结构化研究计划（标题、步骤、类型） | "Follow this plan strictly, do not deviate without reason"   |
+| **工具调用结果** | Researcher 调用 MCP / Skill 工具返回的真实数据       | "Use tool results as factual evidence for your analysis"     |
 
 ### 护栏设计
 
@@ -410,4 +399,3 @@ docker compose logs -f
 ```bash
 docker compose down
 ```
-
